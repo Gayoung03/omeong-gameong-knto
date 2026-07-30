@@ -1,0 +1,1 @@
+"""Pet-friendly place endpoints."""
