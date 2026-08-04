@@ -1,6 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 
+import { getAuthSession } from '@/src/features/auth/services/authStorage';
 import { colors } from '@/src/theme';
 
 const tabIcons = {
@@ -12,6 +14,21 @@ const tabIcons = {
 } as const;
 
 export default function TabLayout() {
+  const router = useRouter();
+  const [sessionChecked, setSessionChecked] = useState(false);
+
+  useEffect(() => {
+    void getAuthSession().then((session) => {
+      if (!session) {
+        router.replace('/login');
+        return;
+      }
+      setSessionChecked(true);
+    });
+  }, [router]);
+
+  if (!sessionChecked) return null;
+
   return (
     <Tabs
       screenOptions={({ route }) => ({
