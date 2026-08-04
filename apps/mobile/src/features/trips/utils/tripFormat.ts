@@ -1,4 +1,10 @@
-import type { PetPolicy, ScheduleWeather, TransportType, Trip } from '../types/trip';
+import type {
+  PetPolicy,
+  ScheduleWeather,
+  TransportType,
+  Trip,
+  WeatherCondition,
+} from '../types/trip';
 
 const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
@@ -105,7 +111,7 @@ export function getPetPolicyLabel(petPolicy: PetPolicy): string {
   return PET_POLICY_LABELS[petPolicy];
 }
 
-const WEATHER_ICONS: Record<ScheduleWeather['condition'], string> = {
+const WEATHER_ICONS: Record<WeatherCondition, string> = {
   sunny: '☀️',
   partlyCloudy: '⛅',
   cloudy: '☁️',
@@ -113,8 +119,105 @@ const WEATHER_ICONS: Record<ScheduleWeather['condition'], string> = {
   snowy: '❄️',
 };
 
-export function getWeatherIcon(condition: ScheduleWeather['condition']): string {
+export function getWeatherIcon(condition: WeatherCondition): string {
   return WEATHER_ICONS[condition];
+}
+
+const WEATHER_LABELS: Record<WeatherCondition, string> = {
+  sunny: '맑음',
+  partlyCloudy: '구름 조금',
+  cloudy: '흐림',
+  rainy: '비',
+  snowy: '눈',
+};
+
+export function getWeatherLabel(condition: WeatherCondition): string {
+  return WEATHER_LABELS[condition];
+}
+
+/** 최저·최고 기온 요약 (예: 24° / 31°) */
+export function formatTemperatureRange(weather: ScheduleWeather): string {
+  return `${weather.minTemperature}° / ${weather.maxTemperature}°`;
+}
+
+/** 하루 중 가장 높은 강수 확률 */
+export function getMaxPrecipitationProbability(weather: ScheduleWeather): number {
+  if (weather.hourly.length === 0) {
+    return 0;
+  }
+  return Math.max(...weather.hourly.map((hour) => hour.precipitationProbability));
+}
+
+/** 산책 팁의 강조 수준 */
+export type PetWalkTipTone = 'caution' | 'watch' | 'good';
+
+/** 반려동물 산책 팁 */
+export type PetWalkTip = {
+  tone: PetWalkTipTone;
+  title: string;
+  description: string;
+};
+
+/**
+ * 날씨와 기온으로 반려동물 산책 팁을 만든다.
+ * 위험한 조건(눈·비·폭염·한파)을 먼저 확인하고, 해당 없으면 좋은 날씨로 안내한다.
+ */
+export function getPetWalkTip(condition: WeatherCondition, temperature: number): PetWalkTip {
+  if (condition === 'snowy') {
+    return {
+      tone: 'caution',
+      title: '눈길 산책은 짧게',
+      description: '발바닥 사이에 눈이 뭉칠 수 있어요. 산책 후 발과 배를 미지근한 물로 닦아주세요.',
+    };
+  }
+
+  if (condition === 'rainy') {
+    return {
+      tone: 'watch',
+      title: '비 소식이 있어요',
+      description: '레인코트와 여분 수건을 챙기고, 실내 동반이 가능한 장소 위주로 움직여보세요.',
+    };
+  }
+
+  if (temperature >= 31) {
+    return {
+      tone: 'caution',
+      title: '한낮 아스팔트 화상 주의',
+      description:
+        '달궈진 바닥에 발바닥을 델 수 있어요. 오전 8시 이전이나 해가 진 뒤에 산책하는 걸 권해요.',
+    };
+  }
+
+  if (temperature >= 27) {
+    return {
+      tone: 'watch',
+      title: '더위에 지치기 쉬워요',
+      description:
+        '10분마다 그늘에서 쉬고 물을 자주 주세요. 헐떡임이 심해지면 바로 실내로 이동해요.',
+    };
+  }
+
+  if (temperature <= 0) {
+    return {
+      tone: 'caution',
+      title: '한파에 체온이 빨리 떨어져요',
+      description: '산책을 짧게 나누어 하고, 소형견·단모종은 옷을 꼭 입혀주세요.',
+    };
+  }
+
+  if (temperature <= 8) {
+    return {
+      tone: 'watch',
+      title: '쌀쌀한 날씨예요',
+      description: '노령견과 소형견은 추위에 약해요. 산책 시간을 30분 안쪽으로 줄여주세요.',
+    };
+  }
+
+  return {
+    tone: 'good',
+    title: '산책하기 좋은 날씨예요',
+    description: '기온이 적당해요. 물만 챙기면 바깥 일정을 소화하는 데 무리가 없어요.',
+  };
 }
 
 const TRIP_TRANSPORT_LABELS: Record<Trip['transport'], string> = {

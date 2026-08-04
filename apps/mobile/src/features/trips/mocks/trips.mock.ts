@@ -1,4 +1,12 @@
-import type { Schedule, ScheduleItem, SchedulePlace, Trip } from '../types/trip';
+import type {
+  HourlyWeather,
+  Schedule,
+  ScheduleItem,
+  SchedulePlace,
+  ScheduleWeather,
+  Trip,
+  WeatherCondition,
+} from '../types/trip';
 
 type PlaceSeed = Omit<SchedulePlace, 'imageUrl' | 'isReservable'> &
   Partial<Pick<SchedulePlace, 'imageUrl' | 'isReservable'>>;
@@ -175,12 +183,46 @@ function createItems(seeds: ItemSeed[]): ScheduleItem[] {
   }));
 }
 
+/** 기상청 단기예보와 동일하게 3시간 간격으로 제공한다 */
+const FORECAST_TIMES = ['06:00', '09:00', '12:00', '15:00', '18:00', '21:00'] as const;
+
+/** [날씨, 기온, 강수확률] 을 FORECAST_TIMES 순서대로 나열한 값 */
+type HourlySeed = [WeatherCondition, number, number];
+
+function createWeather(condition: WeatherCondition, seeds: HourlySeed[]): ScheduleWeather {
+  const hourly: HourlyWeather[] = seeds.map(
+    ([hourCondition, temperature, precipitationProbability], index) => ({
+      time: FORECAST_TIMES[index],
+      condition: hourCondition,
+      temperature,
+      precipitationProbability,
+    }),
+  );
+  const temperatures = hourly.map((item) => item.temperature);
+  const maxTemperature = Math.max(...temperatures);
+
+  return {
+    condition,
+    temperature: maxTemperature,
+    minTemperature: Math.min(...temperatures),
+    maxTemperature,
+    hourly,
+  };
+}
+
 const schedules: Schedule[] = [
   {
     id: 'schedule-day-1',
     dayNumber: 1,
     date: '2026-07-31',
-    weather: { condition: 'sunny', temperature: 31 },
+    weather: createWeather('sunny', [
+      ['sunny', 25, 0],
+      ['sunny', 28, 0],
+      ['sunny', 31, 10],
+      ['sunny', 31, 10],
+      ['partlyCloudy', 29, 10],
+      ['partlyCloudy', 26, 0],
+    ]),
     items: createItems([
       {
         place: places.hyeopjae,
@@ -206,7 +248,14 @@ const schedules: Schedule[] = [
     id: 'schedule-day-2',
     dayNumber: 2,
     date: '2026-08-01',
-    weather: { condition: 'partlyCloudy', temperature: 30 },
+    weather: createWeather('partlyCloudy', [
+      ['partlyCloudy', 25, 10],
+      ['partlyCloudy', 27, 20],
+      ['cloudy', 30, 30],
+      ['cloudy', 30, 40],
+      ['partlyCloudy', 28, 20],
+      ['partlyCloudy', 25, 10],
+    ]),
     items: createItems([
       {
         place: places.jungmun,
@@ -223,7 +272,14 @@ const schedules: Schedule[] = [
     id: 'schedule-day-3',
     dayNumber: 3,
     date: '2026-08-02',
-    weather: { condition: 'cloudy', temperature: 29 },
+    weather: createWeather('rainy', [
+      ['cloudy', 24, 30],
+      ['cloudy', 26, 40],
+      ['rainy', 28, 70],
+      ['rainy', 29, 80],
+      ['cloudy', 27, 50],
+      ['cloudy', 25, 30],
+    ]),
     items: createItems([
       {
         place: places.udo,
@@ -236,7 +292,14 @@ const schedules: Schedule[] = [
     id: 'schedule-day-4',
     dayNumber: 4,
     date: '2026-08-03',
-    weather: { condition: 'sunny', temperature: 31 },
+    weather: createWeather('sunny', [
+      ['sunny', 26, 0],
+      ['sunny', 29, 0],
+      ['sunny', 31, 0],
+      ['sunny', 31, 10],
+      ['sunny', 29, 0],
+      ['partlyCloudy', 27, 0],
+    ]),
     items: createItems([
       {
         place: places.dodubong,

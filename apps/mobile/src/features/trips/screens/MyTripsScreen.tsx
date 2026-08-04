@@ -21,6 +21,7 @@ import { ScheduleTimeline } from '../components/ScheduleTimeline';
 import { TripDistanceSummary } from '../components/TripDistanceSummary';
 import { TripSummaryCard } from '../components/TripSummaryCard';
 import { TripTabBar } from '../components/TripTabBar';
+import { WeatherSheet } from '../components/WeatherSheet';
 import { useLatestTrip } from '../hooks/useTrips';
 import type { TripDetailTab } from '../types/trip';
 import { formatFullDate, getWeatherIcon } from '../utils/tripFormat';
@@ -33,6 +34,7 @@ export function MyTripsScreen() {
 
   const [activeTab, setActiveTab] = useState<TripDetailTab>('schedule');
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
+  const [isWeatherSheetOpen, setIsWeatherSheetOpen] = useState(false);
 
   const selectedSchedule = useMemo(() => {
     if (!trip) {
@@ -162,12 +164,20 @@ export function MyTripsScreen() {
                 <Text style={styles.dayTitle}>Day {selectedSchedule.dayNumber}</Text>
                 <Text style={styles.dayDate}>{formatFullDate(selectedSchedule.date)}</Text>
                 {selectedSchedule.weather && (
-                  <View style={styles.weatherBadge}>
+                  <Pressable
+                    accessibilityHint="시간대별 예보와 반려동물 산책 팁을 볼 수 있어요"
+                    accessibilityLabel={`Day ${selectedSchedule.dayNumber} 날씨 자세히 보기`}
+                    accessibilityRole="button"
+                    hitSlop={spacing.xs}
+                    onPress={() => setIsWeatherSheetOpen(true)}
+                    style={styles.weatherBadge}
+                  >
                     <Text style={styles.weatherText}>
                       {getWeatherIcon(selectedSchedule.weather.condition)}{' '}
                       {selectedSchedule.weather.temperature}°
                     </Text>
-                  </View>
+                    <Ionicons color={colors.warning} name="chevron-forward" size={11} />
+                  </Pressable>
                 )}
                 <Pressable
                   accessibilityRole="button"
@@ -195,6 +205,15 @@ export function MyTripsScreen() {
             <Text style={styles.addButtonText}>＋ 일정 추가</Text>
           </Pressable>
         </ScrollView>
+      )}
+
+      {isWeatherSheetOpen && selectedSchedule?.weather && (
+        <WeatherSheet
+          date={selectedSchedule.date}
+          dayNumber={selectedSchedule.dayNumber}
+          onClose={() => setIsWeatherSheetOpen(false)}
+          weather={selectedSchedule.weather}
+        />
       )}
     </SafeAreaView>
   );
@@ -242,8 +261,11 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
   },
   weatherBadge: {
+    alignItems: 'center',
     backgroundColor: '#FFF7DF',
     borderRadius: radius.full,
+    flexDirection: 'row',
+    gap: 1,
     paddingHorizontal: spacing.sm,
     paddingVertical: 3,
   },
