@@ -18,7 +18,20 @@ const config: ExpoConfig = {
   web: {
     output: 'static',
   },
-  plugins: ['expo-router', 'expo-secure-store', '@react-native-community/datetimepicker'],
+  plugins: [
+    'expo-router',
+    'expo-secure-store',
+    '@react-native-community/datetimepicker',
+    'expo-sharing',
+    [
+      'expo-media-library',
+      {
+        photosPermission: '여행 일정을 이미지로 저장하기 위해 사진 접근 권한이 필요해요.',
+        savePhotosPermission: '만든 여행 일정 이미지를 사진첩에 저장할게요.',
+        isAccessMediaLocationEnabled: false,
+      },
+    ],
+  ],
   experiments: {
     typedRoutes: true,
   },
