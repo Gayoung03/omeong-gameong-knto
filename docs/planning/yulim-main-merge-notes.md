@@ -11,11 +11,15 @@
 
 ## 1. 설치한 라이브러리 (완료)
 
-| 패키지                                   | 버전   | 설치 이유                                     | 반영 PR |
-| ---------------------------------------- | ------ | --------------------------------------------- | ------- |
-| `@react-native-community/datetimepicker` | 9.1.0  | 여행 정보 편집(목업 02)의 여행 기간 날짜 선택 | #5      |
-| `react-native-draggable-flatlist`        | ^4.0.3 | 일정 편집(목업 09)의 드래그 순서 변경         | 예정    |
-| `react-native-reanimated`                | 4.5.1  | 위 라이브러리의 peer dependency               | 예정    |
+| 패키지                                   | 버전    | 설치 이유                                     | 반영 PR |
+| ---------------------------------------- | ------- | --------------------------------------------- | ------- |
+| `@react-native-community/datetimepicker` | 9.1.0   | 여행 정보 편집(목업 02)의 여행 기간 날짜 선택 | #5      |
+| `react-native-draggable-flatlist`        | ^4.0.3  | 일정 편집(목업 09)의 드래그 순서 변경         | #8      |
+| `react-native-reanimated`                | 4.5.1   | 위 라이브러리의 peer dependency               | #8      |
+| `expo-clipboard`                         | ~57.0.1 | 공유 시트(목업 06)의 링크 복사                | 예정    |
+| `expo-sharing`                           | ~57.0.8 | 만든 일정 이미지를 다른 앱으로 공유           | 예정    |
+| `react-native-view-shot`                 | 5.1.0   | 일정 카드를 이미지로 캡처(목업 07)            | 예정    |
+| `expo-media-library`                     | ~57.0.3 | 캡처한 이미지를 사진첩에 저장                 | 예정    |
 
 > `datetimepicker`는 웹을 지원하지 않아 `DateRangeField.web.tsx`로 대체 구현을 분리했다.
 > Metro가 플랫폼별로 자동 선택하므로 웹에서도 화면이 깨지지 않는다.
@@ -28,12 +32,9 @@
 
 ## 2. 설치 예정 라이브러리
 
-| 패키지                   | 예정 작업                    | 상태             | 비고                                                |
-| ------------------------ | ---------------------------- | ---------------- | --------------------------------------------------- |
-| `expo-clipboard`         | 06 공유 시트 (링크 복사)     | 미착수           |                                                     |
-| `react-native-view-shot` | 07 이미지 저장 (화면 캡처)   | 미착수           |                                                     |
-| `expo-media-library`     | 07 이미지 저장 (사진첩 저장) | 미착수           | 사진 접근 권한 문구를 `app.config.ts`에 추가해야 함 |
-| 카카오맵 관련            | 03 지도 탭                   | **팀 결정 대기** | WebView 방식과 네이티브 SDK 방식 중 미정            |
+| 패키지        | 예정 작업  | 상태             | 비고                                     |
+| ------------- | ---------- | ---------------- | ---------------------------------------- |
+| 카카오맵 관련 | 03 지도 탭 | **팀 결정 대기** | WebView 방식과 네이티브 SDK 방식 중 미정 |
 
 ### 참고: `react-native-draggable-flatlist` 호환성 확인 결과 (설치 완료)
 
@@ -47,16 +48,19 @@
 
 ## 3. 공통 파일 변경 내역
 
-| 파일                                 | 변경 내용                                                                      | 반영 PR |
-| ------------------------------------ | ------------------------------------------------------------------------------ | ------- |
-| `src/theme/colors.ts`                | 시안 키 컬러 확장 토큰 추가 (primarySoft, leaf, sea, basalt 등)                | #3      |
-| `src/theme/typography.ts`            | 촘촘한 화면용 확장 스케일 추가 (sectionTitle, subtitle, label, caption, micro) | #3      |
-| `src/theme/radius.ts`                | radius 토큰 신규 추가                                                          | #3      |
-| `src/theme/index.ts`                 | radius export 추가                                                             | #3      |
-| `src/theme/colors.ts`                | 앱 기본 배경색을 화이트(`#FFFFFF`)로 변경 — 팀 결정 사항                       | #6      |
-| `app.config.ts`                      | `plugins` 배열에 `@react-native-community/datetimepicker` 추가                 | #5      |
-| `app/_layout.tsx`                    | 최상단을 `GestureHandlerRootView`로 감싸기 (드래그 제스처 인식용)              | 예정    |
-| `package.json` / `package-lock.json` | draggable-flatlist, reanimated 추가                                            | 예정    |
+| 파일                                 | 변경 내용                                                                               | 반영 PR |
+| ------------------------------------ | --------------------------------------------------------------------------------------- | ------- |
+| `src/theme/colors.ts`                | 시안 키 컬러 확장 토큰 추가 (primarySoft, leaf, sea, basalt 등)                         | #3      |
+| `src/theme/typography.ts`            | 촘촘한 화면용 확장 스케일 추가 (sectionTitle, subtitle, label, caption, micro)          | #3      |
+| `src/theme/radius.ts`                | radius 토큰 신규 추가                                                                   | #3      |
+| `src/theme/index.ts`                 | radius export 추가                                                                      | #3      |
+| `src/theme/colors.ts`                | 앱 기본 배경색을 화이트(`#FFFFFF`)로 변경 — 팀 결정 사항                                | #6      |
+| `app.config.ts`                      | `plugins` 배열에 `@react-native-community/datetimepicker` 추가                          | #5      |
+| `app/_layout.tsx`                    | 최상단을 `GestureHandlerRootView`로 감싸기 (드래그 제스처 인식용)                       | #8      |
+| `package.json` / `package-lock.json` | draggable-flatlist, reanimated 추가                                                     | #8      |
+| `app.config.ts`                      | `plugins`에 `expo-sharing` 추가, `expo-media-library`를 사진 접근 권한 문구와 함께 추가 | 예정    |
+| `package.json` / `package-lock.json` | clipboard, sharing, view-shot, media-library 추가                                       | 예정    |
+| `apps/mobile/.gitignore`             | `/ios`, `/android` 추가 (expo prebuild 산출물 커밋 방지)                                | 예정    |
 
 > **`app/_layout.tsx`는 충돌 위험이 큰 파일이다.** 다른 팀원도 라우트를 추가하면서 건드리게 된다.
 > 변경 내용 자체는 기존 트리를 `GestureHandlerRootView`로 한 겹 감싼 것뿐이라
@@ -99,16 +103,26 @@ git add package-lock.json
 - react-native-draggable-flatlist@^4.0.3 — 일정 편집 화면의 드래그 순서 변경
 - react-native-reanimated@4.5.1 — 위 라이브러리의 peer dependency
   (원래 expo-router를 통해 들어와 있던 것을 package.json에 명시적으로 고정)
+- expo-clipboard@~57.0.1 — 공유 링크 복사
+- expo-sharing@~57.0.8 — 만든 일정 이미지를 다른 앱으로 공유
+- react-native-view-shot@5.1.0 — 일정 카드를 이미지로 캡처
+- expo-media-library@~57.0.3 — 캡처한 이미지를 사진첩에 저장
 
 ## 공통 파일 변경
 
 - src/theme/ : colors·typography·radius 토큰 확장, 기본 배경색 화이트로 변경
-- app.config.ts : plugins 배열에 datetimepicker 추가
 - app/_layout.tsx : 최상단을 GestureHandlerRootView로 감쌈 (드래그 제스처 인식용)
+- app.config.ts plugins :
+  - @react-native-community/datetimepicker
+  - expo-sharing
+  - expo-media-library (사진 접근 / 사진첩 저장 권한 문구 포함)
+- apps/mobile/.gitignore : /ios, /android 추가
+  (expo prebuild 가 만드는 217MB 네이티브 폴더가 커밋되지 않도록)
 
 ## 팀원 확인 사항
 
 - pull 후 `cd apps/mobile && npm ci` 실행 필요
+- 네이티브 권한이 추가되어 시뮬레이터에서 처음 실행할 때 사진 접근 권한을 물어봅니다
 ```
 
 > 위 블록은 작업이 진행되는 대로 1~3번 표의 내용을 반영해 갱신한다.
@@ -117,7 +131,8 @@ git add package-lock.json
 
 ## 변경 이력
 
-| 날짜       | 내용                                                                                                    |
-| ---------- | ------------------------------------------------------------------------------------------------------- |
-| 2026-08-04 | 문서 최초 작성. 목업 01·02·04·05·08 완료 시점 기준 정리                                                 |
-| 2026-08-04 | 09 일정 편집 작업 — draggable-flatlist·reanimated 설치, `app/_layout.tsx`에 GestureHandlerRootView 추가 |
+| 날짜       | 내용                                                                                                                                                                    |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-04 | 문서 최초 작성. 목업 01·02·04·05·08 완료 시점 기준 정리                                                                                                                 |
+| 2026-08-04 | 09 일정 편집 작업 — draggable-flatlist·reanimated 설치, `app/_layout.tsx`에 GestureHandlerRootView 추가                                                                 |
+| 2026-08-04 | 09 머지(#8) 반영. 06·07 공유+이미지 저장 작업 — clipboard·sharing·view-shot·media-library 설치, `app.config.ts`에 사진 권한 추가, `.gitignore`에 `/ios`·`/android` 추가 |

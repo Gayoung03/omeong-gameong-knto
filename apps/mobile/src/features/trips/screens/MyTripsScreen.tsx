@@ -19,12 +19,28 @@ import { DayChips } from '../components/DayChips';
 import { MemoTab } from '../components/MemoTab';
 import { ScheduleTimeline } from '../components/ScheduleTimeline';
 import { TripDistanceSummary } from '../components/TripDistanceSummary';
+import { TripImagePreviewModal } from '../components/TripImagePreviewModal';
+import { TripShareSheet } from '../components/TripShareSheet';
 import { TripSummaryCard } from '../components/TripSummaryCard';
 import { TripTabBar } from '../components/TripTabBar';
 import { WeatherSheet } from '../components/WeatherSheet';
+import { useTripShare } from '../hooks/useTripShare';
 import { useLatestTrip } from '../hooks/useTrips';
 import type { TripDetailTab } from '../types/trip';
 import { formatFullDate, getWeatherIcon } from '../utils/tripFormat';
+
+/** 이미지로 만들 범위 */
+type ShareImageTarget = 'wholeTrip' | 'day';
+
+/**
+ * 바텀시트가 닫히는 애니메이션이 끝난 뒤 실행한다.
+ * iOS 는 모달이 닫히는 도중에 OS 공유 창을 띄우면 조용히 무시한다.
+ */
+const SHEET_CLOSE_DELAY_MS = 350;
+
+function runAfterSheetClose(action: () => void) {
+  setTimeout(action, SHEET_CLOSE_DELAY_MS);
+}
 
 const MAP_TAB_DESCRIPTION = 'Day별 마커와 경로선을 보여주는 지도 탭이 준비 중이에요.';
 
@@ -35,6 +51,10 @@ export function MyTripsScreen() {
   const [activeTab, setActiveTab] = useState<TripDetailTab>('schedule');
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
   const [isWeatherSheetOpen, setIsWeatherSheetOpen] = useState(false);
+  const [isShareSheetOpen, setIsShareSheetOpen] = useState(false);
+  const [shareImageTarget, setShareImageTarget] = useState<ShareImageTarget | null>(null);
+
+  const { isSaving, copyLink, shareLink, saveImage, shareImage } = useTripShare({ trip });
 
   const selectedSchedule = useMemo(() => {
     if (!trip) {
@@ -55,8 +75,22 @@ export function MyTripsScreen() {
   };
 
   const handlePressShare = () => {
-    // TODO: 공유하기 바텀시트 연결
-    Alert.alert('공유하기', '일정 공유 기능은 다음 작업에서 연결할 예정이에요.');
+    setIsShareSheetOpen(true);
+  };
+
+  const handleCopyLink = () => {
+    setIsShareSheetOpen(false);
+    runAfterSheetClose(() => void copyLink());
+  };
+
+  const handleShareLink = () => {
+    setIsShareSheetOpen(false);
+    runAfterSheetClose(() => void shareLink());
+  };
+
+  const handleOpenImagePreview = (target: ShareImageTarget) => {
+    setIsShareSheetOpen(false);
+    runAfterSheetClose(() => setShareImageTarget(target));
   };
 
   const handlePressEdit = () => {
@@ -213,6 +247,29 @@ export function MyTripsScreen() {
           dayNumber={selectedSchedule.dayNumber}
           onClose={() => setIsWeatherSheetOpen(false)}
           weather={selectedSchedule.weather}
+        />
+      )}
+
+      {isShareSheetOpen && (
+        <TripShareSheet
+          hasSchedules={trip.schedules.length > 0}
+          onClose={() => setIsShareSheetOpen(false)}
+          onPressCopyLink={handleCopyLink}
+          onPressSaveByDay={() => handleOpenImagePreview('day')}
+          onPressSaveWholeTrip={() => handleOpenImagePreview('wholeTrip')}
+          onPressShareLink={handleShareLink}
+        />
+      )}
+
+      {shareImageTarget && (
+        <TripImagePreviewModal
+          initialScheduleId={selectedSchedule?.id ?? ''}
+          isSaving={isSaving}
+          mode={shareImageTarget}
+          onClose={() => setShareImageTarget(null)}
+          onSave={saveImage}
+          onShare={shareImage}
+          trip={trip}
         />
       )}
     </SafeAreaView>
