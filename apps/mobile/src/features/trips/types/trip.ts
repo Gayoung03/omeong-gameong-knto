@@ -41,10 +41,28 @@ export type ScheduleItem = {
   } | null;
 };
 
+/** 날씨 상태 */
+export type WeatherCondition = 'sunny' | 'partlyCloudy' | 'cloudy' | 'rainy' | 'snowy';
+
+/** 시간대별 예보 한 칸 (기상청 단기예보 3시간 단위 기준) */
+export type HourlyWeather = {
+  /** HH:mm */
+  time: string;
+  condition: WeatherCondition;
+  temperature: number;
+  /** 강수 확률 (0~100) */
+  precipitationProbability: number;
+};
+
 /** 하루치 날씨 요약 */
 export type ScheduleWeather = {
-  condition: 'sunny' | 'partlyCloudy' | 'cloudy' | 'rainy' | 'snowy';
+  condition: WeatherCondition;
+  /** 대표 기온 (낮 최고 기준) */
   temperature: number;
+  minTemperature: number;
+  maxTemperature: number;
+  /** 시간대별 예보. 아직 받아오지 못했으면 빈 배열 */
+  hourly: HourlyWeather[];
 };
 
 /** 날짜별 일정 */
