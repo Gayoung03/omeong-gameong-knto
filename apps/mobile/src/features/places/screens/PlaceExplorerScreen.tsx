@@ -165,7 +165,7 @@ export function PlaceExplorerScreen() {
               ]}
             >
               <Ionicons
-                color={isSelected ? '#168F79' : '#3D4A48'}
+                color={isSelected ? colors.primary : '#3D4A48'}
                 name={category.icon}
                 size={23}
               />
@@ -373,8 +373,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   regionChipSelected: {
-    borderColor: '#20B99D',
-    backgroundColor: '#20B99D',
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
   },
   regionText: {
     color: '#555555',
@@ -406,8 +406,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   categoryItemSelected: {
-    borderColor: '#65CDB9',
-    backgroundColor: '#F0FCF9',
+    borderColor: colors.primary,
+    backgroundColor: '#FFF3EA',
   },
   categoryText: {
     color: '#565656',
@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   categoryTextSelected: {
-    color: '#157967',
+    color: colors.primary,
     fontWeight: '800',
   },
   segmentedControl: {
@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   modeButtonSelected: {
-    backgroundColor: '#20B99D',
+    backgroundColor: colors.primary,
   },
   modeText: {
     color: '#4F4F4F',
