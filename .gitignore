@@ -18,7 +18,6 @@ env/
 
 # Node.js
 node_modules/
-.expo/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -57,3 +56,6 @@ Thumbs.db
 *.pem
 *.key
 *.crt
+
+# Expo
+.expo/
