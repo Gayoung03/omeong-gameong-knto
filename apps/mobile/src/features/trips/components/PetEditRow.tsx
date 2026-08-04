@@ -90,8 +90,10 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   nameInput: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderRadius: radius.sm,
+    borderWidth: 1,
     color: colors.textPrimary,
     flex: 1,
     fontSize: typography.label.fontSize,
@@ -101,8 +103,10 @@ const styles = StyleSheet.create({
   },
   stepper: {
     alignItems: 'center',
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderRadius: radius.full,
+    borderWidth: 1,
     flexDirection: 'row',
     gap: spacing.xs,
     paddingHorizontal: spacing.xs + 2,

@@ -79,8 +79,10 @@ const styles = StyleSheet.create({
   },
   inputRow: {
     alignItems: 'center',
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderRadius: radius.sm,
+    borderWidth: 1,
     flexDirection: 'row',
     gap: spacing.sm,
     paddingHorizontal: spacing.sm,

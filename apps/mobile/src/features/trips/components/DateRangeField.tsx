@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   dateButton: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
@@ -114,8 +114,10 @@ const styles = StyleSheet.create({
     fontSize: typography.label.fontSize,
   },
   pickerBox: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderRadius: radius.md,
+    borderWidth: 1,
     padding: spacing.xs,
   },
   confirmButton: {
