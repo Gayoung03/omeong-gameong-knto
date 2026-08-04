@@ -23,14 +23,14 @@ import type { Place } from '../types/place';
 type ViewMode = 'list' | 'map';
 
 export function PlaceExplorerScreen() {
-  const { region } = useLocalSearchParams<{ region?: string }>();
+  const { region, view } = useLocalSearchParams<{ region?: string; view?: string }>();
   const regionScrollRef = useRef<ScrollView>(null);
   const [query, setQuery] = useState('');
   const [selectedRegion, setSelectedRegion] = useState<PlaceRegionFilter>(() =>
     region && isPlaceRegion(region) ? region : '전체',
   );
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [viewMode, setViewMode] = useState<ViewMode>(view === 'map' ? 'map' : 'list');
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(
     () => new Set(mockPlaces.filter((place) => place.initiallyFavorite).map((place) => place.id)),
   );
@@ -135,7 +135,9 @@ export function PlaceExplorerScreen() {
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={[styles.regionText, isSelected && styles.regionTextSelected]}>{region}</Text>
+              <Text style={[styles.regionText, isSelected && styles.regionTextSelected]}>
+                {region}
+              </Text>
             </Pressable>
           );
         })}
@@ -251,7 +253,11 @@ function PlaceRow({ isFavorite, onPressFavorite, place }: PlaceRowProps) {
       onPress={() => router.push(`/places/${place.id}`)}
       style={({ pressed }) => [styles.placeRow, pressed && styles.rowPressed]}
     >
-      <Image accessibilityLabel={`${place.name} 사진`} source={{ uri: place.imageUrl }} style={styles.placeImage} />
+      <Image
+        accessibilityLabel={`${place.name} 사진`}
+        source={{ uri: place.imageUrl }}
+        style={styles.placeImage}
+      />
       <View style={styles.placeCopy}>
         <Text numberOfLines={1} style={styles.placeName}>
           {place.name}
