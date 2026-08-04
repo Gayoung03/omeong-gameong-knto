@@ -46,8 +46,10 @@ export function MyTripsScreen() {
   }, [trip, selectedScheduleId]);
 
   const handlePressTripInfo = () => {
-    // TODO: 여행 정보 화면 연결
-    Alert.alert('여행 정보', '여행 정보 화면은 다음 작업에서 연결할 예정이에요.');
+    if (!trip) {
+      return;
+    }
+    router.push({ pathname: '/trips/[tripId]/info', params: { tripId: trip.id } });
   };
 
   const handlePressShare = () => {

@@ -85,6 +85,8 @@ export type Trip = {
   transport: TripTransport;
   pets: TripPet[];
   accommodationSummary: string;
+  /** 여행 성향 한 줄 요약 (예: 여유로운 힐링 여행) */
+  travelStyle: string;
   styleKeywords: string[];
   memo: string;
   coverEmoji: string;
