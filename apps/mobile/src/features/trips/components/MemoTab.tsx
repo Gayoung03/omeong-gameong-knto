@@ -67,15 +67,18 @@ export function MemoTab({ schedules }: MemoTabProps) {
         })}
       </ScrollView>
 
-      <MemoEditModal
-        dayLabel={editingSchedule ? `Day ${editingSchedule.dayNumber}` : ''}
-        initialDraft={
-          editingMemo ? { title: editingMemo.title, content: editingMemo.content } : EMPTY_DRAFT
-        }
-        isVisible={editingSchedule !== null}
-        onClose={() => setEditingSchedule(null)}
-        onSubmit={handleSubmitMemo}
-      />
+      {/* key 를 주어 편집 대상이 바뀔 때마다 입력 상태를 새로 시작한다 */}
+      {editingSchedule && (
+        <MemoEditModal
+          dayLabel={`Day ${editingSchedule.dayNumber}`}
+          initialDraft={
+            editingMemo ? { title: editingMemo.title, content: editingMemo.content } : EMPTY_DRAFT
+          }
+          key={editingSchedule.id}
+          onClose={() => setEditingSchedule(null)}
+          onSubmit={handleSubmitMemo}
+        />
+      )}
     </View>
   );
 }

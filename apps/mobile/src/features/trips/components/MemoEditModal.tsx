@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -15,29 +15,15 @@ import { colors, radius, spacing, typography } from '@/src/theme';
 import type { MemoDraft } from '../hooks/useTripMemos';
 
 type MemoEditModalProps = {
-  isVisible: boolean;
   dayLabel: string;
   initialDraft: MemoDraft;
   onClose: () => void;
   onSubmit: (draft: MemoDraft) => void;
 };
 
-export function MemoEditModal({
-  isVisible,
-  dayLabel,
-  initialDraft,
-  onClose,
-  onSubmit,
-}: MemoEditModalProps) {
+export function MemoEditModal({ dayLabel, initialDraft, onClose, onSubmit }: MemoEditModalProps) {
   const [title, setTitle] = useState(initialDraft.title);
   const [content, setContent] = useState(initialDraft.content);
-
-  useEffect(() => {
-    if (isVisible) {
-      setTitle(initialDraft.title);
-      setContent(initialDraft.content);
-    }
-  }, [isVisible, initialDraft.title, initialDraft.content]);
 
   const handlePressSave = () => {
     onSubmit({ title, content });
@@ -45,7 +31,7 @@ export function MemoEditModal({
   };
 
   return (
-    <Modal animationType="slide" onRequestClose={onClose} transparent visible={isVisible}>
+    <Modal animationType="slide" onRequestClose={onClose} transparent visible>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.backdrop}
