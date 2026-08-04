@@ -16,6 +16,7 @@ import { colors, radius, spacing, typography } from '@/src/theme';
 
 import { ChecklistTab } from '../components/ChecklistTab';
 import { DayChips } from '../components/DayChips';
+import { MapTab } from '../components/MapTab';
 import { MemoTab } from '../components/MemoTab';
 import { ScheduleTimeline } from '../components/ScheduleTimeline';
 import { TripDistanceSummary } from '../components/TripDistanceSummary';
@@ -41,8 +42,6 @@ const SHEET_CLOSE_DELAY_MS = 350;
 function runAfterSheetClose(action: () => void) {
   setTimeout(action, SHEET_CLOSE_DELAY_MS);
 }
-
-const MAP_TAB_DESCRIPTION = 'Day별 마커와 경로선을 보여주는 지도 탭이 준비 중이에요.';
 
 export function MyTripsScreen() {
   const router = useRouter();
@@ -172,12 +171,7 @@ export function MyTripsScreen() {
       {activeTab === 'checklist' && <ChecklistTab />}
       {activeTab === 'memo' && <MemoTab schedules={trip.schedules} />}
 
-      {activeTab === 'map' && (
-        <View style={styles.centered}>
-          <Text style={styles.stateTitle}>준비 중인 탭이에요</Text>
-          <Text style={styles.stateDescription}>{MAP_TAB_DESCRIPTION}</Text>
-        </View>
-      )}
+      {activeTab === 'map' && <MapTab onPressPlace={handlePressPlace} schedules={trip.schedules} />}
 
       {activeTab === 'schedule' && (
         <ScrollView
