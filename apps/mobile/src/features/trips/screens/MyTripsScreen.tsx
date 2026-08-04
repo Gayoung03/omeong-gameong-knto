@@ -14,7 +14,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radius, spacing, typography } from '@/src/theme';
 
+import { ChecklistTab } from '../components/ChecklistTab';
 import { DayChips } from '../components/DayChips';
+import { MemoTab } from '../components/MemoTab';
 import { ScheduleTimeline } from '../components/ScheduleTimeline';
 import { TripDistanceSummary } from '../components/TripDistanceSummary';
 import { TripSummaryCard } from '../components/TripSummaryCard';
@@ -23,11 +25,7 @@ import { useLatestTrip } from '../hooks/useTrips';
 import type { TripDetailTab } from '../types/trip';
 import { formatFullDate, getWeatherIcon } from '../utils/tripFormat';
 
-const READY_SOON_TABS: Record<Exclude<TripDetailTab, 'schedule'>, string> = {
-  map: 'Day별 마커와 경로선을 보여주는 지도 탭이 준비 중이에요.',
-  checklist: '반려동물 준비물 체크리스트가 준비 중이에요.',
-  memo: 'Day별 여행 메모가 준비 중이에요.',
-};
+const MAP_TAB_DESCRIPTION = 'Day별 마커와 경로선을 보여주는 지도 탭이 준비 중이에요.';
 
 export function MyTripsScreen() {
   const router = useRouter();
@@ -133,7 +131,17 @@ export function MyTripsScreen() {
       <TripSummaryCard onPressInfo={handlePressTripInfo} trip={trip} />
       <TripTabBar activeTab={activeTab} onChangeTab={setActiveTab} />
 
-      {activeTab === 'schedule' ? (
+      {activeTab === 'checklist' && <ChecklistTab />}
+      {activeTab === 'memo' && <MemoTab schedules={trip.schedules} />}
+
+      {activeTab === 'map' && (
+        <View style={styles.centered}>
+          <Text style={styles.stateTitle}>준비 중인 탭이에요</Text>
+          <Text style={styles.stateDescription}>{MAP_TAB_DESCRIPTION}</Text>
+        </View>
+      )}
+
+      {activeTab === 'schedule' && (
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -185,11 +193,6 @@ export function MyTripsScreen() {
             <Text style={styles.addButtonText}>＋ 일정 추가</Text>
           </Pressable>
         </ScrollView>
-      ) : (
-        <View style={styles.centered}>
-          <Text style={styles.stateTitle}>준비 중인 탭이에요</Text>
-          <Text style={styles.stateDescription}>{READY_SOON_TABS[activeTab]}</Text>
-        </View>
       )}
     </SafeAreaView>
   );
