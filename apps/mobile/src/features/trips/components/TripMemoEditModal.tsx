@@ -109,8 +109,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   input: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderRadius: radius.md,
+    borderWidth: 1,
     color: colors.textPrimary,
     fontSize: typography.label.fontSize,
     lineHeight: 22,

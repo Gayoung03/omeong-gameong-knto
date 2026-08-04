@@ -37,7 +37,7 @@ export function DateRangeField({ startDate, endDate, onChangeRange }: DateRangeF
 }
 
 const webInputStyle = {
-  backgroundColor: colors.background,
+  backgroundColor: colors.surface,
   border: `1px solid ${colors.border}`,
   borderRadius: `${radius.sm}px`,
   color: colors.basalt,
