@@ -4,7 +4,7 @@ import { Tabs } from 'expo-router';
 import { colors } from '@/src/theme';
 
 const tabIcons = {
-  index: 'home-outline',
+  '(home)': 'home-outline',
   routes: 'map-outline',
   chatbot: 'chatbubble-ellipses-outline',
   trips: 'calendar-outline',
@@ -27,7 +27,7 @@ export default function TabLayout() {
         ),
       })}
     >
-      <Tabs.Screen name="index" options={{ title: '홈' }} />
+      <Tabs.Screen name="(home)" options={{ title: '홈' }} />
       <Tabs.Screen name="routes" options={{ title: '루트' }} />
       <Tabs.Screen name="chatbot" options={{ title: '챗봇' }} />
       <Tabs.Screen name="trips" options={{ title: '내 여행' }} />
