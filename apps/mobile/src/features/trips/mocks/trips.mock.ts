@@ -257,6 +257,7 @@ export const MOCK_TRIP: Trip = {
   transport: 'rentalCar',
   pets: [{ id: 'pet-mong', name: '몽이', sizeType: 'small', count: 1 }],
   accommodationSummary: '성산 숙소 2곳',
+  travelStyle: '여유로운 힐링 여행',
   styleKeywords: ['바다', '카페', '산책로', '자연'],
   memo: '바다 산책을 좋아하는 몽이를 위한 여유로운 코스! 실내 일정은 반려동물 동반 가능 여부 미리 확인하기',
   coverEmoji: '🐶',
