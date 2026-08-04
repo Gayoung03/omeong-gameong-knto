@@ -92,6 +92,28 @@ export type Trip = {
   schedules: Schedule[];
 };
 
+/** 체크리스트 항목 분류 */
+export type ChecklistCategory = 'pet' | 'travel' | 'etc';
+
+/** 여행 준비 체크리스트 항목 */
+export type ChecklistItem = {
+  id: string;
+  category: ChecklistCategory;
+  label: string;
+  isChecked: boolean;
+  /** 앱이 기본 제공한 추천 항목인지 여부 (사용자가 직접 추가한 항목과 구분) */
+  isRecommended: boolean;
+};
+
+/** 날짜별 여행 메모 */
+export type TripMemo = {
+  id: string;
+  /** 연결된 Schedule 의 id */
+  scheduleId: string;
+  title: string;
+  content: string;
+};
+
 /** 여행 목록에서 사용하는 축약 정보 */
 export type TripListItem = Pick<
   Trip,
