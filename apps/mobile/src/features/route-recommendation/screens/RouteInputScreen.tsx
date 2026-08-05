@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -20,6 +21,7 @@ import {
   WheelTimePicker,
 } from '../components/InlineDateTimePicker';
 import { RouteBottomNavigation } from '../components/RouteBottomNavigation';
+import { formatTripDuration } from '../utils/tripDuration';
 
 const DRAFT_KEY = 'route-input-draft';
 
@@ -89,6 +91,51 @@ const formatTime = (iso: string) =>
 const formatShortDate = (iso: string) => {
   const date = new Date(iso);
   return `${date.getMonth() + 1}월 ${date.getDate()}일`;
+};
+
+const getStayNightOptions = (trip: Trip) => {
+  const start = new Date(trip.startAt);
+  const end = new Date(trip.endAt);
+  const options: { value: string; label: string; dateLabel: string }[] = [];
+  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const lastDate = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  while (cursor < lastDate) {
+    const nextDate = new Date(cursor);
+    nextDate.setDate(nextDate.getDate() + 1);
+    const night = options.length + 1;
+    options.push({
+      value: `${night}일차`,
+      label: `${night}박`,
+      dateLabel: `${cursor.getMonth() + 1}/${cursor.getDate()} → ${nextDate.getMonth() + 1}/${nextDate.getDate()}`,
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return options;
+};
+
+const parseStayPeriods = (period: string) => {
+  const matchedDays = period.match(/\d+/g)?.map(Number) ?? [];
+  if (matchedDays.length === 2 && period.includes('~')) {
+    return Array.from(
+      { length: matchedDays[1] - matchedDays[0] + 1 },
+      (_, index) => `${matchedDays[0] + index}일차`,
+    );
+  }
+  return matchedDays.map((day) => `${day}일차`);
+};
+
+const formatStayPeriods = (periods: string[]) => {
+  const days = periods
+    .map((period) => Number(period.replace(/\D/g, '')))
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+
+  if (days.length === 0) return '';
+  if (days.length === 1) return `${days[0]}일차`;
+  const isContinuous = days.every((day, index) => index === 0 || day === days[index - 1] + 1);
+  return isContinuous ? `${days[0]}~${days.at(-1)}일차` : days.map((day) => `${day}일차`).join(', ');
 };
 
 function ChoiceChip({
@@ -197,21 +244,27 @@ export function RouteInputScreen() {
   const [notice, setNotice] = useState('');
   const [utilityModal, setUtilityModal] = useState<UtilityModal>(null);
   const [formError, setFormError] = useState('');
+  const [pageError, setPageError] = useState('');
+  const stayNightOptions = getStayNightOptions(draft.trip);
 
   useEffect(() => {
     void AsyncStorage.getItem(DRAFT_KEY).then((saved) => {
       if (saved) {
-        const parsed = JSON.parse(saved) as Partial<RouteDraft>;
-        const savedTrip = parsed.trip as Trip | undefined;
-        setDraft({
-          ...initialDraft,
-          ...parsed,
-          trip:
-            savedTrip?.startAt && savedTrip?.endAt
-              ? savedTrip
-              : initialDraft.trip,
-        });
-        setNotice('이전에 임시 저장한 정보를 불러왔어요.');
+        try {
+          const parsed = JSON.parse(saved) as Partial<RouteDraft>;
+          const savedTrip = parsed.trip as Trip | undefined;
+          setDraft({
+            ...initialDraft,
+            ...parsed,
+            trip:
+              savedTrip?.startAt && savedTrip?.endAt
+                ? savedTrip
+                : initialDraft.trip,
+          });
+          setNotice('이전에 임시 저장한 정보를 불러왔어요.');
+        } catch {
+          setPageError('임시 저장 정보를 불러오지 못했어요. 새로 입력해주세요.');
+        }
       }
     });
   }, []);
@@ -219,6 +272,7 @@ export function RouteInputScreen() {
   const updateDraft = <K extends keyof RouteDraft>(key: K, value: RouteDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
     setNotice('');
+    setPageError('');
   };
 
   const openTripEditor = () => {
@@ -241,6 +295,15 @@ export function RouteInputScreen() {
       stay ?? { id: '', name: '', period: '', address: '' },
     );
     setEditTarget('stay');
+  };
+
+  const toggleStayPeriod = (period: string) => {
+    const selectedPeriods = parseStayPeriods(formValues.period ?? '');
+    const nextPeriods = selectedPeriods.includes(period)
+      ? selectedPeriods.filter((selected) => selected !== period)
+      : [...selectedPeriods, period];
+    setFormValues((values) => ({ ...values, period: formatStayPeriods(nextPeriods) }));
+    setFormError('');
   };
 
   const updateTripDateTime = (target: Exclude<PickerTarget, null>, selectedDate: Date) => {
@@ -279,11 +342,29 @@ export function RouteInputScreen() {
         setFormError('출발 일시는 도착 일시보다 이후여야 해요.');
         return;
       }
-      updateDraft('trip', {
+      const nextTrip = {
         title: formValues.title,
         startAt: formValues.startAt,
         endAt: formValues.endAt,
+      };
+      const validPeriods = new Set(getStayNightOptions(nextTrip).map((option) => option.value));
+      let adjustedStayCount = 0;
+      const nextStays = draft.stays.flatMap((stay) => {
+        const nextPeriod = formatStayPeriods(
+          parseStayPeriods(stay.period).filter((period) => validPeriods.has(period)),
+        );
+        if (nextPeriod === stay.period) return [stay];
+        adjustedStayCount += 1;
+        return nextPeriod ? [{ ...stay, period: nextPeriod }] : [];
       });
+
+      setDraft((current) => ({ ...current, stays: nextStays, trip: nextTrip }));
+      setPageError('');
+      setNotice(
+        adjustedStayCount > 0
+          ? '여행 기간에 맞지 않는 숙박 일차를 자동으로 정리했어요.'
+          : '',
+      );
     }
 
     if (editTarget === 'pet') {
@@ -302,6 +383,17 @@ export function RouteInputScreen() {
     if (editTarget === 'stay') {
       if (!formValues.name || !formValues.period) {
         setFormError('숙소 이름과 숙박 일차를 입력해주세요.');
+        return;
+      }
+      const selectedPeriods = parseStayPeriods(formValues.period);
+      const occupiedPeriods = new Set(
+        draft.stays
+          .filter((stay) => stay.id !== editingStayId)
+          .flatMap((stay) => parseStayPeriods(stay.period)),
+      );
+      const duplicatedPeriod = selectedPeriods.find((period) => occupiedPeriods.has(period));
+      if (duplicatedPeriod) {
+        setFormError(`${duplicatedPeriod}에는 이미 다른 숙소가 지정되어 있어요.`);
         return;
       }
       const nextStay: Stay = {
@@ -341,16 +433,48 @@ export function RouteInputScreen() {
   };
 
   const saveDraft = async () => {
-    await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-    setNotice('입력 정보를 이 기기에 임시 저장했어요.');
+    try {
+      await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      setPageError('');
+      setNotice('입력 정보를 이 기기에 임시 저장했어요.');
+    } catch {
+      setPageError('임시 저장에 실패했어요. 다시 시도해주세요.');
+    }
   };
 
-  const requestRecommendation = () => {
+  const requestRecommendation = async () => {
+    if (!draft.trip.title || new Date(draft.trip.endAt) <= new Date(draft.trip.startAt)) {
+      setPageError('여행 일정을 다시 확인해주세요.');
+      return;
+    }
+    if (!draft.transport) {
+      setPageError('이동수단을 하나 선택해주세요.');
+      return;
+    }
+    if (!draft.pet.name || !draft.pet.species) {
+      setPageError('함께 여행할 반려동물 정보를 입력해주세요.');
+      return;
+    }
+    if (draft.places.length === 0) {
+      setPageError('선호 장소를 한 개 이상 선택해주세요.');
+      return;
+    }
+
+    try {
+      await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch {
+      setPageError('입력 정보를 저장하지 못했어요. 다시 시도해주세요.');
+      return;
+    }
+
+    setPageError('');
     router.push({
       pathname: '/routes/result',
       params: {
         petName: draft.pet.name,
         tripTitle: draft.trip.title,
+        startAt: draft.trip.startAt,
+        endAt: draft.trip.endAt,
         pace: draft.pace,
         selectedPlaces: draft.places.join(','),
       },
@@ -402,7 +526,9 @@ export function RouteInputScreen() {
                   {formatShortDate(draft.trip.startAt)} {formatTime(draft.trip.startAt)} 도착  ~  {formatShortDate(draft.trip.endAt)} {formatTime(draft.trip.endAt)} 출발
                 </Text>
               </View>
-              <Text style={styles.durationText}>2박 3일</Text>
+              <Text style={styles.durationText}>
+                {formatTripDuration(draft.trip.startAt, draft.trip.endAt)}
+              </Text>
             </View>
           </Section>
 
@@ -446,7 +572,16 @@ export function RouteInputScreen() {
                 </Pressable>
                 <Pressable
                   accessibilityLabel={`${stay.name} 삭제`}
-                  onPress={() => updateDraft('stays', draft.stays.filter((item) => item.id !== stay.id))}
+                  onPress={() =>
+                    Alert.alert('숙소 삭제', `${stay.name} 정보를 삭제할까요?`, [
+                      { style: 'cancel', text: '취소' },
+                      {
+                        onPress: () => updateDraft('stays', draft.stays.filter((item) => item.id !== stay.id)),
+                        style: 'destructive',
+                        text: '삭제',
+                      },
+                    ])
+                  }
                 >
                   <Ionicons color={colors.red} name="trash-outline" size={17} />
                 </Pressable>
@@ -548,8 +683,15 @@ export function RouteInputScreen() {
             </View>
           ) : null}
 
+          {pageError ? (
+            <View accessibilityRole="alert" style={styles.pageErrorBox}>
+              <Ionicons color={colors.red} name="alert-circle" size={17} />
+              <Text style={styles.pageErrorText}>{pageError}</Text>
+            </View>
+          ) : null}
+
           <Pressable
-            onPress={requestRecommendation}
+            onPress={() => void requestRecommendation()}
             style={({ pressed }) => [styles.ctaButton, pressed && styles.pressed]}
             testID="recommend-route-button"
           >
@@ -675,7 +817,34 @@ export function RouteInputScreen() {
             {editTarget === 'stay' ? (
               <>
                 <FormInput label="숙소 이름" name="name" setValues={setFormValues} values={formValues} />
-                <FormInput label="숙박 일차" name="period" setValues={setFormValues} values={formValues} />
+                <View style={styles.formField}>
+                  <Text style={styles.formLabel}>숙박 일차</Text>
+                  <Text style={styles.formHelper}>여행 일정 중 이 숙소에서 머무는 밤을 선택해주세요.</Text>
+                  <View style={styles.stayPeriodChips}>
+                    {stayNightOptions.map((option) => {
+                      const selected = parseStayPeriods(formValues.period ?? '').includes(option.value);
+                      return (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          key={option.value}
+                          onPress={() => toggleStayPeriod(option.value)}
+                          style={[styles.stayPeriodChip, selected && styles.stayPeriodChipSelected]}
+                        >
+                          <Text style={[styles.stayPeriodChipTitle, selected && styles.stayPeriodChipTitleSelected]}>
+                            {option.label}
+                          </Text>
+                          <Text style={[styles.stayPeriodChipDate, selected && styles.stayPeriodChipDateSelected]}>
+                            {option.dateLabel}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {stayNightOptions.length === 0 ? (
+                    <Text style={styles.emptyStayPeriod}>숙박이 없는 당일 여행이에요.</Text>
+                  ) : null}
+                </View>
                 <FormInput label="주소" name="address" setValues={setFormValues} values={formValues} />
               </>
             ) : null}
@@ -775,7 +944,7 @@ export function RouteInputScreen() {
                 <Pressable
                   onPress={() => {
                     setUtilityModal(null);
-                    requestRecommendation();
+                    void requestRecommendation();
                   }}
                   style={styles.utilityPrimaryButton}
                 >
@@ -904,6 +1073,8 @@ const styles = StyleSheet.create({
   summaryLine: { color: '#4F6E67', fontSize: 9, fontWeight: '600', marginTop: 6 },
   notice: { alignItems: 'center', backgroundColor: '#EAF8F4', borderRadius: 10, flexDirection: 'row', gap: 6, marginTop: 10, padding: 10 },
   noticeText: { color: colors.deepMint, flex: 1, fontSize: 10, fontWeight: '700' },
+  pageErrorBox: { alignItems: 'center', backgroundColor: '#FFF0F0', borderRadius: 10, flexDirection: 'row', gap: 6, marginTop: 10, padding: 10 },
+  pageErrorText: { color: colors.red, flex: 1, fontSize: 10, fontWeight: '700' },
   ctaButton: { alignItems: 'center', backgroundColor: colors.orange, borderRadius: 9, elevation: 3, flexDirection: 'row', gap: 7, justifyContent: 'center', marginTop: 10, minHeight: 47, shadowColor: colors.orange, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
   ctaText: { color: colors.white, fontSize: 14, fontWeight: '900' },
   secondaryActions: { alignItems: 'center', borderColor: colors.line, borderRadius: 11, borderWidth: 1, flexDirection: 'row', marginTop: 9, minHeight: 44 },
@@ -917,7 +1088,16 @@ const styles = StyleSheet.create({
   modalTitle: { color: colors.ink, fontSize: 19, fontWeight: '900', marginBottom: 14 },
   formField: { marginBottom: 11 },
   formLabel: { color: colors.ink, fontSize: 11, fontWeight: '800', marginBottom: 6 },
+  formHelper: { color: colors.gray, fontSize: 9, marginBottom: 9, marginTop: -2 },
   formInput: { borderColor: colors.line, borderRadius: 10, borderWidth: 1, color: colors.ink, fontSize: 12, minHeight: 44, outlineStyle: 'none', paddingHorizontal: 12 } as never,
+  stayPeriodChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  stayPeriodChip: { backgroundColor: '#FAF9F7', borderColor: '#E8E4DE', borderRadius: 10, borderWidth: 1, minWidth: 104, paddingHorizontal: 11, paddingVertical: 9 },
+  stayPeriodChipSelected: { backgroundColor: '#FFF4E7', borderColor: colors.orange, borderWidth: 1.5 },
+  stayPeriodChipTitle: { color: colors.gray, fontSize: 11, fontWeight: '900' },
+  stayPeriodChipTitleSelected: { color: colors.orange },
+  stayPeriodChipDate: { color: '#A3A7AC', fontSize: 8, fontWeight: '600', marginTop: 3 },
+  stayPeriodChipDateSelected: { color: '#C85F00' },
+  emptyStayPeriod: { backgroundColor: colors.lightGray, borderRadius: 9, color: colors.gray, fontSize: 10, padding: 11 },
   formGroupTitle: { color: colors.ink, fontSize: 11, fontWeight: '800', marginBottom: 7, marginTop: 2 },
   dateTimeRow: { flexDirection: 'row', gap: 8, marginBottom: 13 },
   dateTimeButton: { alignItems: 'center', borderColor: colors.line, borderRadius: 10, borderWidth: 1, flex: 1, flexDirection: 'row', gap: 6, minHeight: 44, paddingHorizontal: 10 },
