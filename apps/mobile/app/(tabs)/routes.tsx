@@ -1,5 +1,18 @@
-import { ScreenPlaceholder } from '@/src/components/feedback/ScreenPlaceholder';
+import { Tabs } from 'expo-router';
+
+import { RouteInputScreen } from '@/src/features/route-recommendation/screens/RouteInputScreen';
 
 export default function RoutesRoute() {
-  return <ScreenPlaceholder description="AI 맞춤 루트 추천 화면 작업 영역" title="루트 추천" />;
+  return (
+    <>
+      <Tabs.Screen
+        options={{
+          tabBarStyle: {
+            display: 'none',
+          },
+        }}
+      />
+      <RouteInputScreen />
+    </>
+  );
 }
