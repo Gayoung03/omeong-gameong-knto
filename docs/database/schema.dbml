@@ -1,0 +1,442 @@
+// 오멍가멍 공모전 MVP ERD
+// dbdiagram.io에 그대로 붙여 넣을 수 있습니다.
+
+Enum auth_provider {
+  local
+  kakao
+  apple
+  google
+}
+
+Enum pet_species {
+  dog
+  cat
+  rabbit
+  bird
+  other
+}
+
+Enum pet_size {
+  small
+  medium
+  large
+}
+
+Enum trip_pace {
+  relaxed
+  normal
+  packed
+}
+
+Enum transport_type {
+  rental_car
+  own_car
+  taxi
+  public_transport
+  walk
+  ferry
+  airplane
+}
+
+Enum place_environment {
+  indoor
+  outdoor
+  mixed
+}
+
+Enum pet_policy_type {
+  indoor_allowed
+  outdoor_only
+  partial_allowed
+  not_allowed
+  unknown
+}
+
+Enum data_provider {
+  tour_api
+  kcisa
+  visitjeju
+  kakao
+  tmap
+  weather_api
+  internal
+}
+
+Enum route_status {
+  generating
+  generated
+  saved
+  ongoing
+  completed
+  failed
+}
+
+Enum schedule_item_type {
+  attraction
+  restaurant
+  cafe
+  accommodation
+  custom
+}
+
+Enum weather_condition {
+  sunny
+  partly_cloudy
+  cloudy
+  rainy
+  snowy
+  windy
+}
+
+Enum message_role {
+  user
+  assistant
+  system
+}
+
+Table users {
+  id uuid [pk]
+  email varchar(255) [unique]
+  password_hash varchar(255)
+  auth_provider auth_provider [not null, default: 'local']
+  provider_user_id varchar(255)
+  nickname varchar(50) [not null]
+  profile_image_url text
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  indexes {
+    (auth_provider, provider_user_id) [unique]
+  }
+}
+
+Table pets {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  name varchar(50) [not null]
+  species pet_species [not null]
+  breed varchar(100)
+  size pet_size
+  weight_kg decimal(5,2)
+  birth_date date
+  image_url text
+  health_notes text
+  is_primary boolean [not null, default: false]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table user_travel_preferences {
+  user_id uuid [pk, ref: > users.id]
+  default_pace trip_pace
+  default_transport transport_type
+  departure_location varchar(100)
+  preferred_duration_days int
+  companion_count int [not null, default: 1]
+  preferred_tags varchar[]
+  updated_at timestamptz [not null]
+}
+
+Table places {
+  id uuid [pk]
+  name varchar(200) [not null]
+  category varchar(50) [not null]
+  region varchar(50)
+  address text
+  road_address text
+  latitude decimal(10,7) [not null]
+  longitude decimal(10,7) [not null]
+  phone varchar(50)
+  homepage_url text
+  primary_image_url text
+  description text
+  description_source data_provider
+  environment place_environment
+  amenities varchar[]
+  average_stay_minutes int
+  activity_level smallint
+  crowd_level smallint
+  weather_sensitivity smallint
+  reservation_required boolean [not null, default: false]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  indexes {
+    (latitude, longitude)
+    category
+    region
+  }
+}
+
+Table place_external_refs {
+  id uuid [pk]
+  place_id uuid [not null, ref: > places.id]
+  provider data_provider [not null]
+  external_id varchar(255) [not null]
+  source_url text
+  source_updated_at timestamptz
+  last_synced_at timestamptz [not null]
+
+  indexes {
+    (provider, external_id) [unique]
+    (place_id, provider)
+  }
+}
+
+Table place_business_hours {
+  id bigint [pk, increment]
+  place_id uuid [not null, ref: > places.id]
+  day_of_week smallint [not null]
+  opens_at time
+  closes_at time
+  break_start_at time
+  break_end_at time
+  is_closed boolean [not null, default: false]
+  raw_text text
+
+  indexes {
+    (place_id, day_of_week) [unique]
+  }
+}
+
+Table place_pet_policies {
+  id uuid [pk]
+  place_id uuid [not null, ref: > places.id]
+  policy_type pet_policy_type [not null, default: 'unknown']
+  allowed_species varchar[]
+  allowed_sizes varchar[]
+  max_weight_kg decimal(5,2)
+  carrier_required boolean
+  leash_required boolean
+  vaccination_required boolean
+  extra_fee_amount int
+  notes text
+  source data_provider [not null]
+  source_url text
+  verified_at timestamptz
+  reliability_score decimal(5,2)
+}
+
+Table place_tags {
+  id bigint [pk, increment]
+  code varchar(50) [unique, not null]
+  name varchar(50) [not null]
+}
+
+Table place_tag_links {
+  place_id uuid [ref: > places.id]
+  tag_id bigint [ref: > place_tags.id]
+  confidence decimal(4,3)
+  source data_provider [not null]
+
+  indexes {
+    (place_id, tag_id) [pk]
+  }
+}
+
+Table route_requests {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  title varchar(150)
+  start_at timestamptz [not null]
+  end_at timestamptz [not null]
+  departure_location varchar(100)
+  departure_place_id uuid [ref: > places.id]
+  pace trip_pace [not null]
+  transport transport_type [not null]
+  companion_count int [not null, default: 1]
+  preferred_tags varchar[]
+  request_text text
+  created_at timestamptz [not null]
+}
+
+Table route_request_pets {
+  route_request_id uuid [ref: > route_requests.id]
+  pet_id uuid [ref: > pets.id]
+
+  indexes {
+    (route_request_id, pet_id) [pk]
+  }
+}
+
+Table route_request_stays {
+  id uuid [pk]
+  route_request_id uuid [not null, ref: > route_requests.id]
+  place_id uuid [ref: > places.id]
+  name varchar(200) [not null]
+  address text
+  check_in_at timestamptz
+  check_out_at timestamptz
+}
+
+Table routes {
+  id uuid [pk]
+  route_request_id uuid [not null, ref: > route_requests.id]
+  user_id uuid [not null, ref: > users.id]
+  title varchar(150) [not null]
+  status route_status [not null, default: 'generating']
+  version int [not null, default: 1]
+  start_at timestamptz [not null]
+  end_at timestamptz [not null]
+  pace trip_pace [not null]
+  transport transport_type [not null]
+  explanation text
+  total_score decimal(6,2)
+  pet_safety_score decimal(6,2)
+  cover_image_url text
+  memo text
+  share_token varchar(100) [unique]
+  is_public boolean [not null, default: false]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  indexes {
+    (route_request_id, version) [unique]
+    (user_id, status)
+  }
+}
+
+Table route_days {
+  id uuid [pk]
+  route_id uuid [not null, ref: > routes.id]
+  day_number int [not null]
+  route_date date [not null]
+  weather_snapshot_id uuid [ref: > weather_snapshots.id]
+  title varchar(150)
+
+  indexes {
+    (route_id, day_number) [unique]
+  }
+}
+
+Table route_items {
+  id uuid [pk]
+  route_day_id uuid [not null, ref: > route_days.id]
+  place_id uuid [ref: > places.id]
+  custom_place_name varchar(200)
+  item_type schedule_item_type [not null]
+  sort_order int [not null]
+  starts_at timestamptz
+  ends_at timestamptz
+  stay_minutes int
+  note text
+  recommendation_score decimal(6,2)
+  recommendation_reason text
+  is_selected boolean [not null, default: true]
+
+  indexes {
+    (route_day_id, sort_order) [unique]
+  }
+}
+
+Table route_moves {
+  id uuid [pk]
+  from_item_id uuid [not null, ref: > route_items.id]
+  to_item_id uuid [not null, ref: > route_items.id]
+  transport transport_type [not null]
+}
+
+Table weather_snapshots {
+  id uuid [pk]
+  region varchar(50) [not null]
+  latitude decimal(10,7)
+  longitude decimal(10,7)
+  forecast_at timestamptz [not null]
+  condition weather_condition [not null]
+  temperature decimal(4,1)
+  min_temperature decimal(4,1)
+  max_temperature decimal(4,1)
+  precipitation_probability smallint
+  humidity smallint
+  wind_speed decimal(5,2)
+  source_updated_at timestamptz [not null]
+
+  indexes {
+    (region, forecast_at) [unique]
+  }
+}
+
+Table route_calculation_cache {
+  id uuid [pk]
+  origin_latitude decimal(10,7) [not null]
+  origin_longitude decimal(10,7) [not null]
+  destination_latitude decimal(10,7) [not null]
+  destination_longitude decimal(10,7) [not null]
+  transport transport_type [not null]
+  requested_departure_at timestamptz
+  distance_meters int [not null]
+  duration_minutes int [not null]
+  polyline text
+  calculated_at timestamptz [not null]
+  expires_at timestamptz [not null]
+}
+
+Table route_checklist_items {
+  id uuid [pk]
+  route_id uuid [not null, ref: > routes.id]
+  category varchar(30) [not null]
+  label varchar(200) [not null]
+  is_checked boolean [not null, default: false]
+  is_recommended boolean [not null, default: false]
+  sort_order int [not null, default: 0]
+}
+
+Table route_memos {
+  id uuid [pk]
+  route_id uuid [not null, ref: > routes.id]
+  route_day_id uuid [ref: > route_days.id]
+  title varchar(150)
+  content text [not null]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table favorites {
+  user_id uuid [ref: > users.id]
+  place_id uuid [ref: > places.id]
+  created_at timestamptz [not null]
+
+  indexes {
+    (user_id, place_id) [pk]
+  }
+}
+
+Table reviews {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  place_id uuid [not null, ref: > places.id]
+  pet_id uuid [ref: > pets.id]
+  rating smallint [not null]
+  content text
+  pet_policy_accurate boolean
+  visited_at date
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table review_images {
+  id uuid [pk]
+  review_id uuid [not null, ref: > reviews.id]
+  image_url text [not null]
+  sort_order int [not null, default: 0]
+}
+
+Table chat_conversations {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  route_id uuid [ref: > routes.id]
+  title varchar(150)
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table chat_messages {
+  id uuid [pk]
+  conversation_id uuid [not null, ref: > chat_conversations.id]
+  role message_role [not null]
+  content text [not null]
+  referenced_place_ids uuid[]
+  model_name varchar(100)
+  created_at timestamptz [not null]
+}
