@@ -18,6 +18,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { recommendedDays } from '../mocks/routes.mock';
 import { RouteBottomNavigation } from '../components/RouteBottomNavigation';
 import type { RoutePlace } from '../types';
+import {
+  formatRouteDate,
+  formatTripDuration,
+  getTripDates,
+} from '../utils/tripDuration';
 
 const palette = {
   orange: '#FF7A00',
@@ -29,6 +34,14 @@ const palette = {
   line: '#E7E9EB',
   warning: '#E99A2C',
   white: '#FFFFFF',
+};
+
+const formatTravelMinutes = (minutes: number) => {
+  if (minutes <= 0) return '이동 없음';
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (hours === 0) return `약 ${remainder}분`;
+  return remainder === 0 ? `약 ${hours}시간` : `약 ${hours}시간 ${remainder}분`;
 };
 
 function SelectionCircle({ selected }: { selected: boolean }) {
@@ -115,18 +128,41 @@ export function RouteRecommendationScreen() {
   const params = useLocalSearchParams<{
     petName?: string;
     tripTitle?: string;
+    startAt?: string;
+    endAt?: string;
     pace?: string;
     selectedPlaces?: string;
   }>();
+  const tripDays = useMemo(() => {
+    if (!params.startAt || !params.endAt) return recommendedDays;
+
+    return getTripDates(params.startAt, params.endAt).map((date, index) => {
+      const mockDay = recommendedDays[index % recommendedDays.length];
+      return {
+        ...mockDay,
+        day: index + 1,
+        date: formatRouteDate(date),
+        places: mockDay.places.map((place) => ({
+          ...place,
+          id: `${place.id}-day-${index + 1}`,
+        })),
+      };
+    });
+  }, [params.endAt, params.startAt]);
+
   const [selectedDay, setSelectedDay] = useState(1);
   const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>(
-    recommendedDays.flatMap((day) => day.places.map((place) => place.id)),
+    () => tripDays.flatMap((day) => day.places.map((place) => place.id)),
   );
   const [feedback, setFeedback] = useState<string | null>(null);
   const [openModal, setOpenModal] = useState<'map' | 'saved' | 'request' | null>(null);
   const [requestText, setRequestText] = useState('');
 
-  const activeDay = recommendedDays[selectedDay - 1];
+  const duration = params.startAt && params.endAt
+    ? formatTripDuration(params.startAt, params.endAt)
+    : `${recommendedDays.length - 1}박 ${recommendedDays.length}일`;
+
+  const activeDay = tripDays[selectedDay - 1];
   const activeIds = useMemo(() => activeDay.places.map((place) => place.id), [activeDay]);
   const allActiveSelected = activeIds.every((id) => selectedPlaceIds.includes(id));
 
@@ -151,12 +187,23 @@ export function RouteRecommendationScreen() {
   };
 
   const selectedCount = selectedPlaceIds.length;
-  const selectedPlaces = recommendedDays.flatMap((day) =>
-    day.places.filter((place) => selectedPlaceIds.includes(place.id)),
+  const activeSelectedPlaces = activeDay.places.filter((place) =>
+    selectedPlaceIds.includes(place.id),
   );
-
+  const activeTravelMinutes = activeSelectedPlaces.reduce(
+    (total, place, index) => total + (index === 0 ? 0 : (place.travelMinutes ?? 0)),
+    0,
+  );
   const shareRoute = async () => {
-    const message = `${params.petName ?? '몽이'}와 함께하는 ${params.tripTitle ?? '제주 여행'}\n${selectedPlaces.map((place) => `${place.time} ${place.name}`).join('\n')}`;
+    const itinerary = tripDays
+      .map((day) => {
+        const places = day.places.filter((place) => selectedPlaceIds.includes(place.id));
+        if (places.length === 0) return '';
+        return `${day.day}일차 · ${day.date}\n${places.map((place) => `${place.time} ${place.name}`).join('\n')}`;
+      })
+      .filter(Boolean)
+      .join('\n\n');
+    const message = `${params.petName ?? '몽이'}와 함께하는 ${duration} ${params.tripTitle ?? '제주 여행'}\n\n${itinerary}`;
 
     try {
       if (Platform.OS === 'web' && typeof navigator !== 'undefined') {
@@ -178,21 +225,37 @@ export function RouteRecommendationScreen() {
   };
 
   const saveRoute = async () => {
-    await AsyncStorage.setItem(
-      'saved-recommended-route',
-      JSON.stringify({
-        savedAt: new Date().toISOString(),
-        tripTitle: params.tripTitle ?? '제주 여행',
-        petName: params.petName ?? '몽이',
-        placeIds: selectedPlaceIds,
-        places: selectedPlaces.map((place) => ({
-          id: place.id,
-          name: place.name,
-          time: place.time,
-        })),
-      }),
-    );
-    setOpenModal('saved');
+    try {
+      await AsyncStorage.setItem(
+        'saved-recommended-route',
+        JSON.stringify({
+          savedAt: new Date().toISOString(),
+          tripTitle: params.tripTitle ?? '제주 여행',
+          startAt: params.startAt,
+          endAt: params.endAt,
+          duration,
+          pace: params.pace ?? '여유롭게',
+          petName: params.petName ?? '몽이',
+          selectedPlaces: params.selectedPlaces?.split(',').filter(Boolean) ?? [],
+          days: tripDays.map((day) => ({
+            date: day.date,
+            day: day.day,
+            places: day.places
+              .filter((place) => selectedPlaceIds.includes(place.id))
+              .map((place, index, places) => ({
+                id: place.id,
+                name: place.name,
+                order: index + 1,
+                time: place.time,
+                travelMinutes: index === 0 ? 0 : (place.travelMinutes ?? 0),
+              })),
+          })),
+        }),
+      );
+      setOpenModal('saved');
+    } catch {
+      setFeedback('코스를 저장하지 못했어요. 다시 시도해주세요.');
+    }
   };
 
   const submitChangeRequest = () => {
@@ -235,7 +298,7 @@ export function RouteRecommendationScreen() {
               <Text style={styles.recommendationBadgeText}>혼디 추천 코스</Text>
             </View>
             <Text style={styles.heroTitle}>
-              {params.petName ?? '몽이'}와 함께하는 {params.tripTitle ?? '2박 3일 제주 여행'}
+              {params.petName ?? '몽이'}와 함께하는 {duration} {params.tripTitle ?? '제주 여행'}
             </Text>
             <Text style={styles.heroDescription}>
               {params.pace ?? '여유롭게'} 여행하도록 날씨와 이동 동선을 고려했어요.
@@ -263,7 +326,7 @@ export function RouteRecommendationScreen() {
         </View>
 
         <View accessibilityRole="tablist" style={styles.dayTabs}>
-          {recommendedDays.map((day) => {
+          {tripDays.map((day) => {
             const active = day.day === selectedDay;
             return (
               <Pressable
@@ -322,20 +385,22 @@ export function RouteRecommendationScreen() {
 
         <View style={styles.routeSummary}>
           <View style={styles.routeStops}>
-            {activeDay.places.map((place, index) => (
+            {activeSelectedPlaces.map((place, index) => (
               <View key={place.id} style={styles.routeStopWrap}>
                 <View style={[styles.routeStop, { backgroundColor: place.thumbnailColor }]}>
                   <Text style={styles.routeStopEmoji}>{place.emoji}</Text>
                 </View>
-                {index < activeDay.places.length - 1 ? (
+                {index < activeSelectedPlaces.length - 1 ? (
                   <Ionicons color="#B4B8BC" name="arrow-forward" size={14} />
                 ) : null}
               </View>
             ))}
           </View>
           <View style={styles.routeSummaryCopy}>
-            <Text style={styles.routeSummaryTitle}>총 이동 약 1시간 15분</Text>
-            <Text style={styles.routeSummaryText}>여유 있게 머물 수 있도록 구성했어요.</Text>
+            <Text style={styles.routeSummaryTitle}>총 이동 {formatTravelMinutes(activeTravelMinutes)}</Text>
+            <Text style={styles.routeSummaryText}>
+              선택한 {activeSelectedPlaces.length}개 장소를 기준으로 계산했어요.
+            </Text>
           </View>
         </View>
 
@@ -349,8 +414,13 @@ export function RouteRecommendationScreen() {
         <View style={styles.actionRow}>
           <Pressable
             accessibilityRole="button"
+            disabled={activeSelectedPlaces.length === 0}
             onPress={() => setOpenModal('map')}
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              activeSelectedPlaces.length === 0 && styles.buttonDisabled,
+              pressed && styles.pressed,
+            ]}
             testID="map-button"
           >
             <Ionicons color={palette.ink} name="map-outline" size={18} />
@@ -417,13 +487,13 @@ export function RouteRecommendationScreen() {
               <View>
                 <View style={styles.mockMap}>
                   <View style={styles.mapRoad} />
-                  {activeDay.places.map((place, index) => (
+                  {activeSelectedPlaces.map((place, index) => (
                     <View
                       key={place.id}
                       style={[
                         styles.mapPin,
                         {
-                          left: `${14 + index * (70 / Math.max(activeDay.places.length - 1, 1))}%`,
+                          left: `${14 + index * (70 / Math.max(activeSelectedPlaces.length - 1, 1))}%`,
                           top: index % 2 === 0 ? 48 : 82,
                         },
                       ]}
@@ -436,7 +506,7 @@ export function RouteRecommendationScreen() {
                   </View>
                 </View>
                 <View style={styles.mapPlaceList}>
-                  {activeDay.places.map((place, index) => (
+                  {activeSelectedPlaces.map((place, index) => (
                     <View key={place.id} style={styles.mapPlaceRow}>
                       <View style={styles.mapPlaceNumber}><Text style={styles.mapPlaceNumberText}>{index + 1}</Text></View>
                       <Text style={styles.mapPlaceName}>{place.name}</Text>
