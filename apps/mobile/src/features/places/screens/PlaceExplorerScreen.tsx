@@ -208,6 +208,7 @@ export function PlaceExplorerScreen() {
             />
           )}
           showsVerticalScrollIndicator={false}
+          style={styles.resultsList}
         />
       ) : (
         <InteractivePlaceMap places={filteredPlaces} />
@@ -315,6 +316,7 @@ const styles = StyleSheet.create({
   },
   header: {
     height: 52,
+    flexShrink: 0,
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -342,6 +344,7 @@ const styles = StyleSheet.create({
   },
   searchBar: {
     height: 40,
+    flexShrink: 0,
     marginHorizontal: spacing.md,
     marginTop: 8,
     paddingHorizontal: 11,
@@ -366,6 +369,7 @@ const styles = StyleSheet.create({
   },
   regionScroll: {
     flexGrow: 0,
+    flexShrink: 0,
     height: 51,
   },
   regionChip: {
@@ -398,6 +402,7 @@ const styles = StyleSheet.create({
   },
   categoryScroll: {
     flexGrow: 0,
+    flexShrink: 0,
     height: 62,
   },
   categoryItem: {
@@ -426,6 +431,7 @@ const styles = StyleSheet.create({
   },
   segmentedControl: {
     height: 36,
+    flexShrink: 0,
     marginHorizontal: spacing.md,
     marginBottom: 8,
     padding: 2,
@@ -456,6 +462,10 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: spacing.md,
     paddingBottom: 20,
+  },
+  resultsList: {
+    flex: 1,
+    minHeight: 0,
   },
   placeRow: {
     minHeight: 101,
