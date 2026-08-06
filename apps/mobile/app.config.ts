@@ -16,7 +16,10 @@ const config: ExpoConfig = {
     predictiveBackGestureEnabled: false,
   },
   web: {
-    output: 'static',
+    // 'static'은 모든 라우트를 Node에서 프리렌더한다.
+    // 네이티브 전제 모듈(webview·view-shot 등)이 Node 환경에서 깨지므로
+    // 클라이언트 렌더링(SPA)인 'single'을 사용한다.
+    output: 'single',
   },
   plugins: [
     'expo-router',

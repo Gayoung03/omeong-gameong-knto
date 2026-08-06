@@ -91,6 +91,7 @@
 | `.env.example`                       | Mobile 항목은 `apps/mobile/.env` 에 넣어야 한다는 안내 추가                             | #10     |
 | `package.json` / `package-lock.json` | react-native-webview 추가                                                               | #10     |
 | `app/_layout.tsx`                    | `Stack.Screen`에 `trips/[tripId]/add-schedule` 라우트 추가 (목업 10)                    | 예정    |
+| `app.config.ts`                      | `web.output` 을 `static` → `single` 로 변경 (웹 프리렌더 제거)                          | 예정    |
 
 > **`app/_layout.tsx`는 충돌 위험이 큰 파일이다.** 다른 팀원도 라우트를 추가하면서 건드리게 된다.
 > 변경 내용 자체는 기존 트리를 `GestureHandlerRootView`로 한 겹 감싼 것뿐이라
@@ -148,6 +149,11 @@ git add package-lock.json
   - @react-native-community/datetimepicker
   - expo-sharing
   - expo-media-library (사진 접근 / 사진첩 저장 권한 문구 포함)
+- app.config.ts web.output : static → single
+  static 은 모든 라우트를 Node 에서 프리렌더하는데, 그 과정에서 네이티브 전제 모듈이
+  깨져 웹이 아예 뜨지 않았습니다. single 은 브라우저에서만 그리는 SPA 방식이라
+  모바일 앱을 웹으로 미리 볼 때는 이쪽이 맞습니다.
+  (웹을 정적 사이트로 내보낼 계획이 있다면 팀 논의가 필요합니다)
 - apps/mobile/.gitignore : /ios, /android 추가
   (expo prebuild 가 만드는 217MB 네이티브 폴더가 커밋되지 않도록)
 - apps/mobile/.env.example 신규 추가 (EXPO_PUBLIC_API_URL, EXPO_PUBLIC_KAKAO_JS_KEY)
@@ -189,3 +195,4 @@ git add package-lock.json
 | 2026-08-04 | 03 지도 탭 작업 — react-native-webview 설치, `.env.example`에 `EXPO_PUBLIC_KAKAO_JS_KEY` 추가                                                                           |
 | 2026-08-04 | 03 지도 탭 머지(#10). 카카오 팀 앱 "오멍가멍"(ID 1533456) 등록 및 카카오맵 사용 설정 ON                                                                                 |
 | 2026-08-05 | 10 일정 추가 작업 — 신규 설치 라이브러리 없음. `app/_layout.tsx`에 add-schedule 라우트 추가, places 담당자 협의 사항 기록                                               |
+| 2026-08-06 | 웹 실행 오류 수정 — `app.config.ts`의 `web.output`을 `single`로 변경, `expo-media-library` 호출을 `utils/saveImageToLibrary`(+`.web.ts`)로 분리. 신규 라이브러리 없음    |

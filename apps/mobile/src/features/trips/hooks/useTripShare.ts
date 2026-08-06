@@ -1,5 +1,4 @@
 import * as Clipboard from 'expo-clipboard';
-import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { useCallback, useState } from 'react';
 import { Alert, Share, type View } from 'react-native';
@@ -7,6 +6,7 @@ import { captureRef } from 'react-native-view-shot';
 
 import { buildTripShareUrl } from '../constants/share';
 import type { Trip } from '../types/trip';
+import { IS_SAVE_IMAGE_SUPPORTED, saveImageToLibrary } from '../utils/saveImageToLibrary';
 
 /**
  * 사용자에게 보여줄 오류 설명.
@@ -74,26 +74,25 @@ export function useTripShare({ trip }: UseTripShareParams) {
       return;
     }
 
+    // 웹에는 사진첩이 없다. 저장 대신 안내만 한다.
+    if (!IS_SAVE_IMAGE_SUPPORTED) {
+      Alert.alert('이 환경에서는 저장할 수 없어요', '앱에서 일정 이미지를 저장할 수 있어요.');
+      return;
+    }
+
     setIsSaving(true);
 
     try {
-      // 저장만 하면 되므로 쓰기 전용 권한만 요청한다.
-      // 전체 접근 권한을 요구하면 '선택된 사진만 허용' 을 고른 사용자에게서 실패한다.
-      const permission = await MediaLibrary.requestPermissionsAsync(true);
+      const uri = await captureRef(viewRef, { format: 'png', quality: 1, result: 'tmpfile' });
+      const result = await saveImageToLibrary(uri);
 
-      if (!permission.granted) {
+      if (result === 'permission-denied') {
         Alert.alert(
           '사진 접근 권한이 필요해요',
           '설정에서 사진 저장을 허용하면 일정을 이미지로 남길 수 있어요.',
         );
         return;
       }
-
-      const uri = await captureRef(viewRef, { format: 'png', quality: 1, result: 'tmpfile' });
-
-      // SDK 57 에서 saveToLibraryAsync·createAssetAsync 는 폐기됐다.
-      // 앨범을 지정하지 않으면 기본 사진첩에 저장된다.
-      await MediaLibrary.Asset.create(uri);
 
       Alert.alert('사진첩에 저장했어요');
     } catch (error) {
