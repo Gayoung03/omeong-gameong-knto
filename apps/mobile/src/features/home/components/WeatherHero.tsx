@@ -1,11 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { brandAssets } from '@/src/config/brandAssets';
 import { colors } from '@/src/theme';
 
 import type { WeatherSummary } from '../types/home';
 
-const WEATHER_HERO = require('@/assets/images/home-weather-hero.png');
+const WEATHER_BACKGROUND = require('@/assets/images/home-weather-background.png');
 
 type WeatherHeroProps = {
   weather: WeatherSummary;
@@ -15,8 +16,18 @@ type WeatherHeroProps = {
 export function WeatherHero({ weather, onPressChatbot }: WeatherHeroProps) {
   return (
     <View style={styles.card}>
-      <ImageBackground imageStyle={styles.image} source={WEATHER_HERO} style={styles.imageArea}>
+      <ImageBackground
+        imageStyle={styles.image}
+        source={WEATHER_BACKGROUND}
+        style={styles.imageArea}
+      >
         <View style={styles.scrim} />
+        <Image
+          accessibilityLabel="달리는 혼디 강아지 캐릭터"
+          resizeMode="contain"
+          source={brandAssets.character.running}
+          style={styles.heroCharacter}
+        />
         <View style={styles.weatherCopy}>
           <Text style={styles.greeting}>{weather.greeting} 🐾</Text>
           <Text style={styles.location}>{weather.location} 날씨는</Text>
@@ -64,6 +75,7 @@ const styles = StyleSheet.create({
     height: 174,
     padding: 16,
     justifyContent: 'space-between',
+    overflow: 'hidden',
   },
   image: {
     width: '100%',
@@ -73,8 +85,15 @@ const styles = StyleSheet.create({
   },
   scrim: {
     ...StyleSheet.absoluteFill,
-    width: '70%',
+    width: '100%',
     backgroundColor: 'rgba(255,255,255,0.17)',
+  },
+  heroCharacter: {
+    position: 'absolute',
+    right: -2,
+    bottom: -10,
+    width: 139,
+    height: 162,
   },
   weatherCopy: {
     maxWidth: '62%',
@@ -113,7 +132,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   tipPill: {
-    width: '69%',
+    width: '70%',
     minHeight: 35,
     paddingHorizontal: 10,
     paddingVertical: 7,

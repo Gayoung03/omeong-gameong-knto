@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { brandAssets } from '@/src/config/brandAssets';
 import { colors, spacing } from '@/src/theme';
 
 import { ContentRecommendation } from '../components/ContentRecommendation';
@@ -42,9 +43,12 @@ export function HomeScreen() {
       >
         <View style={styles.brandHeader}>
           <View style={styles.brand}>
-            <View style={styles.brandIcon}>
-              <Ionicons color={colors.surface} name="paw" size={17} />
-            </View>
+            <Image
+              accessibilityLabel="오멍가멍 심볼"
+              resizeMode="contain"
+              source={brandAssets.symbol}
+              style={styles.brandSymbol}
+            />
             <Text style={styles.brandText}>오멍가멍</Text>
           </View>
           <View style={styles.headerActions}>
@@ -52,7 +56,12 @@ export function HomeScreen() {
               <Ionicons color={colors.textPrimary} name="notifications-outline" size={23} />
             </Pressable>
             <View style={styles.profileCircle}>
-              <Ionicons color={colors.primary} name="paw" size={16} />
+              <Image
+                accessibilityLabel="혼디 강아지 캐릭터"
+                resizeMode="cover"
+                source={brandAssets.character.avatar}
+                style={styles.profileImage}
+              />
             </View>
           </View>
         </View>
@@ -98,13 +107,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 7,
   },
-  brandIcon: {
-    width: 29,
-    height: 29,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
+  brandSymbol: {
+    width: 27,
+    height: 31,
   },
   brandText: {
     color: colors.primary,
@@ -126,6 +131,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFF8F3',
+    overflow: 'hidden',
+  },
+  profileImage: {
+    width: '100%',
+    height: '100%',
   },
   section: {
     marginTop: 25,
