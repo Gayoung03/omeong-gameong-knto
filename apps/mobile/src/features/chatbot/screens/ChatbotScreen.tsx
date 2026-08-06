@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 
+import { brandAssets } from '@/src/config/brandAssets';
 import { colors, spacing } from '@/src/theme';
 
 import { ChatMapResponse } from '../components/ChatMapResponse';
@@ -26,10 +27,11 @@ const API_PLACEHOLDER_RESPONSE =
 
 export function ChatbotScreen() {
   const scrollRef = useRef<ScrollView>(null);
-  const composerOffset = useRef(0);
   const nextMessageId = useRef(1);
+  const pendingScrollMessageId = useRef<number | null>(null);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const hasMessages = messages.length > 0;
 
   const sendMessage = (text: string) => {
     const normalizedText = text.trim();
@@ -50,15 +52,96 @@ export function ChatbotScreen() {
       mapPlaces: showMap ? getMapPlacesForQuestion(normalizedText) : undefined,
     };
 
+    pendingScrollMessageId.current = userMessage.id;
     setMessages((currentMessages) => [...currentMessages, userMessage, assistantMessage]);
     setInput('');
-    requestAnimationFrame(() =>
-      scrollRef.current?.scrollTo({
-        animated: true,
-        y: Math.max(0, composerOffset.current - 12),
-      }),
-    );
   };
+
+  const renderComposer = (showContext: boolean) => (
+    <View style={showContext ? styles.composerSection : styles.activeComposerSection}>
+      {showContext ? (
+        <Text style={styles.sectionTitle}>혼디에게 무엇이든 물어보세요</Text>
+      ) : null}
+      <View style={[styles.composer, !showContext && styles.activeComposer]}>
+        <TextInput
+          accessibilityLabel="혼디에게 질문 입력"
+          blurOnSubmit={false}
+          onChangeText={setInput}
+          onSubmitEditing={() => sendMessage(input)}
+          placeholder="제주 여행에 대해 궁금한 점을 입력해보세요"
+          placeholderTextColor="#9B9692"
+          returnKeyType="send"
+          style={styles.input}
+          value={input}
+        />
+        <Pressable
+          accessibilityLabel="질문 보내기"
+          accessibilityState={{ disabled: !input.trim() }}
+          disabled={!input.trim()}
+          onPress={() => sendMessage(input)}
+          style={({ pressed }) => [
+            styles.sendButton,
+            !input.trim() && styles.sendButtonDisabled,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Ionicons color={colors.surface} name="paper-plane" size={20} />
+        </Pressable>
+      </View>
+      {showContext ? (
+        <Text style={styles.apiHint}>AI 답변은 백엔드 API 연동 예정</Text>
+      ) : null}
+    </View>
+  );
+
+  const renderMessages = () => (
+    <View accessibilityLiveRegion="polite" style={styles.messageList}>
+      {messages.map((message) => (
+        <View
+          key={message.id}
+          onLayout={(event) => {
+            if (pendingScrollMessageId.current !== message.id) return;
+
+            pendingScrollMessageId.current = null;
+            const messageOffset = event.nativeEvent.layout.y;
+            requestAnimationFrame(() =>
+              scrollRef.current?.scrollTo({
+                animated: true,
+                y: Math.max(0, messageOffset - 8),
+              }),
+            );
+          }}
+          style={[styles.messageGroup, message.role === 'user' && styles.userMessageGroup]}
+        >
+          {message.role === 'user' ? (
+            <View style={[styles.messageBubble, styles.userBubble]}>
+              <Text style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>
+            </View>
+          ) : (
+            <View style={styles.assistantResponse}>
+              <View style={styles.assistantAvatar}>
+                <Image
+                  accessibilityLabel="혼디 강아지 캐릭터 아바타"
+                  resizeMode="cover"
+                  source={chatbotAssets.avatar}
+                  style={styles.assistantAvatarImage}
+                />
+              </View>
+              <View style={styles.assistantContent}>
+                <View style={[styles.messageBubble, styles.assistantBubble]}>
+                  <View style={styles.assistantLabel}>
+                    <Text style={styles.assistantLabelText}>혼디</Text>
+                  </View>
+                  <Text style={styles.messageText}>{message.text}</Text>
+                </View>
+                {message.mapPlaces ? <ChatMapResponse places={message.mapPlaces} /> : null}
+              </View>
+            </View>
+          )}
+        </View>
+      ))}
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -66,168 +149,99 @@ export function ChatbotScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardArea}
       >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          ref={scrollRef}
-          showsVerticalScrollIndicator={false}
-        >
+        <View style={styles.screen}>
           <View style={styles.content}>
             <View style={styles.header}>
               <View style={styles.brand}>
-                <View style={styles.brandIcon}>
-                  <Ionicons color={colors.surface} name="paw" size={17} />
-                </View>
+                <Image
+                  accessibilityLabel="오멍가멍 심볼"
+                  resizeMode="contain"
+                  source={brandAssets.symbol}
+                  style={styles.brandSymbol}
+                />
                 <Text style={styles.brandText}>오멍가멍</Text>
               </View>
               <Pressable accessibilityLabel="알림" hitSlop={10}>
                 <Ionicons color={colors.textPrimary} name="notifications-outline" size={23} />
               </Pressable>
             </View>
+          </View>
 
-            <View style={styles.hero}>
-              <Text style={styles.heroTitle}>
-                <Text style={styles.heroTitleAccent}>혼디</Text>에게 물어보세요!
-              </Text>
-              <Text style={styles.heroDescription}>
-                반려동물과 함께하는 제주 여행,{`\n`}혼디가 친절하게 알려줄게요.
-              </Text>
-              <View style={styles.mascotFrame}>
-                {chatbotAssets.mascot ? (
-                  <Image
-                    accessibilityLabel="혼디 캐릭터"
-                    resizeMode="contain"
-                    source={chatbotAssets.mascot}
-                    style={styles.mascot}
-                  />
-                ) : (
-                  <View
-                    accessibilityLabel="혼디 캐릭터 플레이스홀더"
-                    style={styles.mascotPlaceholder}
-                  >
-                    <View style={styles.mascotIconCircle}>
-                      <Ionicons color={colors.primary} name="paw" size={42} />
-                    </View>
-                    <Text style={styles.mascotPlaceholderText}>혼디 캐릭터</Text>
-                  </View>
-                )}
+          {hasMessages ? (
+            <>
+              <ScrollView
+                contentContainerStyle={styles.activeChatScrollContent}
+                keyboardShouldPersistTaps="handled"
+                ref={scrollRef}
+                showsVerticalScrollIndicator={false}
+                style={styles.activeChatScroll}
+              >
+                <View style={styles.content}>{renderMessages()}</View>
+              </ScrollView>
+              <View style={styles.activeComposerBar}>
+                <View style={styles.content}>{renderComposer(false)}</View>
               </View>
-              <Text style={styles.assetHint}>캐릭터 이미지 추후 교체 예정</Text>
-            </View>
-
-            <View
-              onLayout={(event) => {
-                composerOffset.current = event.nativeEvent.layout.y;
-              }}
-              style={styles.composerSection}
+            </>
+          ) : (
+            <ScrollView
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.sectionTitle}>혼디에게 무엇이든 물어보세요</Text>
-              <View style={styles.composer}>
-                <TextInput
-                  accessibilityLabel="혼디에게 질문 입력"
-                  blurOnSubmit={false}
-                  onChangeText={setInput}
-                  onSubmitEditing={() => sendMessage(input)}
-                  placeholder="제주 여행에 대해 궁금한 점을 입력해보세요"
-                  placeholderTextColor="#9B9692"
-                  returnKeyType="send"
-                  style={styles.input}
-                  value={input}
-                />
-                <Pressable
-                  accessibilityLabel="질문 보내기"
-                  accessibilityState={{ disabled: !input.trim() }}
-                  disabled={!input.trim()}
-                  onPress={() => sendMessage(input)}
-                  style={({ pressed }) => [
-                    styles.sendButton,
-                    !input.trim() && styles.sendButtonDisabled,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Ionicons color={colors.surface} name="paper-plane" size={20} />
-                </Pressable>
-              </View>
-              <Text style={styles.apiHint}>AI 답변은 백엔드 API 연동 예정</Text>
-            </View>
-
-            {messages.length > 0 ? (
-              <View accessibilityLiveRegion="polite" style={styles.messageList}>
-                {messages.map((message) => (
-                  <View
-                    key={message.id}
-                    style={[
-                      styles.messageGroup,
-                      message.role === 'user' && styles.userMessageGroup,
-                    ]}
-                  >
-                    {message.role === 'user' ? (
-                      <View style={[styles.messageBubble, styles.userBubble]}>
-                        <Text style={[styles.messageText, styles.userMessageText]}>
-                          {message.text}
-                        </Text>
-                      </View>
-                    ) : (
-                      <View style={styles.assistantResponse}>
-                        <View style={styles.assistantAvatar}>
-                          {chatbotAssets.mascot ? (
-                            <Image
-                              accessibilityLabel="혼디 캐릭터 아바타"
-                              resizeMode="cover"
-                              source={chatbotAssets.mascot}
-                              style={styles.assistantAvatarImage}
-                            />
-                          ) : (
-                            <Ionicons color={colors.primary} name="paw" size={17} />
-                          )}
-                        </View>
-                        <View style={styles.assistantContent}>
-                          <View style={[styles.messageBubble, styles.assistantBubble]}>
-                            <View style={styles.assistantLabel}>
-                              <Text style={styles.assistantLabelText}>혼디</Text>
-                            </View>
-                            <Text style={styles.messageText}>{message.text}</Text>
-                          </View>
-                          {message.mapPlaces ? (
-                            <ChatMapResponse places={message.mapPlaces} />
-                          ) : null}
-                        </View>
-                      </View>
-                    )}
+              <View style={styles.content}>
+                <View style={styles.hero}>
+                  <Text style={styles.heroTitle}>
+                    <Text style={styles.heroTitleAccent}>혼디</Text>에게 물어보세요!
+                  </Text>
+                  <Text style={styles.heroDescription}>
+                    반려동물과 함께하는 제주 여행,{'\n'}혼디가 친절하게 알려줄게요.
+                  </Text>
+                  <View style={styles.mascotFrame}>
+                    <Image
+                      accessibilityLabel="여행 정보를 찾는 혼디 강아지 캐릭터"
+                      resizeMode="contain"
+                      source={chatbotAssets.hero}
+                      style={styles.mascot}
+                    />
                   </View>
-                ))}
-              </View>
-            ) : null}
+                </View>
 
-            <View style={styles.suggestionSection}>
-              <View style={styles.suggestionHeading}>
-                <Text style={styles.sectionTitle}>이런 질문은 어때요?</Text>
-                <View style={styles.popularBadge}>
-                  <Ionicons color={colors.primary} name="sparkles" size={12} />
-                  <Text style={styles.popularBadgeText}>인기 질문</Text>
+                {renderComposer(true)}
+
+                <View style={styles.suggestionSection}>
+                  <View style={styles.suggestionHeading}>
+                    <Text style={styles.sectionTitle}>이런 질문은 어때요?</Text>
+                    <View style={styles.popularBadge}>
+                      <Ionicons color={colors.primary} name="sparkles" size={12} />
+                      <Text style={styles.popularBadgeText}>인기 질문</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.suggestionList}>
+                    {chatbotSuggestions.map((suggestion) => (
+                      <Pressable
+                        accessibilityHint="선택한 질문을 채팅창에 바로 전송합니다"
+                        accessibilityRole="button"
+                        key={suggestion.id}
+                        onPress={() => sendMessage(suggestion.question)}
+                        style={({ pressed }) => [
+                          styles.suggestionCard,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <View style={styles.suggestionIcon}>
+                          <Ionicons color={colors.primary} name={suggestion.icon} size={19} />
+                        </View>
+                        <Text style={styles.suggestionText}>{suggestion.question}</Text>
+                        <Ionicons color="#A7A29E" name="chevron-forward" size={19} />
+                      </Pressable>
+                    ))}
+                  </View>
                 </View>
               </View>
-
-              <View style={styles.suggestionList}>
-                {chatbotSuggestions.map((suggestion) => (
-                  <Pressable
-                    accessibilityHint="선택한 질문을 채팅창에 바로 전송합니다"
-                    accessibilityRole="button"
-                    key={suggestion.id}
-                    onPress={() => sendMessage(suggestion.question)}
-                    style={({ pressed }) => [styles.suggestionCard, pressed && styles.pressed]}
-                  >
-                    <View style={styles.suggestionIcon}>
-                      <Ionicons color={colors.primary} name={suggestion.icon} size={19} />
-                    </View>
-                    <Text style={styles.suggestionText}>{suggestion.question}</Text>
-                    <Ionicons color="#A7A29E" name="chevron-forward" size={19} />
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          </View>
-        </ScrollView>
+            </ScrollView>
+          )}
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -241,9 +255,19 @@ const styles = StyleSheet.create({
   keyboardArea: {
     flex: 1,
   },
+  screen: {
+    flex: 1,
+  },
   scrollContent: {
     flexGrow: 1,
     paddingBottom: 32,
+  },
+  activeChatScroll: {
+    flex: 1,
+  },
+  activeChatScrollContent: {
+    flexGrow: 1,
+    paddingBottom: 12,
   },
   content: {
     width: '100%',
@@ -262,13 +286,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 7,
   },
-  brandIcon: {
-    width: 29,
-    height: 29,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
+  brandSymbol: {
+    width: 27,
+    height: 31,
   },
   brandText: {
     color: colors.primary,
@@ -308,32 +328,8 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  mascotPlaceholder: {
-    alignItems: 'center',
-  },
-  mascotIconCircle: {
-    width: 118,
-    height: 118,
-    borderWidth: 1,
-    borderColor: '#FFDCC8',
-    borderRadius: 59,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFF3EA',
-  },
-  mascotPlaceholderText: {
-    marginTop: 8,
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  assetHint: {
-    marginTop: -8,
-    color: '#A09A96',
-    fontSize: 10,
-  },
   messageList: {
-    marginTop: 21,
+    marginTop: 12,
     gap: 10,
   },
   messageGroup: {
@@ -404,6 +400,18 @@ const styles = StyleSheet.create({
   },
   composerSection: {
     marginTop: 26,
+  },
+  activeComposerBar: {
+    borderTopWidth: 1,
+    borderTopColor: '#F0EAE6',
+    backgroundColor: colors.surface,
+  },
+  activeComposerSection: {
+    paddingTop: 10,
+    paddingBottom: 12,
+  },
+  activeComposer: {
+    marginTop: 0,
   },
   sectionTitle: {
     color: colors.textPrimary,
