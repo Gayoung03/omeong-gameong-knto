@@ -66,7 +66,7 @@ export function MapTab({ schedules, onPressPlace }: MapTabProps) {
             initialSelectedPlaceId={initialSelectedPlaceId}
             items={selectedSchedule.items}
             onSelectPlace={setSelectedPlaceId}
-            scheduleId={selectedSchedule.id}
+            redrawKey={selectedSchedule.id}
           />
         )}
       </View>

@@ -109,8 +109,15 @@ export function MyTripsScreen() {
   };
 
   const handlePressAddSchedule = () => {
-    // TODO: 일정 추가(장소 검색) 화면 연결
-    router.push('/places');
+    if (!trip) {
+      return;
+    }
+
+    router.push({
+      pathname: '/trips/[tripId]/add-schedule',
+      // 보고 있던 날짜에 바로 담을 수 있도록 함께 넘긴다
+      params: { tripId: trip.id, scheduleId: selectedSchedule?.id ?? '' },
+    });
   };
 
   if (isLoading) {

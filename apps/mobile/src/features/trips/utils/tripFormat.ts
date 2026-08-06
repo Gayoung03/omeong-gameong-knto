@@ -1,5 +1,6 @@
 import type {
   PetPolicy,
+  PlaceCategory,
   ScheduleWeather,
   TransportType,
   Trip,
@@ -109,6 +110,61 @@ const PET_POLICY_LABELS: Record<PetPolicy, string> = {
 
 export function getPetPolicyLabel(petPolicy: PetPolicy): string {
   return PET_POLICY_LABELS[petPolicy];
+}
+
+const PLACE_CATEGORY_LABELS: Record<PlaceCategory, string> = {
+  attraction: '관광지',
+  restaurant: '음식점',
+  cafe: '카페/디저트',
+  accommodation: '숙소',
+  etc: '기타',
+};
+
+export function getPlaceCategoryLabel(category: PlaceCategory): string {
+  return PLACE_CATEGORY_LABELS[category];
+}
+
+/** '카페/디저트 · 제주 시내' */
+export function formatPlaceMeta(category: PlaceCategory, regionLabel: string): string {
+  return [getPlaceCategoryLabel(category), regionLabel].filter(Boolean).join(' · ');
+}
+
+/** '4.1(361)'. 평점이 없으면 null */
+export function formatRating(rating: number | null, reviewCount: number): string | null {
+  if (rating === null) {
+    return null;
+  }
+  return `${rating.toFixed(1)}(${reviewCount.toLocaleString()})`;
+}
+
+/** '저장 8,903' */
+export function formatSavedCount(savedCount: number): string {
+  return `저장 ${savedCount.toLocaleString()}`;
+}
+
+/** Date → 'HH:mm' */
+export function toTimeValue(date: Date): string {
+  const hours = `${date.getHours()}`.padStart(2, '0');
+  const minutes = `${date.getMinutes()}`.padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+/** 'HH:mm' 을 오늘 날짜의 Date 로 변환. 형식이 어긋나면 기본값(09:00) */
+export function parseTimeValue(timeString: string | null): Date {
+  const date = new Date();
+  const [hours, minutes] = (timeString ?? '09:00').split(':').map(Number);
+
+  date.setHours(Number.isFinite(hours) ? hours : 9, Number.isFinite(minutes) ? minutes : 0, 0, 0);
+  return date;
+}
+
+/** '오후 2:30' */
+export function formatTimeLabel(timeString: string): string {
+  const [hours, minutes] = timeString.split(':').map(Number);
+  const meridiem = hours < 12 ? '오전' : '오후';
+  const displayHour = hours % 12 === 0 ? 12 : hours % 12;
+
+  return `${meridiem} ${displayHour}:${`${minutes}`.padStart(2, '0')}`;
 }
 
 const WEATHER_ICONS: Record<WeatherCondition, string> = {

@@ -170,6 +170,9 @@ const places = {
 type ItemSeed = {
   place: SchedulePlace;
   isSaved?: boolean;
+  /** 'HH:mm' */
+  startTime?: string;
+  memo?: string;
   moveToNext?: ScheduleItem['moveToNext'];
 };
 
@@ -179,6 +182,8 @@ function createItems(seeds: ItemSeed[]): ScheduleItem[] {
     order: index + 1,
     place: seed.place,
     isSaved: seed.isSaved ?? false,
+    startTime: seed.startTime ?? null,
+    memo: seed.memo ?? '',
     moveToNext: seed.moveToNext ?? null,
   }));
 }

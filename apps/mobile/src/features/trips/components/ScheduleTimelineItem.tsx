@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
 import type { ScheduleItem } from '../types/trip';
-import { formatMoveInfo } from '../utils/tripFormat';
+import { formatMoveInfo, formatTimeLabel } from '../utils/tripFormat';
 import { PetPolicyBadge } from './PetPolicyBadge';
 
 type ScheduleTimelineItemProps = {
@@ -42,6 +42,9 @@ export function ScheduleTimelineItem({
           style={styles.card}
         >
           <View style={styles.cardHeader}>
+            {item.startTime && (
+              <Text style={styles.startTime}>{formatTimeLabel(item.startTime)}</Text>
+            )}
             <Text numberOfLines={1} style={styles.placeName}>
               {item.place.name}
             </Text>
@@ -64,6 +67,15 @@ export function ScheduleTimelineItem({
           <Text numberOfLines={2} style={styles.description}>
             {item.place.description}
           </Text>
+
+          {item.memo.length > 0 && (
+            <View style={styles.memoRow}>
+              <Ionicons color={colors.textTertiary} name="create-outline" size={12} />
+              <Text numberOfLines={2} style={styles.memo}>
+                {item.memo}
+              </Text>
+            </View>
+          )}
         </Pressable>
 
         {item.moveToNext && (
@@ -125,6 +137,16 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     justifyContent: 'space-between',
   },
+  startTime: {
+    backgroundColor: colors.basaltSoft,
+    borderRadius: radius.sm,
+    color: colors.textSecondary,
+    fontSize: typography.micro.fontSize,
+    fontWeight: typography.micro.fontWeight,
+    overflow: 'hidden',
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: 2,
+  },
   placeName: {
     color: colors.basalt,
     flex: 1,
@@ -134,6 +156,18 @@ const styles = StyleSheet.create({
   description: {
     color: colors.textSecondary,
     fontSize: typography.caption.fontSize,
+  },
+  memoRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginTop: 1,
+  },
+  memo: {
+    color: colors.textTertiary,
+    flex: 1,
+    fontSize: typography.micro.fontSize,
+    lineHeight: 15,
   },
   moveInfo: {
     color: colors.textTertiary,

@@ -17,6 +17,7 @@ export default function RootLayout() {
           <Stack.Screen name="trips/[tripId]/index" />
           <Stack.Screen name="trips/[tripId]/edit" />
           <Stack.Screen name="trips/[tripId]/info" />
+          <Stack.Screen name="trips/[tripId]/add-schedule" />
         </Stack>
         <StatusBar style="auto" />
       </QueryClientProvider>

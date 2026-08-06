@@ -1,21 +1,39 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useMemo, useState } from 'react';
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { colors, radius, spacing, typography } from '@/src/theme';
 
 import { KAKAO_JS_KEY, KAKAO_MAP_BASE_URL } from '../constants/map';
-import type { ScheduleItem } from '../types/trip';
-import { buildKakaoMapHtml, type KakaoMapMessage } from '../utils/kakaoMapHtml';
+import type { PlaceCandidate, ScheduleItem } from '../types/trip';
+import {
+  buildKakaoMapHtml,
+  type KakaoMapFitMode,
+  type KakaoMapMessage,
+} from '../utils/kakaoMapHtml';
+
+/**
+ * 지도를 다시 그리지 않고 보여줄 범위만 바꾸는 통로.
+ * 버튼은 화면마다 위치가 달라서 여기서 그리지 않고 밖에 맡긴다.
+ */
+export type TripMapViewHandle = {
+  fitTo: (mode: KakaoMapFitMode) => void;
+};
 
 type TripMapViewProps = {
   items: ScheduleItem[];
-  /** 날짜가 바뀌면 지도를 새로 그리기 위한 값 */
-  scheduleId: string;
+  /**
+   * 이 값이 바뀌면 지도를 새로 그린다.
+   * 마커 선택처럼 자주 바뀌는 값을 넣으면 화면이 튀므로 넣지 않는다.
+   */
+  redrawKey: string;
   /** 지도를 그릴 때 강조해둘 장소 */
   initialSelectedPlaceId: string | null;
   onSelectPlace: (placeId: string | null) => void;
+  /** 아직 일정에 담기지 않은 후보 장소 */
+  candidates?: PlaceCandidate[];
+  initialFitMode?: KakaoMapFitMode;
 };
 
 const MAP_COLORS = {
@@ -24,20 +42,36 @@ const MAP_COLORS = {
   selectedMarker: colors.leaf,
   routeLine: colors.sea,
   background: colors.background,
+  candidateMarker: colors.leaf,
 };
 
-export function TripMapView({
-  items,
-  scheduleId,
-  initialSelectedPlaceId,
-  onSelectPlace,
-}: TripMapViewProps) {
+export const TripMapView = forwardRef<TripMapViewHandle, TripMapViewProps>(function TripMapView(
+  { items, redrawKey, initialSelectedPlaceId, onSelectPlace, candidates, initialFitMode = 'route' },
+  ref,
+) {
+  const webViewRef = useRef<WebView>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  /** 지도를 다시 그리지 않고 범위만 옮긴다 */
+  useImperativeHandle(ref, () => ({
+    fitTo: (mode: KakaoMapFitMode) => {
+      webViewRef.current?.injectJavaScript(
+        `if (window.fitTo) { window.fitTo(${JSON.stringify(mode)}); } true;`,
+      );
+    },
+  }));
+
   const html = useMemo(
-    () => buildKakaoMapHtml({ items, initialSelectedPlaceId, colors: MAP_COLORS }),
-    [items, initialSelectedPlaceId],
+    () =>
+      buildKakaoMapHtml({
+        items,
+        candidates,
+        initialSelectedPlaceId,
+        initialFitMode,
+        colors: MAP_COLORS,
+      }),
+    [items, candidates, initialSelectedPlaceId, initialFitMode],
   );
 
   // 기준 주소를 비워두면 카카오에 출처를 보내지 않는다 (constants/map.ts 참고)
@@ -99,8 +133,8 @@ export function TripMapView({
         allowUniversalAccessFromFileURLs
         // 안드로이드에서 http 기준 페이지가 https 스크립트를 불러올 수 있게 한다
         mixedContentMode="always"
-        // 날짜가 바뀌면 지도를 새로 그린다. 마커 선택은 WebView 안에서 처리한다
-        key={scheduleId}
+        // 이 값이 바뀔 때만 지도를 새로 그린다. 마커 선택은 WebView 안에서 처리한다
+        key={redrawKey}
         onError={(event) =>
           setErrorMessage(`WebView 오류: ${event.nativeEvent.description ?? '알 수 없음'}`)
         }
@@ -111,6 +145,7 @@ export function TripMapView({
         }
         onMessage={handleMessage}
         originWhitelist={['*']}
+        ref={webViewRef}
         source={source}
         style={styles.webView}
       />
@@ -122,7 +157,7 @@ export function TripMapView({
       )}
     </View>
   );
-}
+});
 
 type MapNoticeProps = {
   iconName: keyof typeof Ionicons.glyphMap;

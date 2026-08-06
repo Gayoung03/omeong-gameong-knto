@@ -20,7 +20,7 @@
 | `expo-sharing`                           | ~57.0.8 | 만든 일정 이미지를 다른 앱으로 공유           | #9      |
 | `react-native-view-shot`                 | 5.1.0   | 일정 카드를 이미지로 캡처(목업 07)            | #9      |
 | `expo-media-library`                     | ~57.0.3 | 캡처한 이미지를 사진첩에 저장                 | #9      |
-| `react-native-webview`                   | 13.16.1 | 지도 탭(목업 03)에서 카카오 지도 JS API 사용  | 예정    |
+| `react-native-webview`                   | 13.16.1 | 지도 탭(목업 03)에서 카카오 지도 JS API 사용  | #10     |
 
 > `datetimepicker`는 웹을 지원하지 않아 `DateRangeField.web.tsx`로 대체 구현을 분리했다.
 > Metro가 플랫폼별로 자동 선택하므로 웹에서도 화면이 깨지지 않는다.
@@ -39,7 +39,7 @@
 
 ### 지도 연동 방식 — WebView vs 네이티브 SDK
 
-초안 단계에서는 **WebView 방식**으로 진행한다. 최종 방식은 팀 결정이 필요하다.
+**WebView 방식으로 구현 완료(#10).** 최종 방식은 팀 결정이 필요하며, 아래는 비교 근거다.
 
 **WebView (카카오 지도 JavaScript API)**
 
@@ -87,9 +87,10 @@
 | `app.config.ts`                      | `plugins`에 `expo-sharing` 추가, `expo-media-library`를 사진 접근 권한 문구와 함께 추가 | #9      |
 | `package.json` / `package-lock.json` | clipboard, sharing, view-shot, media-library 추가                                       | #9      |
 | `apps/mobile/.gitignore`             | `/ios`, `/android` 추가 (expo prebuild 산출물 커밋 방지)                                | #9      |
-| `apps/mobile/.env.example`           | 신규. `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_KAKAO_JS_KEY`                                 | 예정    |
-| `.env.example`                       | Mobile 항목은 `apps/mobile/.env` 에 넣어야 한다는 안내 추가                             | 예정    |
-| `package.json` / `package-lock.json` | react-native-webview 추가                                                               | 예정    |
+| `apps/mobile/.env.example`           | 신규. `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_KAKAO_JS_KEY`                                 | #10     |
+| `.env.example`                       | Mobile 항목은 `apps/mobile/.env` 에 넣어야 한다는 안내 추가                             | #10     |
+| `package.json` / `package-lock.json` | react-native-webview 추가                                                               | #10     |
+| `app/_layout.tsx`                    | `Stack.Screen`에 `trips/[tripId]/add-schedule` 라우트 추가 (목업 10)                    | 예정    |
 
 > **`app/_layout.tsx`는 충돌 위험이 큰 파일이다.** 다른 팀원도 라우트를 추가하면서 건드리게 된다.
 > 변경 내용 자체는 기존 트리를 `GestureHandlerRootView`로 한 겹 감싼 것뿐이라
@@ -141,7 +142,8 @@ git add package-lock.json
 ## 공통 파일 변경
 
 - src/theme/ : colors·typography·radius 토큰 확장, 기본 배경색 화이트로 변경
-- app/_layout.tsx : 최상단을 GestureHandlerRootView로 감쌈 (드래그 제스처 인식용)
+- app/_layout.tsx : 최상단을 GestureHandlerRootView로 감쌈 (드래그 제스처 인식용),
+  Stack.Screen 에 trips/[tripId]/add-schedule 라우트 추가
 - app.config.ts plugins :
   - @react-native-community/datetimepicker
   - expo-sharing
@@ -157,8 +159,19 @@ git add package-lock.json
 - pull 후 `cd apps/mobile && npm ci` 실행 필요
 - 네이티브 권한이 추가되어 시뮬레이터에서 처음 실행할 때 사진 접근 권한을 물어봅니다
 - 지도 탭을 보려면 apps/mobile/.env 에 EXPO_PUBLIC_KAKAO_JS_KEY 가 필요합니다.
-  카카오 개발자 콘솔 > 플랫폼 > Web 사이트 도메인에 https://localhost 등록도 함께 필요합니다.
-  (현재는 개인 앱 키를 빌려 쓰는 중 — '오멍가멍' 팀 앱 등록 필요)
+  카카오 개발자 콘솔에 팀 앱 '오멍가멍'(ID 1533456)을 등록해두었고,
+  제품 설정 > 카카오맵 > 사용 설정이 ON 이어야 합니다. 무료 쿼터도 이 앱에 배정돼 있습니다.
+  개발 중에는 사이트 도메인 등록 없이 동작하며, 배포 도메인이 정해지면
+  constants/map.ts 의 KAKAO_MAP_BASE_URL 에 넣고 콘솔에도 같은 주소를 등록하면 됩니다.
+
+## places 담당자와 협의가 필요한 사항
+
+- 일정 추가(목업 10)의 장소 검색은 원래 places 영역입니다.
+  다만 'Day N 추천'·'내 숙소 근처'처럼 여행 정보를 알아야 하는 목록이 섞여 있어
+  우선 trips 안에 임시 검색 UI를 만들었습니다 (features/trips/api/placeSearchApi.ts).
+- 나중에 places 검색 화면을 재사용하기로 정해지면, 그 화면이 '선택 모드'를 지원하고
+  결과로 장소 ID만(types/trip.ts 의 PlaceSelectionResult) 돌려주면 됩니다.
+  trips 쪽은 searchPlaces 구현만 바꾸면 되고 화면은 그대로 둡니다.
 ```
 
 > 위 블록은 작업이 진행되는 대로 1~3번 표의 내용을 반영해 갱신한다.
@@ -174,3 +187,5 @@ git add package-lock.json
 | 2026-08-04 | 09 머지(#8) 반영. 06·07 공유+이미지 저장 작업 — clipboard·sharing·view-shot·media-library 설치, `app.config.ts`에 사진 권한 추가, `.gitignore`에 `/ios`·`/android` 추가 |
 | 2026-08-04 | 06·07 머지(#9) 반영. 03 지도 탭 연동 방식 비교(WebView vs 네이티브 SDK) 정리, 초안은 WebView로 결정                                                                     |
 | 2026-08-04 | 03 지도 탭 작업 — react-native-webview 설치, `.env.example`에 `EXPO_PUBLIC_KAKAO_JS_KEY` 추가                                                                           |
+| 2026-08-04 | 03 지도 탭 머지(#10). 카카오 팀 앱 "오멍가멍"(ID 1533456) 등록 및 카카오맵 사용 설정 ON                                                                                 |
+| 2026-08-05 | 10 일정 추가 작업 — 신규 설치 라이브러리 없음. `app/_layout.tsx`에 add-schedule 라우트 추가, places 담당자 협의 사항 기록                                               |

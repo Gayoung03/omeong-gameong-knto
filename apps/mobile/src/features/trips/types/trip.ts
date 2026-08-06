@@ -33,6 +33,10 @@ export type ScheduleItem = {
   order: number;
   place: SchedulePlace;
   isSaved: boolean;
+  /** 방문 예정 시각 'HH:mm'. 정하지 않았으면 null */
+  startTime: string | null;
+  /** 이 방문에 대한 한 줄 메모. 없으면 빈 문자열 */
+  memo: string;
   /** 다음 일정까지의 이동 정보. 마지막 항목이면 null */
   moveToNext: {
     transport: TransportType;
@@ -142,3 +146,47 @@ export type TripListItem = Pick<
 
 /** 내 여행 상세 화면의 상단 탭 */
 export type TripDetailTab = 'schedule' | 'map' | 'checklist' | 'memo';
+
+/**
+ * 일정 추가 화면에서 장소 목록을 가져오는 출처.
+ *
+ * - dayRecommend: 선택한 날짜의 루트 근처 추천
+ * - recentSaved: 최근 저장한 장소
+ * - nearStay: 이 여행의 숙소 근처 추천
+ * - myPlace: 사용자가 직접 등록한 나만의 장소
+ */
+export type PlaceSourceTab = 'dayRecommend' | 'recentSaved' | 'nearStay' | 'myPlace';
+
+/** 일정 추가 화면의 카테고리 필터. 선택하지 않으면 null */
+export type PlaceFilter = 'restaurant' | 'attraction' | 'accommodation';
+
+/**
+ * 검색·추천 목록에 뜨는 장소 후보.
+ *
+ * 일정에 담기는 순간 `regionLabel` 을 떼고 `SchedulePlace` 로 저장한다.
+ */
+export type PlaceCandidate = SchedulePlace & {
+  /** 목록에 짧게 노출하는 지역 이름 (예: 제주 시내) */
+  regionLabel: string;
+};
+
+/**
+ * 장소 선택 결과 규약.
+ *
+ * 지금은 trips 안의 임시 검색 화면이 이 값을 만들지만,
+ * 나중에 places 검색 화면을 재사용하게 되면 그쪽에서도 이 형태로만 결과를 돌려받는다.
+ * 장소 객체 전체가 아니라 ID 만 오간다.
+ */
+export type PlaceSelectionResult = {
+  placeId: string;
+};
+
+/** 일정에 장소 하나를 담을 때 입력받는 값 */
+export type AddScheduleInput = {
+  /** 담을 날짜 (Schedule 의 id) */
+  scheduleId: string;
+  place: SchedulePlace;
+  /** 'HH:mm'. 정하지 않았으면 null */
+  startTime: string | null;
+  memo: string;
+};
