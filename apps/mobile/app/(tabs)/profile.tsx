@@ -1,5 +1,5 @@
-import { ScreenPlaceholder } from '@/src/components/feedback/ScreenPlaceholder';
+import { ProfileScreen } from '@/src/features/profile/ProfileScreen';
 
 export default function ProfileRoute() {
-  return <ScreenPlaceholder description="사용자 및 반려동물 정보 화면 작업 영역" title="마이페이지" />;
+  return <ProfileScreen />;
 }

@@ -1,6 +1,6 @@
 export const typography = {
   title: {
-    fontSize: 24,
+    fontSize: 21,
     fontWeight: '700',
   },
   body: {

@@ -18,7 +18,18 @@ const config: ExpoConfig = {
   web: {
     output: 'static',
   },
-  plugins: ['expo-router', 'expo-secure-store'],
+  plugins: [
+    'expo-router',
+    'expo-secure-store',
+    [
+      'expo-image-picker',
+      {
+        cameraPermission: '여행의 순간을 촬영하려면 카메라 접근이 필요합니다.',
+        microphonePermission: false,
+        photosPermission: '여행 사진을 선택하려면 사진 앨범 접근이 필요합니다.',
+      },
+    ],
+  ],
   experiments: {
     typedRoutes: true,
   },
