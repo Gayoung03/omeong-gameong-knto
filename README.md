@@ -42,7 +42,7 @@ make setup
 
 ## 실행
 
-저장소 루트에서 다음 명령 하나로 PostgreSQL, FastAPI, Expo를 동시에 실행합니다.
+저장소 루트에서 다음 명령 하나로 PostgreSQL, DB 마이그레이션, FastAPI, Expo를 동시에 실행합니다.
 
 ```bash
 make dev
@@ -50,6 +50,9 @@ make dev
 
 종료할 때는 `Ctrl+C`를 누릅니다. Expo와 FastAPI가 함께 종료되고 PostgreSQL
 컨테이너도 자동으로 종료됩니다. PostgreSQL 데이터 볼륨은 삭제되지 않습니다.
+
+`make dev`는 PostgreSQL이 준비될 때까지 기다린 뒤 `alembic upgrade head`를 실행하므로,
+팀원마다 동일한 최신 테이블 구조가 자동으로 적용됩니다.
 
 - FastAPI: `http://localhost:8000`
 - Swagger: `http://localhost:8000/docs`
@@ -60,6 +63,7 @@ make dev
 
 ```bash
 make db-up
+make db-migrate
 make api-dev
 make mobile-dev
 ```
