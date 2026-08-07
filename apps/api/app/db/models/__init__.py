@@ -1,1 +1,69 @@
-"""SQLAlchemy database models."""
+"""Import every SQLAlchemy model so Alembic can discover the metadata."""
+
+from app.db.models.community import (
+    ChatConversation,
+    ChatMessage,
+    Favorite,
+    Inquiry,
+    Notice,
+    Notification,
+    Review,
+    ReviewImage,
+    TravelLog,
+    TravelLogPet,
+)
+from app.db.models.places import (
+    Place,
+    PlaceBusinessHour,
+    PlaceExternalRef,
+    PlacePetPolicy,
+    PlaceTag,
+    PlaceTagLink,
+)
+from app.db.models.routes import (
+    Route,
+    RouteCalculationCache,
+    RouteChecklistItem,
+    RouteDay,
+    RouteItem,
+    RouteMemo,
+    RouteMove,
+    RouteRequest,
+    RouteRequestPet,
+    RouteRequestStay,
+    WeatherSnapshot,
+)
+from app.db.models.users import Pet, User, UserTravelPreference
+
+__all__ = [
+    "ChatConversation",
+    "ChatMessage",
+    "Favorite",
+    "Inquiry",
+    "Notice",
+    "Notification",
+    "Pet",
+    "Place",
+    "PlaceBusinessHour",
+    "PlaceExternalRef",
+    "PlacePetPolicy",
+    "PlaceTag",
+    "PlaceTagLink",
+    "Review",
+    "ReviewImage",
+    "Route",
+    "RouteCalculationCache",
+    "RouteChecklistItem",
+    "RouteDay",
+    "RouteItem",
+    "RouteMemo",
+    "RouteMove",
+    "RouteRequest",
+    "RouteRequestPet",
+    "RouteRequestStay",
+    "TravelLog",
+    "TravelLogPet",
+    "User",
+    "UserTravelPreference",
+    "WeatherSnapshot",
+]

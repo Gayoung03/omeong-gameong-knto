@@ -1,6 +1,6 @@
 # 오멍가멍 테이블 명세
 
-이 문서는 [`schema.dbml`](./schema.dbml)에 정의된 공모전 MVP 테이블 25개를 설명합니다.
+이 문서는 [`schema.dbml`](./schema.dbml)에 정의된 공모전 MVP 테이블 30개를 설명합니다.
 
 ## 공통 규칙
 
@@ -26,6 +26,9 @@
 | `provider_user_id` | 소셜 제공자의 회원 식별자 |
 | `nickname` | 앱 표시 닉네임 |
 | `profile_image_url` | 프로필 이미지 URL |
+| `inquiry_answer_notification_enabled` | 문의 답변 알림 수신 여부 |
+| `marketing_notification_enabled` | 마케팅 알림 수신 여부 |
+| `deleted_at` | 회원 탈퇴 시각. null이면 활성 회원 |
 
 주요 관계:
 
@@ -47,11 +50,13 @@
 | `birth_date` | 나이 계산용 |
 | `health_notes` | 건강 주의사항 |
 | `is_primary` | 대표 반려동물 여부 |
+| `deleted_at` | 프로필 삭제 시각. null이면 활성 프로필 |
 
 주의사항:
 
 - 회원별 `is_primary = true`는 최대 한 건만 허용합니다.
 - 여러 마리를 한 여행에 선택할 때는 `route_request_pets`를 사용합니다.
+- 과거 여행과 기록의 참조를 보존하기 위해 물리 삭제하지 않습니다.
 
 ### `user_travel_preferences`
 
@@ -91,6 +96,7 @@
 | `activity_level` | 활동량 1~5 |
 | `crowd_level` | 혼잡도 1~5 |
 | `weather_sensitivity` | 날씨 민감도 1~5 |
+| `created_by_user_id` | 사용자가 직접 등록한 장소일 때 작성 회원 |
 | `is_active` | 서비스 노출 여부 |
 
 장소 소개 우선순위:
@@ -222,6 +228,7 @@ AI 추천 결과와 사용자가 저장한 내 여행의 공통 루트 본체입
 | `explanation` | AI 추천 설명 |
 | `total_score` | 종합 추천 점수 |
 | `pet_safety_score` | 반려동물 안전 점수 |
+| `style_keywords` | 내 여행에서 편집 가능한 여행 키워드 배열 |
 | `share_token`, `is_public` | 공유 링크 제어 |
 
 상태 흐름:
@@ -365,7 +372,88 @@ TMAP 약관에 맞춰 24시간 이상 사용하지 않고 만료된 값은 재�
 
 리뷰의 여러 이미지 URL과 표시 순서를 저장합니다. 실제 이미지 파일은 DB가 아니라 오브젝트 스토리지에 저장합니다.
 
-## 8. AI 챗봇
+## 8. 여행 기록
+
+### `travel_logs`
+
+사용자가 사진으로 남기는 여행 순간과 AI 이미지 생성 결과를 저장합니다.
+
+| 컬럼 | 설명 |
+| --- | --- |
+| `user_id` | 기록 소유자 |
+| `route_id` | 연결된 내 여행. 개별 기록은 null 가능 |
+| `place_id` | 연결된 장소. 직접 입력한 장소는 null 가능 |
+| `place_name_snapshot` | 기록 당시 장소명 |
+| `recorded_date`, `visited_at` | 날짜 그룹과 방문 시각 |
+| `original_image_url` | 재생성·편집에 사용하는 원본 이미지 |
+| `generated_image_url` | 목록·공유에 사용하는 완성 이미지 |
+| `writing_style` | 강아지 일기, 제주 방언 등 생성 스타일 |
+| `mood` | 행복, 신남, 여유 등 선택한 분위기 |
+| `generation_status` | 업로드·생성 진행 상태 |
+| `personal_message` | 사용자가 별도로 남긴 한 줄 |
+| `is_representative` | 날짜 그룹 대표 기록 여부 |
+
+여행별 로그 개수와 미리보기는 이 테이블에서 집계하며 `routes`에 중복 저장하지 않습니다.
+
+### `travel_log_pets`
+
+여행 기록과 함께한 반려동물의 N:M 연결 및 표시용 스냅샷입니다.
+
+| 컬럼 | 설명 |
+| --- | --- |
+| `travel_log_id` | 여행 기록 FK |
+| `pet_id` | 반려동물 FK. 향후 물리 삭제에 대비해 null 가능 |
+| `pet_name_snapshot` | 기록 당시 이름 |
+| `pet_profile_image_snapshot` | 기록 당시 프로필 이미지 |
+
+활성 반려동물이 존재하면 현재 프로필을 표시하고, 찾을 수 없을 때 스냅샷을 fallback으로 사용합니다.
+
+## 9. 고객지원
+
+### `inquiries`
+
+회원의 1:1 문의와 운영자 답변을 한 행에 저장합니다.
+
+| 컬럼 | 설명 |
+| --- | --- |
+| `user_id` | 문의 작성 회원 |
+| `category` | 계정, 반려동물, 코스, 일정, 오류, 기타 |
+| `status` | `pending` 또는 `completed` |
+| `title`, `content` | 문의 제목·본문 |
+| `image_urls` | 첨부 이미지 URL 배열 |
+| `answer`, `answered_at` | 운영자 답변과 답변 시각 |
+
+MVP에서는 첨부 이미지의 개별 메타데이터가 필요하지 않아 이미지 테이블을 추가하지 않습니다.
+
+### `notices`
+
+서비스 공지사항을 저장합니다.
+
+| 컬럼 | 설명 |
+| --- | --- |
+| `title`, `content` | 공지 제목·본문 |
+| `is_pinned` | 상단 고정 여부 |
+| `is_active` | 노출 여부 |
+| `published_at` | 게시 시각 |
+
+### `notifications`
+
+종 버튼에서 보여주는 회원별 앱 내부 알림과 읽음 상태를 저장합니다.
+
+| 컬럼 | 설명 |
+| --- | --- |
+| `user_id` | 알림을 받을 회원 |
+| `type` | 문의 답변, 여행 일정, 코스 생성, 정책 변경, 마케팅 등 알림 종류 |
+| `title`, `content` | 알림 제목·본문 |
+| `icon_key` | 앱에서 표시할 아이콘 식별자 |
+| `action_path` | 알림을 눌렀을 때 이동할 Expo Router 내부 경로 |
+| `is_read` | 읽음 여부 |
+| `created_at`, `read_at` | 생성·읽은 시각 |
+
+알림 수신 여부는 `users`의 설정 컬럼으로 판단하고, 실제 발생한 알림만 이 테이블에 추가합니다.
+Expo Push 발송 결과는 저장하지 않으므로 `notification_deliveries` 테이블은 만들지 않습니다.
+
+## 10. AI 챗봇
 
 ### `chat_conversations`
 
@@ -397,11 +485,14 @@ AI가 장소를 자유 문자열로만 반환하지 않고, 실제 `places.id`�
 
 | 부모 | 자식 처리 권장 |
 | --- | --- |
-| `users` 삭제 | 법적 보존 범위 확정 후 익명화 또는 파기 |
+| `users` 삭제 | 법적 보존 범위 확정 후 익명화 또는 파기, 알림은 cascade |
 | `places` 삭제 | 실제 삭제 대신 `is_active = false` |
 | `route_requests` 삭제 | 요청 반려동물·숙소·루트 cascade |
 | `routes` 삭제 | day·item·move·checklist·memo cascade |
 | `reviews` 삭제 | `review_images` cascade |
+| `pets` 삭제 | soft delete. 여행 기록 연결과 스냅샷 유지 |
+| `travel_logs` 삭제 | `travel_log_pets` cascade, 이미지 스토리지 파일 별도 삭제 |
+| `inquiries` 삭제 | 보존 정책에 따라 첨부 이미지와 함께 삭제 |
 | `chat_conversations` 삭제 | `chat_messages` cascade |
 
 Alembic migration에서 FK별 `ON DELETE`를 명시적으로 정의합니다.
@@ -414,7 +505,8 @@ Alembic migration에서 FK별 `ON DELETE`를 명시적으로 정의합니다.
 - 장소 소개 이력과 필드별 출처
 - 편의시설 마스터
 - 사용자 동반 정책 검증
-- 여행 로그·알림
+- 푸시 알림 발송 이력
+- 문의 이미지 개별 메타데이터
 - 운송사별 반려동물 탑승 규정
 - 데이터 동기화 이력
 - RAG 문서·pgvector 임베딩

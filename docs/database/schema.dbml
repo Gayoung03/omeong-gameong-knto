@@ -102,6 +102,9 @@ Table users {
   provider_user_id varchar(255)
   nickname varchar(50) [not null]
   profile_image_url text
+  inquiry_answer_notification_enabled boolean [not null, default: true]
+  marketing_notification_enabled boolean [not null, default: false]
+  deleted_at timestamptz
   created_at timestamptz [not null]
   updated_at timestamptz [not null]
 
@@ -122,6 +125,7 @@ Table pets {
   image_url text
   health_notes text
   is_primary boolean [not null, default: false]
+  deleted_at timestamptz
   created_at timestamptz [not null]
   updated_at timestamptz [not null]
 }
@@ -158,6 +162,7 @@ Table places {
   crowd_level smallint
   weather_sensitivity smallint
   reservation_required boolean [not null, default: false]
+  created_by_user_id uuid [ref: > users.id]
   is_active boolean [not null, default: true]
   created_at timestamptz [not null]
   updated_at timestamptz [not null]
@@ -285,6 +290,7 @@ Table routes {
   total_score decimal(6,2)
   pet_safety_score decimal(6,2)
   cover_image_url text
+  style_keywords varchar[]
   memo text
   share_token varchar(100) [unique]
   is_public boolean [not null, default: false]
@@ -420,6 +426,94 @@ Table review_images {
   review_id uuid [not null, ref: > reviews.id]
   image_url text [not null]
   sort_order int [not null, default: 0]
+}
+
+Table travel_logs {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  route_id uuid [ref: > routes.id]
+  place_id uuid [ref: > places.id]
+  place_name_snapshot varchar(200) [not null]
+  recorded_date date [not null]
+  visited_at timestamptz
+  original_image_url text [not null]
+  generated_image_url text
+  writing_style varchar(30) [not null]
+  mood varchar(30)
+  generation_status varchar(20) [not null, default: 'idle']
+  personal_message text
+  is_representative boolean [not null, default: false]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  indexes {
+    (user_id, recorded_date)
+    (route_id, recorded_date)
+    (place_id, recorded_date)
+  }
+}
+
+Table travel_log_pets {
+  id uuid [pk]
+  travel_log_id uuid [not null, ref: > travel_logs.id]
+  pet_id uuid [ref: > pets.id]
+  pet_name_snapshot varchar(50) [not null]
+  pet_profile_image_snapshot text
+
+  indexes {
+    (travel_log_id, pet_id) [unique]
+  }
+}
+
+Table inquiries {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  category varchar(50) [not null]
+  status varchar(20) [not null, default: 'pending']
+  title varchar(200) [not null]
+  content text [not null]
+  image_urls text[]
+  answer text
+  answered_at timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  indexes {
+    (user_id, status, created_at)
+  }
+}
+
+Table notices {
+  id uuid [pk]
+  title varchar(200) [not null]
+  content text [not null]
+  is_pinned boolean [not null, default: false]
+  is_active boolean [not null, default: true]
+  published_at timestamptz [not null]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  indexes {
+    (is_active, is_pinned, published_at)
+  }
+}
+
+Table notifications {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  type varchar(30) [not null]
+  title varchar(150) [not null]
+  content text [not null]
+  icon_key varchar(50)
+  action_path text
+  is_read boolean [not null, default: false]
+  created_at timestamptz [not null]
+  read_at timestamptz
+
+  indexes {
+    (user_id, is_read, created_at)
+    (user_id, created_at)
+  }
 }
 
 Table chat_conversations {
