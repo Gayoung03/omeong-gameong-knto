@@ -8,10 +8,28 @@
 
 각 테이블의 용도와 컬럼 설명은 [`table-reference.md`](./table-reference.md)에서 확인할 수 있습니다.
 
+## 실제 DB 구축
+
+DBML은 설계 문서이며 실제 PostgreSQL 테이블은 Alembic이 생성합니다. 저장소 루트에서 다음 명령을 실행합니다.
+
+```bash
+make db-up
+make db-migrate
+```
+
+전체 개발환경을 실행할 때는 `make dev`가 PostgreSQL 준비 확인과 마이그레이션을 자동 수행합니다.
+
+```bash
+make dev
+```
+
+마이그레이션 파일은 `apps/api/migrations/versions`, SQLAlchemy 모델은
+`apps/api/app/db/models`에서 관리합니다. DBML만 수정하지 말고 모델과 Alembic migration을 함께 변경합니다.
+
 ## 전체 규모
 
 ```text
-테이블 25개
+테이블 30개
 Enum 12개
 ```
 
@@ -26,7 +44,30 @@ Enum 12개
 | 날씨/이동 | `weather_snapshots`, `route_calculation_cache` |
 | 여행 부가기능 | `route_checklist_items`, `route_memos` |
 | 저장/리뷰 | `favorites`, `reviews`, `review_images` |
+| 여행 기록 | `travel_logs`, `travel_log_pets` |
+| 고객지원/알림 | `inquiries`, `notices`, `notifications` |
 | AI 챗봇 | `chat_conversations`, `chat_messages` |
+
+## 프론트 기능 대조 결과
+
+2026년 8월 각 팀원의 통합 브랜치에 구현된 화면·타입·목업 데이터를 기능별로 대조했습니다.
+
+| 구현 기능 | DB 반영 방식 |
+| --- | --- |
+| 로그인·회원가입·프로필 수정·탈퇴 | `users` 사용, 알림 설정 2개와 `deleted_at` 컬럼 추가 |
+| 반려동물 등록·수정·삭제 | `pets` 사용, 과거 기록 보존을 위한 `deleted_at` 추가 |
+| 회원 기본 여행 취향 | `user_travel_preferences` 사용 |
+| 홈·장소 탐색·즐겨찾기 | `places`, `favorites` 사용. 거리와 통계는 조회 시 계산 |
+| 사용자가 직접 등록한 장소 | 별도 테이블 없이 `places.created_by_user_id` 사용 |
+| 루트 추천·내 여행·일정 편집·지도 | 기존 `routes` 계열 사용, 편집 가능한 키워드 배열만 추가 |
+| 일차별 날씨 | `weather_snapshots` 사용 |
+| 체크리스트·일차/전체 메모 | `route_checklist_items`, `route_memos` 사용 |
+| 여행 기록 이미지 생성 | `travel_logs`, `travel_log_pets` 추가 |
+| 1:1 문의·공지사항·알림 목록 | `inquiries`, `notices`, `notifications` 추가 |
+| 챗봇 장소 응답 | `chat_messages.referenced_place_ids` 사용 |
+
+화면 타입에 존재하더라도 다른 데이터에서 계산할 수 있는 `nights`, `days`, `log_count`,
+`saved_count`, `review_count`, 여행 총거리·총시간은 별도 컬럼이나 테이블로 중복 저장하지 않습니다.
 
 ## 사용자 기본 취향과 이번 여행 조건
 
@@ -79,6 +120,10 @@ breed: varchar
 ```
 
 품종별 검색·의료·입장 규칙을 구현하지 않으므로 `pet_breeds` 테이블은 만들지 않습니다. 반려동물 성격 태그도 MVP 추천에서 제외합니다.
+
+반려동물 삭제는 물리 삭제가 아니라 `pets.deleted_at`을 기록하는 soft delete로 처리합니다.
+활성 프로필은 `deleted_at IS NULL` 조건으로 조회합니다. 과거 여행 기록의 이름과 이미지는
+`travel_log_pets`에 스냅샷으로 남기므로 프로필 변경·삭제 후에도 기록 화면이 유지됩니다.
 
 ## 장소 데이터 통합
 
@@ -137,6 +182,9 @@ place_external_refs
 주차장, 화장실, wifi, 엘리베이터, 편의점
 ```
 
+사용자가 직접 등록한 장소도 별도 `custom_places` 테이블을 만들지 않고 `places`에 저장합니다.
+이때 `created_by_user_id`를 채우고 외부 제공처 자료가 아니면 `data_provider.internal`로 구분합니다.
+
 ## 반려동물 동반 정책
 
 `place_pet_policies` 한 행에 장소의 동반 정책을 저장합니다.
@@ -172,6 +220,38 @@ completed  여행 종료
 ```
 
 사용자가 추천안을 저장하면 `routes.status` 값을 `generated`에서 `saved`로 변경합니다. 추천을 다시 생성하면 `version`을 증가시킵니다.
+
+내 여행 화면에서 수정하는 여행 키워드는 `routes.style_keywords`에 저장합니다. 숙박 일수, 여행 일수,
+숙소 요약, 로그 개수와 이동 합계는 날짜·일정·로그·이동 데이터에서 계산합니다.
+
+## 여행 기록
+
+여행 기록 한 건과 생성 이미지는 `travel_logs` 한 행으로 관리합니다.
+
+```text
+travel_logs
+- route_id nullable       여행에 연결되지 않은 개별 기록 허용
+- place_id nullable       사용자가 직접 적은 장소 허용
+- place_name_snapshot     장소명 변경·삭제에 대비
+- original_image_url      재생성·편집용 원본
+- generated_image_url     목록·공유에 표시할 완성 이미지
+- writing_style, mood     이미지 생성 입력값
+- generation_status       idle/uploading/generating/completed/failed
+```
+
+여러 반려동물이 한 기록에 참여할 수 있고 프로필 삭제 후에도 이름·사진이 남아야 하므로
+`travel_log_pets`만 별도 연결 테이블로 둡니다. 여행 자체의 반려동물은 기존
+`route_request_pets`에서 확인하므로 `trip_pets`를 중복 생성하지 않습니다.
+
+## 문의·공지·알림 설정
+
+- 1:1 문의는 답변과 상태까지 `inquiries` 한 테이블에서 관리합니다.
+- 문의 이미지는 공모전 MVP에서 `image_urls` 배열로 저장해 `inquiry_images` 테이블을 생략합니다.
+- 공지사항은 운영 데이터이므로 `notices`에 저장합니다.
+- 알림 설정은 두 개뿐이므로 별도 설정 테이블 없이 `users` 컬럼으로 관리합니다.
+- 종 버튼의 사용자별 알림 목록과 읽음 상태는 `notifications`에 저장합니다.
+- `action_path`에는 알림을 눌렀을 때 이동할 앱 내부 경로를 저장합니다.
+- Expo Push 발송 성공·실패 이력은 MVP에서 저장하지 않습니다.
 
 ## TMAP 경로 계산
 
@@ -219,6 +299,11 @@ GPS를 서버로 전송해야 하는 경우 DB에 저장하지 않고 API·프�
 - `route_items.ends_at > starts_at`
 - 위도 -90~90, 경도 -180~180
 - `pets.is_primary`는 사용자별 최대 1건
+- 반려동물 기본 조회는 `pets.deleted_at IS NULL`
+- `travel_logs.generation_status`는 `idle`, `uploading`, `generating`, `completed`, `failed` 중 하나
+- 문의 상태는 `pending`, `completed` 중 하나
+- 문의 답변 완료 시 `answer`, `answered_at` 필수
+- 알림을 읽으면 `is_read = true`, `read_at` 필수
 - `route_moves.from_item_id <> to_item_id`
 - `route_calculation_cache.expires_at > calculated_at`
 - 자주 조회하는 FK와 상태·카테고리 index
@@ -235,8 +320,8 @@ GPS를 서버로 전송해야 하는 경우 DB에 저장하지 않고 API·프�
 편의시설 코드/MA 테이블
 사용자 동반 정책 검증
 리뷰 도움 투표
-여행 로그
-알림
+푸시 알림 발송 이력
+문의 이미지 개별 메타데이터
 운송사 규정
 데이터 동기화 이력
 RAG 문서/임베딩
