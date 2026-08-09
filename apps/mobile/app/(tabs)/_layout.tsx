@@ -19,9 +19,7 @@ export default function TabLayout() {
 
   useEffect(() => {
     void getAuthSession().then((session) => {
-      // TODO(통합): 통합 QA 동안만 개발 모드에서 로그인 없이 탭에 접근할 수 있게 우회한다.
-      //            통합 PR 올리기 전에 이 조건을 `if (!session)` 으로 반드시 되돌릴 것.
-      if (!session && !__DEV__) {
+      if (!session) {
         router.replace('/login');
         return;
       }
