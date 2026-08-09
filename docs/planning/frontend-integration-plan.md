@@ -100,25 +100,60 @@ git switch -c dev/integration origin/main
 
 ---
 
-## [1] 지현 머지 — 충돌 0
+## ⚠️ 매 머지 후 검증 순서 (반드시 이 순서로)
+
+```
+merge → expo start (타입 재생성 + 화면 확인) → Ctrl+C → tsc → lint → push
+```
+
+**`tsc` 를 먼저 돌리면 없는 에러가 뜬다.** Expo Router 는 `app/` 폴더를 스캔해
+`.expo/types/router.d.ts` 에 라우트 타입을 자동 생성하는데, 이 파일은 **`expo start` 실행 시에만 갱신**된다.
+git merge 로 라우트 파일이 추가된 것은 반영되지 않으므로, 머지 직후 `tsc` 를 돌리면
+새로 들어온 라우트가 `is not assignable to type` 에러로 잡힌다.
 
 ```bash
-git merge --no-ff origin/dev/jihyun-main -m "merge: 루트 추천 화면 + DB 스키마 통합"
-cd apps/mobile && npm install
-npx tsc --noEmit && npm run lint
-npx expo start          # 루트 탭 확인
+rm -rf apps/mobile/.expo/types    # 낡은 타입 제거
+npx expo start                    # 재생성 + 화면 확인 → Ctrl+C
+npx tsc --noEmit
 ```
-포함: 루트 추천 화면 2개 + 백엔드 DB 스키마·마이그레이션 + docs/database
 
 ---
 
-## [2] 율림 머지 — 충돌 0
+## [1] 지현 머지 — 충돌 0 ✅ 완료 (2026-08-09)
+
+```bash
+git merge --no-ff origin/dev/jihyun-main -m "merge: 루트 추천 화면 통합"
+```
+- 충돌 0. 프론트 10개 파일만 들어옴 (2,517줄)
+- **DB 스키마·마이그레이션은 PR #19 로 main 에 먼저 들어와 있었고 내용이 동일**해서 diff 에 안 나타남
+- `npm install` 불필요 — 지현 코드가 쓰는 패키지가 전부 main 에 이미 있음
+- `.expo/types` 문제로 `tsc` 가 한 번 실패 → 재생성 후 통과
+- 결과: `tsc` ✅ / `lint` ✅
+
+---
+
+## [2] 율림 머지 — 충돌 0 ✅ 완료 (2026-08-09)
+
+커밋 `16f339a`. 충돌 0. `tsc` ✅ / `lint` ✅ / 5개 탭 정상.
+
+**통과 판정 기준: 빨간 크래시 화면이 뜨는가.** 콘솔 경고는 통과로 친다.
+이 단계에서 확인된 웹 콘솔 경고 2종은 모두 **머지 때문이 아니라 원래 있던 것**이며 [7]로 넘긴다.
+
+| 경고 | 원인 | 범위 | 처리 |
+| --- | --- | --- | --- |
+| `<button>` 중첩 (Pressable 안의 Pressable) | RN Web 이 `accessibilityRole="button"` 을 DOM `<button>` 으로 렌더링. 네이티브에선 정상 패턴 | 율림 7 + 지현 3 파일 | [7] 각 담당자 |
+| `"shadow*" style props are deprecated` | `shadowColor`/`shadowOffset` 직접 사용 | 율림 5 + 지현 2 파일 | [7] 행운 `shadow.ts`(`Platform.select` + `boxShadow`) 채택으로 일괄 해결 |
+
+### 원래 명령어
 
 ```bash
 git merge --no-ff origin/dev/yulim-main -m "merge: 내 여행 화면 통합"
-npm install && npx tsc --noEmit && npm run lint
-npx expo start          # 내 여행 탭 + 루트 탭 둘 다 확인
+cd apps/mobile && npm install     # 패키지 8개 추가되므로 필요
+rm -rf .expo/types && npx expo start
+# Ctrl+C 후
+npx tsc --noEmit && npm run lint
 ```
+확인: 내 여행 탭 + 루트 탭 둘 다 정상 동작
 
 **여기까지가 무위험 구간. 하루 안에 끝난다. 반드시 push 해두고 한숨 돌릴 것.**
 
@@ -277,6 +312,25 @@ PR 본문에는 `docs/planning/yulim-main-merge-notes.md` 의 누적 공유 항�
 4. **`234개 색상 → 토큰` 매핑표** 작성 → `docs/planning/design-token-map.md`
 
 산출물은 문서 하나. 이게 있어야 [7]을 남에게 넘길 수 있다.
+
+### [6]에서 정해야 할 것 — 화면 폭 처리 (통합 중 발견)
+
+지현 화면만 웹에서 폰 크기로 보이고 나머지는 화면 전체로 늘어난다.
+원인은 지현이 `maxWidth: 430` 짜리 `mobileFrame` 스타일을 직접 넣었기 때문
+(`RouteInputScreen.tsx:1016`, `RouteRecommendationScreen.tsx:579-583`. 지현 파일 2개에만 존재).
+
+**율림·행운·가영 쪽이 RN 기본 동작이고 지현이 예외다.** 실기기·시뮬레이터에서는 뷰포트가
+폰 너비라 둘 다 똑같이 보이므로, **웹 미리보기에서만 나타나는 차이**다.
+
+→ 통합 중에는 건드리지 않는다. [6]에서 둘 중 하나로 결정:
+- **(a) 지현의 `maxWidth` 제거** — 제출물이 모바일 앱이면 이쪽이 정석
+- **(b) 공통 `MobileFrame` 래퍼를 만들어 전 화면에 적용** — 웹으로 시연·심사한다면 이쪽
+
+### 지현 코드 특이사항 (통합 중 발견)
+
+`RouteInputScreen.tsx:28` 에서 **`const colors = {...}` 를 로컬로 선언해 theme 을 통째로 가리고 있다.**
+(`colors.white` 처럼 theme 에 없는 키를 쓰는데도 타입 에러가 안 나는 이유)
+→ [7]에서 지현 파일은 단순 색상 치환이 아니라 **로컬 palette 삭제 + 토큰 매핑**이 필요하다.
 
 ### 하드코딩 현황 (작업량 배분 근거)
 
