@@ -13,6 +13,13 @@ export function buildKakaoMapDocument(appKey: string, places: KakaoMapPlace[]) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <!--
+      카카오 지도 SDK 를 부를 때 출처(Referer)를 보내지 않는다.
+      웹에서는 이 문서가 iframe(srcdoc)으로 뜨면서 부모 주소(localhost:8081)를 출처로 물고 가는데,
+      카카오 콘솔은 localhost 를 사이트 도메인으로 받아주지 않아 SDK 로드가 거부된다.
+      배포 도메인을 콘솔에 등록한 뒤에는 이 meta 를 지워도 된다.
+    -->
+    <meta name="referrer" content="no-referrer" />
     <style>
       html, body, #map { width: 100%; height: 100%; margin: 0; overflow: hidden; }
       body { background: #eef8f7; font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; }
