@@ -10,10 +10,12 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <QueryClientProvider client={queryClient}>
+        {/* TODO(통합): 인증 붙인 뒤 initialRouteName="(auth)" 복원 검토 — 현재는 (tabs)/_layout 의 세션 검사로 처리 */}
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="places/[placeId]" />
+          <Stack.Screen name="routes/result" />
           <Stack.Screen name="trips/[tripId]/index" />
           <Stack.Screen name="trips/[tripId]/edit" />
           <Stack.Screen name="trips/[tripId]/info" />

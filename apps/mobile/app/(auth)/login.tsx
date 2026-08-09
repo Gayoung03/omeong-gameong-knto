@@ -1,5 +1,5 @@
-import { ScreenPlaceholder } from '@/src/components/feedback/ScreenPlaceholder';
+import { LoginScreen } from '@/src/features/auth/screens/LoginScreen';
 
 export default function LoginRoute() {
-  return <ScreenPlaceholder description="로그인 화면 작업 영역" title="로그인" />;
+  return <LoginScreen />;
 }
