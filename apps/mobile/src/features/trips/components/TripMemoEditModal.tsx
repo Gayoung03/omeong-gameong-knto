@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 
-import { colors, radius, spacing, typography } from '@/src/theme';
+import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 
 type TripMemoEditModalProps = {
   initialMemo: string;
@@ -64,7 +64,7 @@ export function TripMemoEditModal({ initialMemo, onClose, onSubmit }: TripMemoEd
 
 const styles = StyleSheet.create({
   backdrop: {
-    backgroundColor: 'rgba(30, 28, 25, 0.45)',
+    backgroundColor: overlayColors.scrim,
     flex: 1,
     justifyContent: 'flex-end',
   },

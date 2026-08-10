@@ -82,7 +82,7 @@ export const PetFilterBottomSheet = forwardRef<FilterSheetHandle, PetFilterBotto
                     {option.label}
                   </Text>
                   <Ionicons
-                    color={selected ? colors.mintIcon : colors.border}
+                    color={selected ? colors.sea : colors.border}
                     name={selected ? 'checkmark-circle' : 'ellipse-outline'}
                     size={22}
                   />
@@ -135,8 +135,8 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   petRowSelected: {
-    backgroundColor: colors.mintBg,
-    borderColor: colors.mintIcon,
+    backgroundColor: colors.seaSoftLight,
+    borderColor: colors.sea,
   },
   petRowUnselected: {
     backgroundColor: colors.surface,

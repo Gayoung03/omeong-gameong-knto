@@ -69,7 +69,7 @@ export function ChatbotScreen() {
           onChangeText={setInput}
           onSubmitEditing={() => sendMessage(input)}
           placeholder="제주 여행에 대해 궁금한 점을 입력해보세요"
-          placeholderTextColor="#9B9692"
+          placeholderTextColor={colors.textTertiary}
           returnKeyType="send"
           style={styles.input}
           value={input}
@@ -233,7 +233,7 @@ export function ChatbotScreen() {
                           <Ionicons color={colors.primary} name={suggestion.icon} size={19} />
                         </View>
                         <Text style={styles.suggestionText}>{suggestion.question}</Text>
-                        <Ionicons color="#A7A29E" name="chevron-forward" size={19} />
+                        <Ionicons color={colors.textTertiary} name="chevron-forward" size={19} />
                       </Pressable>
                     ))}
                   </View>
@@ -350,11 +350,11 @@ const styles = StyleSheet.create({
     height: 34,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#FFDCC8',
+    borderColor: colors.primarySoftStrong,
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFF3EA',
+    backgroundColor: colors.primarySoft,
   },
   assistantAvatarImage: {
     width: '100%',
@@ -377,9 +377,9 @@ const styles = StyleSheet.create({
   assistantBubble: {
     maxWidth: '100%',
     borderWidth: 1,
-    borderColor: '#F0E5DF',
+    borderColor: colors.basaltSoft,
     borderBottomLeftRadius: 5,
-    backgroundColor: '#FFF8F3',
+    backgroundColor: colors.primarySoft,
   },
   assistantLabel: {
     marginBottom: 5,
@@ -403,7 +403,7 @@ const styles = StyleSheet.create({
   },
   activeComposerBar: {
     borderTopWidth: 1,
-    borderTopColor: '#F0EAE6',
+    borderTopColor: colors.basaltSoft,
     backgroundColor: colors.surface,
   },
   activeComposerSection: {
@@ -429,10 +429,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     borderWidth: 1,
-    borderColor: '#E7E2DE',
+    borderColor: colors.divider,
     borderRadius: 18,
     backgroundColor: colors.surface,
-    shadowColor: '#64351E',
+    shadowColor: colors.primaryInk,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.07,
     shadowRadius: 10,
@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   sendButtonDisabled: {
-    backgroundColor: '#D9D4D0',
+    backgroundColor: colors.divider,
   },
   pressed: {
     opacity: 0.68,
@@ -461,7 +461,7 @@ const styles = StyleSheet.create({
   apiHint: {
     marginTop: 7,
     marginRight: 3,
-    color: '#A09A96',
+    color: colors.textTertiary,
     fontSize: 10,
     textAlign: 'right',
   },
@@ -480,7 +480,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     borderRadius: 11,
-    backgroundColor: '#FFF3EA',
+    backgroundColor: colors.primarySoft,
   },
   popularBadgeText: {
     color: colors.primary,
@@ -499,10 +499,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     borderWidth: 1,
-    borderColor: '#EEE8E4',
+    borderColor: colors.basaltSoft,
     borderRadius: 15,
     backgroundColor: colors.surface,
-    shadowColor: '#64351E',
+    shadowColor: colors.primaryInk,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
@@ -514,11 +514,11 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFF3EA',
+    backgroundColor: colors.primarySoft,
   },
   suggestionText: {
     flex: 1,
-    color: '#4F4A47',
+    color: colors.textStrong,
     fontSize: 13,
     fontWeight: '600',
     lineHeight: 18,

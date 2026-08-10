@@ -126,11 +126,11 @@ const styles = StyleSheet.create({
     width: 31,
     height: 31,
     borderWidth: 1,
-    borderColor: '#F0E5DF',
+    borderColor: colors.basaltSoft,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFF8F3',
+    backgroundColor: colors.primarySoft,
     overflow: 'hidden',
   },
   profileImage: {

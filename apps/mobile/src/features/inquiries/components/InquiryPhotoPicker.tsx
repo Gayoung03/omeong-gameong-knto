@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { RemoteImage } from '@/src/components/ui/RemoteImage';
-import { colors, radius, spacing, typography } from '@/src/theme';
+import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 
 export const MAX_INQUIRY_IMAGES = 3;
 
@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
   },
   removeButton: {
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: overlayColors.scrim,
     borderRadius: 9999,
     height: 22,
     justifyContent: 'center',

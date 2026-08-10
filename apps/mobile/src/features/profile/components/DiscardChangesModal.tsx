@@ -1,6 +1,6 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, shadow, spacing, typography } from '@/src/theme';
+import { colors, overlayColors, radius, shadow, spacing, typography } from '@/src/theme';
 
 type Props = {
   onDiscard: () => void;
@@ -52,6 +52,6 @@ const styles = StyleSheet.create({
   description: { color: colors.textSecondary, fontSize: 14, lineHeight: 21, marginTop: spacing.sm, textAlign: 'center' },
   discardButton: { backgroundColor: colors.error },
   discardLabel: { color: colors.surface, fontSize: 14, fontWeight: '700' },
-  overlay: { alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.48)', flex: 1, justifyContent: 'center', padding: spacing.md },
+  overlay: { alignItems: 'center', backgroundColor: overlayColors.dim, flex: 1, justifyContent: 'center', padding: spacing.md },
   title: { color: colors.textPrimary, fontSize: typography.body.fontSize + 1, fontWeight: '700', textAlign: 'center' },
 });

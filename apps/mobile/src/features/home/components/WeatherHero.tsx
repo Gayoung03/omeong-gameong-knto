@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { brandAssets } from '@/src/config/brandAssets';
-import { colors } from '@/src/theme';
+import { colors, overlayColors } from '@/src/theme';
 
 import type { WeatherSummary } from '../types/home';
 
@@ -41,7 +41,7 @@ export function WeatherHero({ weather, onPressChatbot }: WeatherHeroProps) {
         </View>
 
         <View style={styles.tipPill}>
-          <Ionicons color="#2F715F" name="leaf-outline" size={14} />
+          <Ionicons color={colors.seaDeep} name="leaf-outline" size={14} />
           <Text numberOfLines={2} style={styles.tipText}>
             {weather.tip}
           </Text>
@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 20,
     backgroundColor: colors.surface,
-    shadowColor: '#552610',
+    shadowColor: colors.primaryInk,
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.1,
     shadowRadius: 13,
@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
   scrim: {
     ...StyleSheet.absoluteFill,
     width: '100%',
-    backgroundColor: 'rgba(255,255,255,0.17)',
+    backgroundColor: overlayColors.whiteVeil,
   },
   heroCharacter: {
     position: 'absolute',
@@ -100,12 +100,12 @@ const styles = StyleSheet.create({
   },
   greeting: {
     marginBottom: 5,
-    color: '#222222',
+    color: colors.basalt,
     fontSize: 14,
     fontWeight: '800',
   },
   location: {
-    color: '#333333',
+    color: colors.textPrimary,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -115,19 +115,19 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   temperature: {
-    color: '#171717',
+    color: colors.basalt,
     fontSize: 29,
     fontWeight: '900',
     letterSpacing: -1.2,
   },
   condition: {
-    color: '#343434',
+    color: colors.textPrimary,
     fontSize: 13,
     fontWeight: '700',
   },
   details: {
     marginTop: 1,
-    color: '#3E5962',
+    color: colors.textSecondary,
     fontSize: 11,
     fontWeight: '600',
   },
@@ -140,11 +140,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.88)',
+    backgroundColor: overlayColors.frostedCard,
   },
   tipText: {
     flex: 1,
-    color: '#42655C',
+    color: colors.textSecondary,
     fontSize: 10,
     fontWeight: '600',
     lineHeight: 14,

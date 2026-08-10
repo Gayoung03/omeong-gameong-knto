@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RemoteImage } from '@/src/components/ui/RemoteImage';
 import { usePets } from '@/src/features/profile/hooks/usePets';
-import { colors, radius, shadow, spacing, typography } from '@/src/theme';
+import { colors, overlayColors, radius, shadow, spacing, typography } from '@/src/theme';
 
 import { LogCreationCancelModal } from './components/LogCreationCancelModal';
 import { MomentStepHeader } from './components/MomentStepHeader';
@@ -247,7 +247,7 @@ export function NewMomentPhotoStepScreen() {
 const styles = StyleSheet.create({
   changeButton: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    backgroundColor: overlayColors.frostedCard,
     borderColor: colors.border,
     borderRadius: radius.xl,
     borderWidth: 1,
@@ -278,6 +278,6 @@ const styles = StyleSheet.create({
   safeArea: { backgroundColor: colors.background, flex: 1 },
   selectedArea: { flex: 1, gap: spacing.md, minHeight: 0 },
   sourceActions: { flexDirection: 'row', gap: spacing.sm },
-  sourceButton: { alignItems: 'center', backgroundColor: colors.mintBg, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flex: 1, gap: spacing.xs, justifyContent: 'center', minHeight: 78, padding: spacing.sm },
+  sourceButton: { alignItems: 'center', backgroundColor: colors.seaSoftLight, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flex: 1, gap: spacing.xs, justifyContent: 'center', minHeight: 78, padding: spacing.sm },
   sourceLabel: { color: colors.secondary, fontSize: 13, fontWeight: '600' },
 });

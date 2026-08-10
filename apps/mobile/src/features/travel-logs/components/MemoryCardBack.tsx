@@ -43,7 +43,7 @@ export function MemoryCardBack({ log, onEditPress }: MemoryCardBackProps) {
           onPress={onEditPress}
           style={styles.editButton}
         >
-          <Ionicons color={colors.mintIcon} name="create-outline" size={13} />
+          <Ionicons color={colors.sea} name="create-outline" size={13} />
           <Text style={styles.editLabel}>{hasMessage ? '한 줄 기록 수정' : '한 줄 기록 남기기'}</Text>
         </Pressable>
       ) : null}
@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs / 2,
   },
   editLabel: {
-    color: colors.mintIcon,
+    color: colors.sea,
     fontSize: typography.body.fontSize - 3,
     fontWeight: '600',
   },

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors } from '@/src/theme';
+import { brandColors, colors } from '@/src/theme';
 
 import { AuthBrand } from '../components/AuthBrand';
 import { AuthHeader } from '../components/AuthHeader';
@@ -21,10 +21,14 @@ import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { getAuthSession, signIn } from '../services/authStorage';
 
+/**
+ * 각 사의 브랜드 가이드라인에 규정된 색이라 theme 토큰으로 치환하지 않는다.
+ * 값은 `theme/colors.ts` 의 `brandColors` 에 모아두었다.
+ */
 const socialProviders = [
-  { label: '네이버', shortLabel: 'N', backgroundColor: '#03C75A', textColor: '#FFFFFF' },
-  { label: '카카오', shortLabel: '●', backgroundColor: '#FEE500', textColor: '#191919' },
-  { label: '구글', shortLabel: 'G', backgroundColor: '#FFFFFF', textColor: '#4285F4' },
+  { label: '네이버', shortLabel: 'N', ...brandColors.naver },
+  { label: '카카오', shortLabel: '●', ...brandColors.kakao },
+  { label: '구글', shortLabel: 'G', ...brandColors.google },
 ];
 
 export function LoginScreen() {
@@ -107,7 +111,7 @@ export function LoginScreen() {
                   style={styles.rememberRow}
                 >
                   <View style={[styles.checkbox, remember && styles.checkboxChecked]}>
-                    {remember && <Ionicons color="#FFFFFF" name="checkmark" size={13} />}
+                    {remember && <Ionicons color={colors.surface} name="checkmark" size={13} />}
                   </View>
                   <Text style={styles.optionText}>로그인 상태 유지</Text>
                 </Pressable>
@@ -133,11 +137,11 @@ export function LoginScreen() {
                   onPress={() => Alert.alert('추후 연동', `${provider.label} 로그인을 연결할 예정입니다.`)}
                   style={({ pressed }) => [
                     styles.socialButton,
-                    { backgroundColor: provider.backgroundColor },
+                    { backgroundColor: provider.background },
                     pressed && styles.pressed,
                   ]}
                 >
-                  <Text style={[styles.socialLabel, { color: provider.textColor }]}>
+                  <Text style={[styles.socialLabel, { color: provider.text }]}>
                     {provider.shortLabel}
                   </Text>
                 </Pressable>
@@ -158,7 +162,7 @@ export function LoginScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  safeArea: { backgroundColor: '#FFFFFF', flex: 1 },
+  safeArea: { backgroundColor: colors.surface, flex: 1 },
   scrollContent: { flexGrow: 1 },
   screen: {
     alignSelf: 'center',
@@ -178,7 +182,7 @@ const styles = StyleSheet.create({
   rememberRow: { alignItems: 'center', flexDirection: 'row', gap: 7 },
   checkbox: {
     alignItems: 'center',
-    borderColor: '#D8D4D0',
+    borderColor: colors.divider,
     borderRadius: 4,
     borderWidth: 1,
     height: 18,
@@ -186,14 +190,14 @@ const styles = StyleSheet.create({
     width: 18,
   },
   checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
-  optionText: { color: '#66615E', fontSize: 13 },
+  optionText: { color: colors.textStrong, fontSize: 13 },
   dividerRow: { alignItems: 'center', flexDirection: 'row', gap: 12, marginTop: 26 },
-  divider: { backgroundColor: '#EEEAE7', flex: 1, height: 1 },
-  dividerText: { color: '#8B8784', fontSize: 12 },
+  divider: { backgroundColor: colors.border, flex: 1, height: 1 },
+  dividerText: { color: colors.iconGray, fontSize: 12 },
   socialRow: { flexDirection: 'row', gap: 20, justifyContent: 'center', marginTop: 18 },
   socialButton: {
     alignItems: 'center',
-    borderColor: '#E6E2DF',
+    borderColor: colors.divider,
     borderRadius: 25,
     borderWidth: 1,
     height: 50,
@@ -204,7 +208,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   signupPrompt: {
     alignItems: 'center',
-    borderColor: '#F1E8E1',
+    borderColor: colors.basaltSoft,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: 'row',
@@ -213,7 +217,7 @@ const styles = StyleSheet.create({
     marginTop: 24,
     minHeight: 58,
   },
-  signupPromptText: { color: '#5D5855', fontSize: 14 },
+  signupPromptText: { color: colors.textStrong, fontSize: 14 },
   signupLink: { color: colors.primary, fontSize: 14, fontWeight: '800' },
 });
 

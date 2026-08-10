@@ -4,6 +4,8 @@ import { WebView } from 'react-native-webview';
 import type { KakaoPlaceMapProps } from './KakaoPlaceMap.types';
 import { buildKakaoMapDocument } from './buildKakaoMapDocument';
 
+import { colors } from '@/src/theme';
+
 export function KakaoPlaceMap({ appKey, places }: KakaoPlaceMapProps) {
   return (
     <WebView
@@ -27,6 +29,6 @@ export function KakaoPlaceMap({ appKey, places }: KakaoPlaceMapProps) {
 const styles = StyleSheet.create({
   map: {
     flex: 1,
-    backgroundColor: '#EEF8F7',
+    backgroundColor: colors.seaSoftLight,
   },
 });

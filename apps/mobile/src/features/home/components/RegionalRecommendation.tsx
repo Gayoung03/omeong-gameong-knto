@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors } from '@/src/theme';
+import { colors, overlayColors } from '@/src/theme';
 
 import { homeRegions } from '../data/homeRegions';
 import type { PlaceRegion } from '@/src/features/places/types/place';
@@ -61,14 +61,14 @@ const styles = StyleSheet.create({
   mapCard: {
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#E5F3F1',
+    borderColor: colors.seaSoft,
     borderRadius: 18,
-    backgroundColor: '#F3FCFC',
+    backgroundColor: colors.seaSoftLight,
   },
   mapVisual: {
     width: '100%',
     aspectRatio: 2,
-    backgroundColor: '#F3FCFC',
+    backgroundColor: colors.seaSoftLight,
   },
   mapBackgroundButton: {
     ...StyleSheet.absoluteFill,
@@ -93,10 +93,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 3,
     borderWidth: 1,
-    borderColor: 'rgba(255,122,69,0.22)',
+    borderColor: overlayColors.primaryBorder,
     borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    shadowColor: '#4D321F',
+    backgroundColor: overlayColors.frostedCard,
+    shadowColor: colors.primaryInk,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
     shadowRadius: 4,

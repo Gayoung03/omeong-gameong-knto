@@ -108,7 +108,12 @@ const styles = StyleSheet.create({
   cancelLabel: { color: colors.secondary, fontWeight: '600' },
   footer: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
   list: { gap: spacing.sm },
-  petName: { color: colors.textPrimary, flex: 1, fontSize: typography.body.fontSize, fontWeight: '600' },
+  petName: {
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: typography.body.fontSize,
+    fontWeight: '600',
+  },
   petRow: {
     alignItems: 'center',
     borderColor: colors.border,
@@ -118,6 +123,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.sm,
   },
-  sheet: { backgroundColor: colors.surface, gap: spacing.md, padding: spacing.lg, paddingBottom: spacing.xl },
+  sheet: {
+    backgroundColor: colors.surface,
+    gap: spacing.md,
+    padding: spacing.lg,
+    paddingBottom: spacing.xl,
+  },
   title: { color: colors.textPrimary, fontSize: 18, fontWeight: '700', textAlign: 'center' },
 });

@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RemoteImage } from '@/src/components/ui/RemoteImage';
 import { usePets } from '@/src/features/profile/hooks/usePets';
-import { colors, radius, spacing, typography } from '@/src/theme';
+import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 import type { MomentMood, WritingStyle } from '@/src/types/logDraft';
 
 import { useLogDraftStore } from './stores/useLogDraftStore';
@@ -110,11 +110,11 @@ const styles = StyleSheet.create({
   outlineButton: { alignItems: 'center', borderColor: colors.secondary, borderRadius: radius.sm, borderWidth: 1, maxWidth: 340, padding: spacing.md, width: '100%' },
   outlineLabel: { color: colors.secondary, fontWeight: '700' },
   photo: { height: 330, width: 330 },
-  photoFrame: { backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.sm, shadowColor: '#000000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 6 },
+  photoFrame: { backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.sm, shadowColor: overlayColors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 6 },
   primaryButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: radius.sm, maxWidth: 340, padding: spacing.md, width: '100%' },
   primaryLabel: { color: colors.surface, fontWeight: '700' },
   safeArea: { backgroundColor: colors.background, flex: 1 },
-  smallDot: { backgroundColor: colors.orangeBg, borderRadius: 4, height: 8, width: 8 },
+  smallDot: { backgroundColor: colors.primarySoft, borderRadius: 4, height: 8, width: 8 },
   step: { color: colors.textSecondary, fontSize: 11 },
   stepActive: { color: colors.primary, fontWeight: '700' },
   stepDone: { color: colors.secondary, fontWeight: '700' },

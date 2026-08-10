@@ -17,8 +17,8 @@ type ChipProps = {
 };
 
 const toneStyles = {
-  orange: { background: colors.orangeBg, foreground: colors.orangeIcon },
-  mint: { background: colors.mintBg, foreground: colors.mintIcon },
+  orange: { background: colors.primarySoft, foreground: colors.primary },
+  mint: { background: colors.seaSoftLight, foreground: colors.sea },
 } as const;
 
 export function Chip({

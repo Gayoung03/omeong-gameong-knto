@@ -1,8 +1,24 @@
+import { colors } from '@/src/theme';
+
 import type { KakaoMapPlace } from './KakaoPlaceMap.types';
 
 function serializeForInlineScript(value: unknown) {
   return JSON.stringify(value).replaceAll('<', '\\u003c');
 }
+
+/**
+ * WebView 안의 HTML 은 theme 토큰을 직접 참조할 수 없다.
+ * 그래서 필요한 색만 이 객체로 추려서 문자열에 끼워 넣는다.
+ * (개발 가이드 9항 — `trips/utils/kakaoMapHtml.ts` 와 같은 방식)
+ */
+const mapColors = {
+  canvas: colors.seaSoftLight,
+  statusText: colors.textSecondary,
+  placeName: colors.basalt,
+  placeAddress: colors.textSecondary,
+  categoryText: colors.seaDeep,
+  categoryBg: colors.seaSoft,
+} as const;
 
 export function buildKakaoMapDocument(appKey: string, places: KakaoMapPlace[]) {
   const encodedAppKey = encodeURIComponent(appKey);
@@ -22,7 +38,7 @@ export function buildKakaoMapDocument(appKey: string, places: KakaoMapPlace[]) {
     <meta name="referrer" content="no-referrer" />
     <style>
       html, body, #map { width: 100%; height: 100%; margin: 0; overflow: hidden; }
-      body { background: #eef8f7; font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; }
+      body { background: ${mapColors.canvas}; font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; }
       #status {
         position: absolute;
         inset: 0;
@@ -31,23 +47,23 @@ export function buildKakaoMapDocument(appKey: string, places: KakaoMapPlace[]) {
         align-items: center;
         justify-content: center;
         padding: 24px;
-        color: #707070;
+        color: ${mapColors.statusText};
         font-size: 14px;
         text-align: center;
-        background: #eef8f7;
+        background: ${mapColors.canvas};
       }
       .place-info { min-width: 160px; padding: 10px 12px; line-height: 1.35; }
-      .place-name { color: #222; font-size: 14px; font-weight: 800; }
-      .place-address { margin-top: 4px; color: #707070; font-size: 11px; }
+      .place-name { color: ${mapColors.placeName}; font-size: 14px; font-weight: 800; }
+      .place-address { margin-top: 4px; color: ${mapColors.placeAddress}; font-size: 11px; }
       .place-category {
         display: inline-block;
         margin-top: 7px;
         padding: 3px 7px;
         border-radius: 6px;
-        color: #238871;
+        color: ${mapColors.categoryText};
         font-size: 10px;
         font-weight: 700;
-        background: #e8f8f3;
+        background: ${mapColors.categoryBg};
       }
     </style>
   </head>

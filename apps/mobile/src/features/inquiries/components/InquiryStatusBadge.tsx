@@ -8,8 +8,8 @@ type Props = {
 };
 
 const statusColors: Record<InquiryStatus, { background: string; foreground: string }> = {
-  pending: { background: colors.orangeBg, foreground: colors.orangeIcon },
-  completed: { background: colors.mintBg, foreground: colors.mintIcon },
+  pending: { background: colors.primarySoft, foreground: colors.primary },
+  completed: { background: colors.seaSoftLight, foreground: colors.sea },
 };
 
 export function InquiryStatusBadge({ status }: Props) {

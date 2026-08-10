@@ -1,5 +1,7 @@
 import type { RecommendedDay } from '../types';
 
+import { thumbnailPalette } from '@/src/theme';
+
 export const recommendedDays: RecommendedDay[] = [
   {
     day: 1,
@@ -15,7 +17,7 @@ export const recommendedDays: RecommendedDay[] = [
         time: '10:00',
         petStatus: '동반 가능',
         emoji: '🌿',
-        thumbnailColor: '#DDF2E6',
+        thumbnailColor: thumbnailPalette[0],
       },
       {
         id: 'cafe-oreum',
@@ -26,7 +28,7 @@ export const recommendedDays: RecommendedDay[] = [
         travelMinutes: 25,
         petStatus: '동반 가능',
         emoji: '☕️',
-        thumbnailColor: '#F7E7D3',
+        thumbnailColor: thumbnailPalette[1],
       },
       {
         id: 'noranghae',
@@ -37,7 +39,7 @@ export const recommendedDays: RecommendedDay[] = [
         travelMinutes: 18,
         petStatus: '동반 가능',
         emoji: '🌼',
-        thumbnailColor: '#FFF1B9',
+        thumbnailColor: thumbnailPalette[2],
       },
       {
         id: 'aewol-stay',
@@ -48,7 +50,7 @@ export const recommendedDays: RecommendedDay[] = [
         travelMinutes: 32,
         petStatus: '확인 필요',
         emoji: '🏡',
-        thumbnailColor: '#DCECF7',
+        thumbnailColor: thumbnailPalette[3],
       },
     ],
   },
@@ -66,7 +68,7 @@ export const recommendedDays: RecommendedDay[] = [
         time: '09:30',
         petStatus: '동반 가능',
         emoji: '🌊',
-        thumbnailColor: '#D8F0F5',
+        thumbnailColor: thumbnailPalette[4],
       },
       {
         id: 'mong-sikdang',
@@ -77,7 +79,7 @@ export const recommendedDays: RecommendedDay[] = [
         travelMinutes: 16,
         petStatus: '동반 가능',
         emoji: '🍲',
-        thumbnailColor: '#FFE0CC',
+        thumbnailColor: thumbnailPalette[5],
       },
       {
         id: 'arte-museum',
@@ -88,7 +90,7 @@ export const recommendedDays: RecommendedDay[] = [
         travelMinutes: 20,
         petStatus: '확인 필요',
         emoji: '🎨',
-        thumbnailColor: '#E6E1F8',
+        thumbnailColor: thumbnailPalette[0],
       },
     ],
   },
@@ -106,7 +108,7 @@ export const recommendedDays: RecommendedDay[] = [
         time: '10:00',
         petStatus: '동반 가능',
         emoji: '🐾',
-        thumbnailColor: '#E9F1DC',
+        thumbnailColor: thumbnailPalette[1],
       },
       {
         id: 'jeju-market',
@@ -117,7 +119,7 @@ export const recommendedDays: RecommendedDay[] = [
         travelMinutes: 24,
         petStatus: '확인 필요',
         emoji: '🧺',
-        thumbnailColor: '#FFE4D8',
+        thumbnailColor: thumbnailPalette[2],
       },
       {
         id: 'airport',
@@ -128,7 +130,7 @@ export const recommendedDays: RecommendedDay[] = [
         travelMinutes: 15,
         petStatus: '동반 가능',
         emoji: '✈️',
-        thumbnailColor: '#DCE9F5',
+        thumbnailColor: thumbnailPalette[3],
       },
     ],
   },

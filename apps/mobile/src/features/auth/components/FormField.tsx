@@ -23,10 +23,10 @@ export function FormField({ icon, error, password = false, style, ...props }: Fo
   return (
     <View style={styles.wrapper}>
       <View style={[styles.field, error && styles.fieldError]}>
-        <Ionicons color="#929292" name={icon} size={21} />
+        <Ionicons color={colors.iconGray} name={icon} size={21} />
         <TextInput
           autoCapitalize="none"
-          placeholderTextColor="#A7A7A7"
+          placeholderTextColor={colors.textTertiary}
           secureTextEntry={password && !passwordVisible}
           style={[styles.input, style]}
           {...props}
@@ -38,7 +38,7 @@ export function FormField({ icon, error, password = false, style, ...props }: Fo
             onPress={() => setPasswordVisible((visible) => !visible)}
           >
             <Ionicons
-              color="#929292"
+              color={colors.iconGray}
               name={passwordVisible ? 'eye-off-outline' : 'eye-outline'}
               size={21}
             />
@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
   field: {
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderColor: '#E4E1DE',
+    borderColor: colors.divider,
     borderRadius: 15,
     borderWidth: 1,
     flexDirection: 'row',

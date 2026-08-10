@@ -9,7 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { colors, radius, spacing, typography } from '@/src/theme';
+import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 import type { TravelLog } from '@/src/types/travelLog';
 
 import { useUpdatePersonalMessage } from '../hooks/useUpdatePersonalMessage';
@@ -244,14 +244,14 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   hint: {
-    color: 'rgba(255,255,255,0.85)',
+    color: overlayColors.onDarkText,
     fontSize: typography.body.fontSize - 3,
     marginTop: spacing.sm,
     textAlign: 'center',
   },
   overlay: {
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: overlayColors.dim,
     flex: 1,
     justifyContent: 'center',
   },

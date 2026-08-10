@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
-    borderBottomColor: '#F1F1F1',
+    borderBottomColor: colors.neutralGray,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   backButton: {
@@ -80,7 +80,7 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFF1EA',
+    backgroundColor: colors.primarySoft,
   },
   title: {
     color: colors.textPrimary,

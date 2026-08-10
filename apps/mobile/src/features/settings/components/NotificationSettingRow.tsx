@@ -18,7 +18,7 @@ export function NotificationSettingRow({ label, value, onValueChange, disabled =
         ios_backgroundColor={colors.border}
         onValueChange={onValueChange}
         thumbColor={colors.surface}
-        trackColor={{ false: colors.border, true: colors.mintIcon }}
+        trackColor={{ false: colors.border, true: colors.sea }}
         value={value}
       />
     </View>

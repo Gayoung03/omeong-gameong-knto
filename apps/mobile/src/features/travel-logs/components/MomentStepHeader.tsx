@@ -9,7 +9,12 @@ export function MomentStepHeader({ title, step, onBack }: Props) {
   return (
     <>
       <View style={styles.header}>
-        <Pressable accessibilityLabel="이전 화면" hitSlop={8} onPress={onBack} style={styles.backButton}>
+        <Pressable
+          accessibilityLabel="이전 화면"
+          hitSlop={8}
+          onPress={onBack}
+          style={styles.backButton}
+        >
           <Ionicons color={colors.textPrimary} name="arrow-back" size={24} />
         </Pressable>
         <Text style={styles.title}>{title}</Text>
@@ -40,14 +45,37 @@ export function MomentStepHeader({ title, step, onBack }: Props) {
 
 const styles = StyleSheet.create({
   backButton: { padding: spacing.sm },
-  header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  header: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
   placeholder: { width: 40 },
-  progressDot: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 8, borderWidth: 2, height: 16, justifyContent: 'center', position: 'absolute', top: -7, width: 16 },
+  progressDot: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 2,
+    height: 16,
+    justifyContent: 'center',
+    position: 'absolute',
+    top: -7,
+    width: 16,
+  },
   progressDotActive: { borderColor: colors.primary },
   progressDotDone: { backgroundColor: colors.primary },
   progressFill: { backgroundColor: colors.primary, height: 2 },
   progressLabel: { color: colors.textPrimary, fontSize: 15 },
-  progressRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.lg, paddingBottom: spacing.lg, paddingHorizontal: spacing.xl },
+  progressRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.lg,
+    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.xl,
+  },
   progressTrack: { backgroundColor: colors.border, flex: 1, height: 2, position: 'relative' },
   title: { color: colors.textPrimary, fontSize: 16, fontWeight: '700' },
 });

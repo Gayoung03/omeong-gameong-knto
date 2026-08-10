@@ -215,7 +215,7 @@ export function InquiryCreateScreen() {
           </FormField>
 
           <View style={styles.infoRow}>
-            <Ionicons color={colors.mintIcon} name="information-circle-outline" size={16} />
+            <Ionicons color={colors.sea} name="information-circle-outline" size={16} />
             <Text style={styles.infoText}>답변이 등록되면 앱에서 확인할 수 있어요.</Text>
           </View>
 

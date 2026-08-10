@@ -209,7 +209,7 @@ function buildMarkedDates(range: DateRange | null): Record<string, PeriodMarking
 
   return days.reduce<Record<string, PeriodMarking>>((marked, day, index) => {
     marked[day] = {
-      color: colors.orangeBg,
+      color: colors.primarySoft,
       textColor: colors.textPrimary,
       startingDay: index === 0,
       endingDay: index === days.length - 1,

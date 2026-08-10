@@ -74,7 +74,7 @@ function InquiryDetailBody({ inquiry }: { inquiry: InquiryItem }) {
           <Text style={[styles.sectionTitle, styles.answerTitle]}>오멍가멍 답변</Text>
           {isAnswered ? (
             <View style={styles.answerCheck}>
-              <Ionicons color={colors.mintIcon} name="checkmark" size={16} />
+              <Ionicons color={colors.sea} name="checkmark" size={16} />
             </View>
           ) : null}
         </View>
@@ -98,7 +98,7 @@ function InquiryDetailBody({ inquiry }: { inquiry: InquiryItem }) {
 const styles = StyleSheet.create({
   answerCheck: {
     alignItems: 'center',
-    backgroundColor: colors.mintBg,
+    backgroundColor: colors.seaSoftLight,
     borderRadius: 9999,
     height: 26,
     justifyContent: 'center',
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   answerTitle: {
-    color: colors.mintIcon,
+    color: colors.sea,
   },
   answeredChip: {
     alignItems: 'center',

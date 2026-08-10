@@ -16,8 +16,8 @@ type StatTileProps = {
 };
 
 const variantColors: Record<StatTileVariant, { background: string; icon: string }> = {
-  mint: { background: colors.mintBg, icon: colors.mintIcon },
-  orange: { background: colors.orangeBg, icon: colors.orangeIcon },
+  mint: { background: colors.seaSoftLight, icon: colors.sea },
+  orange: { background: colors.primarySoft, icon: colors.primary },
 };
 
 export function StatTile({ icon, label, value, unit = '개', variant, onPress }: StatTileProps) {

@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar } from '@/src/components/ui/Avatar';
 import { RemoteImage } from '@/src/components/ui/RemoteImage';
 import { useAllPets, usePets } from '@/src/features/profile/hooks/usePets';
-import { colors, radius, spacing, typography } from '@/src/theme';
+import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 import type { Trip } from '@/src/types/travelLog';
 
 import {
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
   modalBackdrop: { bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 },
   modalHandle: { alignSelf: 'center', backgroundColor: colors.border, borderRadius: 2, height: 4, width: 42 },
   modalKeyboard: { flex: 1, justifyContent: 'flex-end', pointerEvents: 'box-none' },
-  modalOverlay: { backgroundColor: 'rgba(0,0,0,0.42)', flex: 1 },
+  modalOverlay: { backgroundColor: overlayColors.scrim, flex: 1 },
   modalTitle: { color: colors.textPrimary, fontSize: 18, fontWeight: '700', marginTop: spacing.sm, textAlign: 'center' },
   noSearchResult: { alignItems: 'center', gap: spacing.sm, justifyContent: 'center', minHeight: 150 },
   nextButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: radius.sm, paddingVertical: 14 },
@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
   sectionHeading: { gap: 2, marginTop: spacing.sm },
   sectionSubtitle: { color: colors.textSecondary, fontSize: 12 },
   sectionTitle: { color: colors.textPrimary, fontSize: 16, fontWeight: '700' },
-  selectedCard: { backgroundColor: colors.orangeBg, borderColor: colors.primary },
-  selectionSummary: { alignItems: 'center', backgroundColor: colors.mintBg, borderRadius: radius.sm, flexDirection: 'row', gap: spacing.sm, padding: spacing.sm },
+  selectedCard: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
+  selectionSummary: { alignItems: 'center', backgroundColor: colors.seaSoftLight, borderRadius: radius.sm, flexDirection: 'row', gap: spacing.sm, padding: spacing.sm },
   summaryText: { color: colors.textPrimary, fontSize: 13 },
 });

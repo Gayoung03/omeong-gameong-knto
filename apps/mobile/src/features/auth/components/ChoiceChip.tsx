@@ -23,7 +23,7 @@ export function ChoiceChip({ label, selected, onPress, icon, grow = false }: Cho
         pressed && styles.pressed,
       ]}
     >
-      {icon && <Ionicons color={selected ? '#18967C' : '#55504D'} name={icon} size={20} />}
+      {icon && <Ionicons color={selected ? colors.seaDeep : colors.textStrong} name={icon} size={20} />}
       <Text style={[styles.label, selected && styles.labelSelected]}>{label}</Text>
     </Pressable>
   );
@@ -33,7 +33,7 @@ const styles = StyleSheet.create({
   chip: {
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderColor: '#E6E4E2',
+    borderColor: colors.divider,
     borderRadius: 13,
     borderWidth: 1,
     flexDirection: 'row',
@@ -46,19 +46,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   selected: {
-    backgroundColor: '#EEFBF7',
-    borderColor: '#45BFA4',
+    backgroundColor: colors.seaSoftLight,
+    borderColor: colors.sea,
   },
   pressed: {
     opacity: 0.72,
   },
   label: {
-    color: '#4F4B48',
+    color: colors.textStrong,
     fontSize: 14,
     fontWeight: '700',
   },
   labelSelected: {
-    color: '#168F77',
+    color: colors.seaDeep,
   },
 });
 
