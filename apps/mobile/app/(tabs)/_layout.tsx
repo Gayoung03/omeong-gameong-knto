@@ -1,10 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 
+import { getAuthSession } from '@/src/features/auth/services/authStorage';
 import { colors } from '@/src/theme';
 
 const tabIcons = {
-  index: 'home-outline',
+  '(home)': 'home-outline',
   routes: 'map-outline',
   chatbot: 'chatbubble-ellipses-outline',
   trips: 'calendar-outline',
@@ -12,6 +14,21 @@ const tabIcons = {
 } as const;
 
 export default function TabLayout() {
+  const router = useRouter();
+  const [sessionChecked, setSessionChecked] = useState(false);
+
+  useEffect(() => {
+    void getAuthSession().then((session) => {
+      if (!session) {
+        router.replace('/login');
+        return;
+      }
+      setSessionChecked(true);
+    });
+  }, [router]);
+
+  if (!sessionChecked) return null;
+
   return (
     <Tabs
       screenOptions={({ route }) => ({
@@ -27,7 +44,7 @@ export default function TabLayout() {
         ),
       })}
     >
-      <Tabs.Screen name="index" options={{ title: '홈' }} />
+      <Tabs.Screen name="(home)" options={{ title: '홈' }} />
       <Tabs.Screen name="routes" options={{ title: '루트' }} />
       <Tabs.Screen name="chatbot" options={{ title: '챗봇' }} />
       <Tabs.Screen name="trips" options={{ title: '내 여행' }} />

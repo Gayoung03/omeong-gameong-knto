@@ -1,0 +1,127 @@
+import type { Place, PlaceCategory } from '../types/place';
+
+export const placeCategories: PlaceCategory[] = [
+  { id: 'tour', label: '관광지', icon: 'partly-sunny-outline' },
+  { id: 'cafe', label: '카페·식당', icon: 'cafe-outline' },
+  { id: 'stay', label: '숙소', icon: 'home-outline' },
+  { id: 'hospital', label: '동물병원', icon: 'medkit-outline' },
+  { id: 'indoor', label: '실내', icon: 'business-outline' },
+  { id: 'outdoor', label: '야외', icon: 'leaf-outline' },
+];
+
+// TODO: 장소 조회 API 연결 후 이 배열과 샘플 좌표를 검증된 위·경도 응답으로 교체합니다.
+export const mockPlaces: Place[] = [
+  {
+    id: 'hamdeok-beach',
+    name: '함덕해수욕장',
+    address: '제주시 조천읍 함덕리 1008',
+    region: '함덕/김녕/세화',
+    category: '관광지',
+    environment: '야외',
+    distanceKm: 2.1,
+    latitude: 33.5431,
+    longitude: 126.6692,
+    petFriendly: true,
+    imageUrl:
+      'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=700&q=80',
+  },
+  {
+    id: 'delmoondo',
+    name: '카페 델문도',
+    address: '제주시 해맞이해안로 249',
+    region: '함덕/김녕/세화',
+    category: '카페·식당',
+    environment: '실내',
+    distanceKm: 8.3,
+    latitude: 33.5434,
+    longitude: 126.6699,
+    petFriendly: true,
+    imageUrl:
+      'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=700&q=80',
+  },
+  {
+    id: 'bijarim',
+    name: '비자림',
+    address: '제주시 구좌읍 평대리 산1-1',
+    region: '함덕/김녕/세화',
+    category: '관광지',
+    environment: '야외',
+    distanceKm: 15.7,
+    latitude: 33.4913,
+    longitude: 126.8115,
+    petFriendly: true,
+    initiallyFavorite: true,
+    imageUrl:
+      'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=700&q=80',
+  },
+  {
+    id: 'aewol-stay',
+    name: '애월 스테이',
+    address: '제주시 애월읍 하소로 769',
+    region: '애월/한림/협재',
+    category: '숙소',
+    environment: '실내',
+    distanceKm: 9.6,
+    latitude: 33.4394,
+    longitude: 126.383,
+    petFriendly: true,
+    imageUrl:
+      'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=700&q=80',
+  },
+  {
+    id: 'jeju24-vet',
+    name: '제주24시 동물병원',
+    address: '제주시 연삼로 424',
+    region: '제주시/제주국제공항',
+    category: '동물병원',
+    environment: '실내',
+    distanceKm: 3.4,
+    latitude: 33.4897,
+    longitude: 126.5392,
+    petFriendly: true,
+    imageUrl:
+      'https://images.unsplash.com/photo-1516841273335-e39b37888115?auto=format&fit=crop&w=700&q=80',
+  },
+  {
+    id: 'songaksan-trail',
+    name: '송악산 둘레길',
+    address: '서귀포시 대정읍 송악관광로 421-1',
+    region: '서귀포시/모슬포',
+    category: '관광지',
+    environment: '야외',
+    distanceKm: 31.2,
+    latitude: 33.199,
+    longitude: 126.2907,
+    petFriendly: true,
+    imageUrl:
+      'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=700&q=80',
+  },
+  {
+    id: 'jungmun-beach',
+    name: '중문색달해수욕장',
+    address: '서귀포시 색달동 3039',
+    region: '중문',
+    category: '관광지',
+    environment: '야외',
+    distanceKm: 28.7,
+    latitude: 33.245,
+    longitude: 126.4115,
+    petFriendly: true,
+    imageUrl:
+      'https://images.unsplash.com/photo-1473116763249-2faaef81ccda?auto=format&fit=crop&w=700&q=80',
+  },
+  {
+    id: 'seongsan-ilchulbong',
+    name: '성산일출봉',
+    address: '서귀포시 성산읍 일출로 284-12',
+    region: '표선/성산',
+    category: '관광지',
+    environment: '야외',
+    distanceKm: 39.5,
+    latitude: 33.4581,
+    longitude: 126.9425,
+    petFriendly: true,
+    imageUrl:
+      'https://images.unsplash.com/photo-1579169326371-ccb4e63f7889?auto=format&fit=crop&w=700&q=80',
+  },
+];
