@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing, typography } from '@/src/theme';
+import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 
 import type { Schedule } from '../types/trip';
 import { formatMonthDay } from '../utils/tripFormat';
@@ -83,7 +83,7 @@ export function ScheduleItemActionSheet({
 
 const styles = StyleSheet.create({
   backdrop: {
-    backgroundColor: 'rgba(30, 28, 25, 0.45)',
+    backgroundColor: overlayColors.scrim,
     flex: 1,
     justifyContent: 'flex-end',
   },

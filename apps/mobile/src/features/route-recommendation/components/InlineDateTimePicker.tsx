@@ -10,17 +10,22 @@ import {
   View,
 } from 'react-native';
 
+import { colors } from '@/src/theme';
+
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const HOURS = Array.from({ length: 24 }, (_, index) => index);
 const MINUTES = Array.from({ length: 12 }, (_, index) => index * 5);
 
+/**
+ * TODO(디자인 통일): 값은 theme 토큰을 가리키는 과도기 별칭이다. 추후 직접 참조로 정리할 것.
+ */
 const palette = {
-  orange: '#FF7A00',
-  ink: '#292B2E',
-  gray: '#858A90',
-  line: '#E7E9EB',
-  paleOrange: '#FFF3E5',
-  white: '#FFFFFF',
+  orange: colors.primary,
+  ink: colors.textPrimary,
+  gray: colors.textSecondary,
+  line: colors.divider,
+  paleOrange: colors.primarySoft,
+  white: colors.surface,
 };
 
 const isSameDate = (left: Date, right: Date) =>
@@ -241,12 +246,12 @@ const styles = StyleSheet.create({
   calendarGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   calendarCell: { alignItems: 'center', height: 38, justifyContent: 'center', width: '14.2857%' },
   weekdayText: { color: palette.gray, fontSize: 10, fontWeight: '800' },
-  sundayText: { color: '#E65D5D' },
-  saturdayText: { color: '#5584CC' },
+  sundayText: { color: colors.calendarSunday },
+  saturdayText: { color: colors.calendarSaturday },
   dayButton: { alignItems: 'center', borderRadius: 16, height: 32, justifyContent: 'center', width: 32 },
   dayButtonSelected: { backgroundColor: palette.orange },
   dayText: { color: palette.ink, fontSize: 11, fontWeight: '700' },
-  pastDayText: { color: '#C5C8CB' },
+  pastDayText: { color: colors.textTertiary },
   selectedDayText: { color: palette.white, fontWeight: '900' },
   timePicker: { paddingTop: 2 },
   timePreview: { alignItems: 'center', alignSelf: 'center', backgroundColor: palette.paleOrange, borderRadius: 999, flexDirection: 'row', gap: 7, marginBottom: 7, paddingHorizontal: 15, paddingVertical: 8 },
@@ -255,10 +260,10 @@ const styles = StyleSheet.create({
   wheels: { alignItems: 'center', flexDirection: 'row', gap: 8, justifyContent: 'center' },
   wheelColumn: { borderColor: palette.line, borderRadius: 12, borderWidth: 1, height: 154, overflow: 'hidden', position: 'relative', width: 112 },
   wheelContent: { paddingVertical: 56 },
-  selectionBand: { backgroundColor: palette.paleOrange, borderBottomColor: '#FFD8AD', borderBottomWidth: 1, borderTopColor: '#FFD8AD', borderTopWidth: 1, height: 42, left: 0, position: 'absolute', right: 0, top: 55 },
+  selectionBand: { backgroundColor: palette.paleOrange, borderBottomColor: colors.primarySoftStrong, borderBottomWidth: 1, borderTopColor: colors.primarySoftStrong, borderTopWidth: 1, height: 42, left: 0, position: 'absolute', right: 0, top: 55 },
   wheelScroll: { zIndex: 1 },
   wheelItem: { alignItems: 'center', height: 42, justifyContent: 'center' },
-  wheelText: { color: '#A1A5AA', fontSize: 13, fontWeight: '600' },
+  wheelText: { color: colors.textTertiary, fontSize: 13, fontWeight: '600' },
   wheelTextSelected: { color: palette.orange, fontSize: 17, fontWeight: '900' },
   wheelSuffix: { fontSize: 10, fontWeight: '700' },
   timeColon: { color: palette.ink, fontSize: 22, fontWeight: '900' },

@@ -99,18 +99,18 @@ export function PlaceExplorerScreen() {
       </View>
 
       <View style={styles.searchBar}>
-        <Ionicons color="#8A8A8A" name="search-outline" size={20} />
+        <Ionicons color={colors.iconGray} name="search-outline" size={20} />
         <TextInput
           onChangeText={setQuery}
           placeholder="제주에서 갈 장소를 검색해보세요"
-          placeholderTextColor="#9A9A9A"
+          placeholderTextColor={colors.textTertiary}
           returnKeyType="search"
           style={styles.searchInput}
           value={query}
         />
         {query ? (
           <Pressable accessibilityLabel="검색어 지우기" hitSlop={8} onPress={() => setQuery('')}>
-            <Ionicons color="#929292" name="close-circle" size={19} />
+            <Ionicons color={colors.iconGray} name="close-circle" size={19} />
           </Pressable>
         ) : null}
       </View>
@@ -167,7 +167,7 @@ export function PlaceExplorerScreen() {
               ]}
             >
               <Ionicons
-                color={isSelected ? colors.primary : '#3D4A48'}
+                color={isSelected ? colors.primary : colors.textStrong}
                 name={category.icon}
                 size={23}
               />
@@ -235,7 +235,7 @@ function ModeButton({ icon, isSelected, label, onPress }: ModeButtonProps) {
         pressed && styles.pressed,
       ]}
     >
-      <Ionicons color={isSelected ? colors.surface : '#535353'} name={icon} size={18} />
+      <Ionicons color={isSelected ? colors.surface : colors.textStrong} name={icon} size={18} />
       <Text style={[styles.modeText, isSelected && styles.modeTextSelected]}>{label}</Text>
     </Pressable>
   );
@@ -269,7 +269,7 @@ function PlaceRow({ isFavorite, onPressFavorite, place }: PlaceRowProps) {
         <View style={styles.tagRow}>
           {place.petFriendly ? (
             <View style={styles.petTag}>
-              <Ionicons color="#D7673D" name="paw" size={10} />
+              <Ionicons color={colors.primary} name="paw" size={10} />
               <Text style={styles.petTagText}>반려동물 동반 가능</Text>
             </View>
           ) : null}
@@ -288,7 +288,7 @@ function PlaceRow({ isFavorite, onPressFavorite, place }: PlaceRowProps) {
           }}
         >
           <Ionicons
-            color={isFavorite ? '#FF5A43' : '#777777'}
+            color={isFavorite ? colors.primary : colors.textSecondary}
             name={isFavorite ? 'heart' : 'heart-outline'}
             size={22}
           />
@@ -302,7 +302,7 @@ function PlaceRow({ isFavorite, onPressFavorite, place }: PlaceRowProps) {
 function EmptyResult() {
   return (
     <View style={styles.emptyContainer}>
-      <Ionicons color="#B8B8B8" name="search-outline" size={34} />
+      <Ionicons color={colors.textTertiary} name="search-outline" size={34} />
       <Text style={styles.emptyTitle}>조건에 맞는 장소가 없어요</Text>
       <Text style={styles.emptyDescription}>다른 지역이나 카테고리를 선택해보세요.</Text>
     </View>
@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ECECEC',
+    borderBottomColor: colors.border,
   },
   backButton: {
     width: 42,
@@ -352,9 +352,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 7,
     borderWidth: 1,
-    borderColor: '#DEDEDE',
+    borderColor: colors.divider,
     borderRadius: 13,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   searchInput: {
     flex: 1,
@@ -376,23 +376,23 @@ const styles = StyleSheet.create({
     height: 31,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderColor: colors.divider,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   regionChipSelected: {
     borderColor: colors.primary,
     backgroundColor: colors.primary,
   },
   regionText: {
-    color: '#555555',
+    color: colors.textStrong,
     fontSize: 12,
     fontWeight: '600',
   },
   regionTextSelected: {
-    color: '#FFFFFF',
+    color: colors.surface,
     fontWeight: '800',
   },
   categoryContent: {
@@ -409,19 +409,19 @@ const styles = StyleSheet.create({
     width: 59,
     height: 53,
     borderWidth: 1,
-    borderColor: '#E9E9E9',
+    borderColor: colors.divider,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   categoryItemSelected: {
     borderColor: colors.primary,
-    backgroundColor: '#FFF3EA',
+    backgroundColor: colors.primarySoft,
   },
   categoryText: {
-    color: '#565656',
+    color: colors.textStrong,
     fontSize: 10,
     fontWeight: '600',
   },
@@ -438,7 +438,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
     borderRadius: 10,
-    backgroundColor: '#F3F3F3',
+    backgroundColor: colors.neutralGray,
   },
   modeButton: {
     flex: 1,
@@ -452,12 +452,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   modeText: {
-    color: '#4F4F4F',
+    color: colors.textStrong,
     fontSize: 13,
     fontWeight: '700',
   },
   modeTextSelected: {
-    color: '#FFFFFF',
+    color: colors.surface,
   },
   listContent: {
     paddingHorizontal: spacing.md,
@@ -472,7 +472,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     flexDirection: 'row',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E5E5E5',
+    borderBottomColor: colors.divider,
   },
   rowPressed: {
     opacity: 0.68,
@@ -481,7 +481,7 @@ const styles = StyleSheet.create({
     width: 108,
     height: 83,
     borderRadius: 12,
-    backgroundColor: '#ECECEC',
+    backgroundColor: colors.border,
   },
   placeCopy: {
     flex: 1,
@@ -511,10 +511,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
     borderRadius: 6,
-    backgroundColor: '#FFF1E9',
+    backgroundColor: colors.primarySoft,
   },
   petTagText: {
-    color: '#B85635',
+    color: colors.primaryDeep,
     fontSize: 9,
     fontWeight: '700',
   },
@@ -524,10 +524,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 6,
-    backgroundColor: '#E8F8F3',
+    backgroundColor: colors.seaSoft,
   },
   categoryTagText: {
-    color: '#238871',
+    color: colors.seaDeep,
     fontSize: 9,
     fontWeight: '700',
   },
@@ -538,7 +538,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   distance: {
-    color: '#666666',
+    color: colors.textSecondary,
     fontSize: 10,
   },
   emptyContainer: {

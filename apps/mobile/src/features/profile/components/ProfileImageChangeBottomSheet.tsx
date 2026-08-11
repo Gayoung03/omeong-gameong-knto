@@ -93,7 +93,7 @@ function ImageMenuRow({
 }) {
   return (
     <Pressable accessibilityRole="button" onPress={onPress} style={styles.menuRow}>
-      <Ionicons color={colors.mintIcon} name={icon} size={24} />
+      <Ionicons color={colors.sea} name={icon} size={24} />
       <Text style={styles.menuLabel}>{label}</Text>
       <Ionicons color={colors.textPrimary} name="chevron-forward" size={19} />
     </Pressable>

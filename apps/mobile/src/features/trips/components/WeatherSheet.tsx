@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing, typography } from '@/src/theme';
+import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 
 import type { ScheduleWeather } from '../types/trip';
 import type { PetWalkTipTone } from '../utils/tripFormat';
@@ -123,7 +123,7 @@ export function WeatherSheet({ dayNumber, date, weather, onClose }: WeatherSheet
 
 const styles = StyleSheet.create({
   backdrop: {
-    backgroundColor: 'rgba(30, 28, 25, 0.45)',
+    backgroundColor: overlayColors.scrim,
     flex: 1,
     justifyContent: 'flex-end',
   },

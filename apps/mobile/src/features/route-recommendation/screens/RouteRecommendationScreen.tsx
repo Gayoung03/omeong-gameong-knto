@@ -24,16 +24,21 @@ import {
   getTripDates,
 } from '../utils/tripDuration';
 
+import { colors, overlayColors } from '@/src/theme';
+
+/**
+ * TODO(디자인 통일): 값은 theme 토큰을 가리키는 과도기 별칭이다. 추후 직접 참조로 정리할 것.
+ */
 const palette = {
-  orange: '#FF7A00',
-  mint: '#12B89B',
-  deepMint: '#0C9E86',
-  ink: '#292B2E',
-  gray: '#72777F',
-  lightGray: '#F4F5F6',
-  line: '#E7E9EB',
-  warning: '#E99A2C',
-  white: '#FFFFFF',
+  orange: colors.primary,
+  mint: colors.sea,
+  deepMint: colors.seaDeep,
+  ink: colors.textPrimary,
+  gray: colors.textSecondary,
+  lightGray: colors.neutralGray,
+  line: colors.divider,
+  warning: colors.warning,
+  white: colors.surface,
 };
 
 const formatTravelMinutes = (minutes: number) => {
@@ -70,7 +75,7 @@ function PlaceCard({
       {place.travelMinutes ? (
         <View style={styles.travelRow}>
           <View style={styles.timelineLine} />
-          <Ionicons color="#A1A6AC" name="car-outline" size={14} />
+          <Ionicons color={colors.textTertiary} name="car-outline" size={14} />
           <Text style={styles.travelText}>차량 {place.travelMinutes}분</Text>
         </View>
       ) : null}
@@ -391,7 +396,7 @@ export function RouteRecommendationScreen() {
                   <Text style={styles.routeStopEmoji}>{place.emoji}</Text>
                 </View>
                 {index < activeSelectedPlaces.length - 1 ? (
-                  <Ionicons color="#B4B8BC" name="arrow-forward" size={14} />
+                  <Ionicons color={colors.textTertiary} name="arrow-forward" size={14} />
                 ) : null}
               </View>
             ))}
@@ -554,7 +559,7 @@ export function RouteRecommendationScreen() {
                   multiline
                   onChangeText={setRequestText}
                   placeholder="예: 둘째 날 카페 대신 바다 산책 코스를 넣어줘"
-                  placeholderTextColor="#A4A8AD"
+                  placeholderTextColor={colors.textTertiary}
                   style={styles.requestInput}
                   value={requestText}
                 />
@@ -585,7 +590,7 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     backgroundColor: palette.white,
-    borderBottomColor: '#F1F2F3',
+    borderBottomColor: colors.neutralGray,
     borderBottomWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -607,8 +612,8 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 36, paddingHorizontal: 18, paddingTop: 16 },
   heroCard: {
     alignItems: 'center',
-    backgroundColor: '#FFF6E9',
-    borderColor: '#FFE5C3',
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primarySoftStrong,
     borderRadius: 20,
     borderWidth: 1,
     flexDirection: 'row',
@@ -633,7 +638,7 @@ const styles = StyleSheet.create({
   heroDescription: { color: palette.gray, fontSize: 12, lineHeight: 18, marginTop: 6 },
   petIllustration: {
     alignItems: 'center',
-    backgroundColor: '#FFE0B5',
+    backgroundColor: colors.primarySoftStrong,
     borderRadius: 44,
     height: 82,
     justifyContent: 'center',
@@ -641,7 +646,7 @@ const styles = StyleSheet.create({
     width: 82,
   },
   illustrationSun: {
-    backgroundColor: '#FFB349',
+    backgroundColor: colors.warning,
     borderRadius: 13,
     height: 26,
     position: 'absolute',
@@ -653,8 +658,8 @@ const styles = StyleSheet.create({
   summaryChips: { flexDirection: 'row', gap: 7, marginTop: 12 },
   summaryChip: {
     alignItems: 'center',
-    backgroundColor: '#F1FBF8',
-    borderColor: '#D7F1EA',
+    backgroundColor: colors.seaSoftLight,
+    borderColor: colors.seaSoft,
     borderRadius: 999,
     borderWidth: 1,
     flex: 1,
@@ -674,10 +679,10 @@ const styles = StyleSheet.create({
   },
   dayTab: { alignItems: 'center', borderRadius: 11, flex: 1, paddingVertical: 8 },
   dayTabActive: { backgroundColor: palette.mint },
-  dayTabTitle: { color: '#777C82', fontSize: 13, fontWeight: '700' },
+  dayTabTitle: { color: colors.textSecondary, fontSize: 13, fontWeight: '700' },
   dayTabTitleActive: { color: palette.white },
-  dayTabDate: { color: '#A4A8AD', fontSize: 9, marginTop: 2 },
-  dayTabDateActive: { color: '#DFFFF8' },
+  dayTabDate: { color: colors.textTertiary, fontSize: 9, marginTop: 2 },
+  dayTabDateActive: { color: colors.seaSoft },
   sectionHeader: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -688,12 +693,12 @@ const styles = StyleSheet.create({
   sectionTitle: { color: palette.ink, fontSize: 18, fontWeight: '800' },
   weatherRow: { alignItems: 'center', flexDirection: 'row', marginTop: 5 },
   weatherText: { color: palette.gray, fontSize: 11, fontWeight: '600' },
-  weatherDivider: { backgroundColor: '#D5D8DB', height: 10, marginHorizontal: 7, width: 1 },
+  weatherDivider: { backgroundColor: colors.divider, height: 10, marginHorizontal: 7, width: 1 },
   selectAllButton: { alignItems: 'center', flexDirection: 'row', gap: 6, paddingVertical: 7 },
   selectAllText: { color: palette.gray, fontSize: 12, fontWeight: '700' },
   selectionCircle: {
     alignItems: 'center',
-    borderColor: '#CED2D6',
+    borderColor: colors.divider,
     borderRadius: 10,
     borderWidth: 1.5,
     height: 20,
@@ -703,8 +708,8 @@ const styles = StyleSheet.create({
   selectionCircleSelected: { backgroundColor: palette.mint, borderColor: palette.mint },
   placeList: { paddingBottom: 4 },
   travelRow: { alignItems: 'center', flexDirection: 'row', height: 28, marginLeft: 19 },
-  timelineLine: { backgroundColor: '#D9ECE7', height: 28, marginRight: 13, width: 2 },
-  travelText: { color: '#92979D', fontSize: 10, marginLeft: 4 },
+  timelineLine: { backgroundColor: colors.seaSoft, height: 28, marginRight: 13, width: 2 },
+  travelText: { color: colors.iconGray, fontSize: 10, marginLeft: 4 },
   placeCard: {
     alignItems: 'center',
     backgroundColor: palette.white,
@@ -714,7 +719,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     minHeight: 104,
     padding: 10,
-    shadowColor: '#111111',
+    shadowColor: colors.basalt,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
@@ -722,7 +727,7 @@ const styles = StyleSheet.create({
   timelineColumn: { alignItems: 'center', alignSelf: 'stretch', paddingTop: 8, width: 42 },
   timelineDot: {
     backgroundColor: palette.orange,
-    borderColor: '#FFE7CD',
+    borderColor: colors.primarySoftStrong,
     borderRadius: 6,
     borderWidth: 3,
     height: 12,
@@ -734,13 +739,13 @@ const styles = StyleSheet.create({
   placeContent: { flex: 1, paddingHorizontal: 11 },
   placeTitleRow: { alignItems: 'center', flexDirection: 'row', gap: 6 },
   placeName: { color: palette.ink, flexShrink: 1, fontSize: 14, fontWeight: '800' },
-  categoryBadge: { backgroundColor: '#F2F3F4', borderRadius: 5, paddingHorizontal: 5, paddingVertical: 3 },
-  categoryText: { color: '#777C82', fontSize: 8, fontWeight: '700' },
+  categoryBadge: { backgroundColor: colors.neutralGray, borderRadius: 5, paddingHorizontal: 5, paddingVertical: 3 },
+  categoryText: { color: colors.textSecondary, fontSize: 8, fontWeight: '700' },
   placeSubtitle: { color: palette.gray, fontSize: 10, lineHeight: 15, marginTop: 4 },
   petBadge: {
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: '#EAF8F4',
+    backgroundColor: colors.seaSoftLight,
     borderRadius: 6,
     flexDirection: 'row',
     gap: 3,
@@ -748,14 +753,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 4,
   },
-  petBadgeWarning: { backgroundColor: '#FFF4E3' },
+  petBadgeWarning: { backgroundColor: colors.primarySoft },
   petBadgeText: { color: palette.deepMint, fontSize: 9, fontWeight: '800' },
   petBadgeTextWarning: { color: palette.warning },
   cardSelection: { alignItems: 'center', alignSelf: 'stretch', justifyContent: 'space-between' },
-  orderText: { color: '#B5B9BD', fontSize: 10, fontWeight: '700' },
+  orderText: { color: colors.textTertiary, fontSize: 10, fontWeight: '700' },
   routeSummary: {
-    backgroundColor: '#F6FAF9',
-    borderColor: '#DDEEEA',
+    backgroundColor: colors.neutralGray,
+    borderColor: colors.seaSoft,
     borderRadius: 15,
     borderWidth: 1,
     marginTop: 14,
@@ -770,18 +775,18 @@ const styles = StyleSheet.create({
   routeSummaryText: { color: palette.gray, fontSize: 10, marginTop: 2 },
   feedbackBanner: {
     alignItems: 'center',
-    backgroundColor: '#EAF9F5',
+    backgroundColor: colors.seaSoftLight,
     borderRadius: 12,
     flexDirection: 'row',
     gap: 7,
     marginTop: 12,
     padding: 12,
   },
-  feedbackText: { color: '#157C6B', flex: 1, fontSize: 11, fontWeight: '700' },
+  feedbackText: { color: colors.seaDeep, flex: 1, fontSize: 11, fontWeight: '700' },
   actionRow: { flexDirection: 'row', gap: 9, marginTop: 16 },
   secondaryButton: {
     alignItems: 'center',
-    borderColor: '#D8DBDE',
+    borderColor: colors.divider,
     borderRadius: 13,
     borderWidth: 1,
     flex: 1,
@@ -802,11 +807,11 @@ const styles = StyleSheet.create({
     minHeight: 49,
   },
   primaryButtonText: { color: palette.white, fontSize: 13, fontWeight: '800' },
-  buttonDisabled: { backgroundColor: '#C8CBCF' },
+  buttonDisabled: { backgroundColor: colors.divider },
   aiRequestCard: {
     alignItems: 'center',
-    backgroundColor: '#FFF7ED',
-    borderColor: '#FFE2C0',
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primarySoftStrong,
     borderRadius: 15,
     borderWidth: 1,
     flexDirection: 'row',
@@ -815,7 +820,7 @@ const styles = StyleSheet.create({
   },
   aiIcon: {
     alignItems: 'center',
-    backgroundColor: '#FFE5C3',
+    backgroundColor: colors.primarySoftStrong,
     borderRadius: 20,
     height: 40,
     justifyContent: 'center',
@@ -825,29 +830,29 @@ const styles = StyleSheet.create({
   aiRequestCopy: { flex: 1, paddingHorizontal: 10 },
   aiRequestTitle: { color: palette.ink, fontSize: 12, fontWeight: '800' },
   aiRequestText: { color: palette.gray, fontSize: 10, lineHeight: 15, marginTop: 3 },
-  modalBackdrop: { alignItems: 'center', backgroundColor: '#00000066', flex: 1, justifyContent: 'center', padding: 18 },
+  modalBackdrop: { alignItems: 'center', backgroundColor: overlayColors.scrim, flex: 1, justifyContent: 'center', padding: 18 },
   modalDismissArea: { bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 },
   modalCard: { backgroundColor: palette.white, borderRadius: 20, maxWidth: 398, padding: 18, width: '100%' },
   modalHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
   modalTitle: { color: palette.ink, fontSize: 18, fontWeight: '900' },
-  mockMap: { backgroundColor: '#EAF4E8', borderRadius: 15, height: 170, overflow: 'hidden', position: 'relative' },
-  mapRoad: { backgroundColor: '#FFF9E9', borderColor: '#D7CBAA', borderRadius: 30, borderWidth: 2, height: 48, left: 20, position: 'absolute', right: 18, top: 62, transform: [{ rotate: '-8deg' }] },
+  mockMap: { backgroundColor: colors.leafSoft, borderRadius: 15, height: 170, overflow: 'hidden', position: 'relative' },
+  mapRoad: { backgroundColor: colors.primarySoft, borderColor: colors.primarySoftStrong, borderRadius: 30, borderWidth: 2, height: 48, left: 20, position: 'absolute', right: 18, top: 62, transform: [{ rotate: '-8deg' }] },
   mapPin: { alignItems: 'center', backgroundColor: palette.orange, borderColor: palette.white, borderRadius: 14, borderWidth: 3, height: 28, justifyContent: 'center', position: 'absolute', width: 28 },
   mapPinNumber: { color: palette.white, fontSize: 10, fontWeight: '900' },
   mapCompass: { alignItems: 'center', backgroundColor: palette.white, borderRadius: 18, bottom: 10, height: 36, justifyContent: 'center', position: 'absolute', right: 10, width: 36 },
   mapPlaceList: { gap: 7, marginTop: 12 },
   mapPlaceRow: { alignItems: 'center', borderBottomColor: palette.line, borderBottomWidth: 1, flexDirection: 'row', minHeight: 34, paddingBottom: 7 },
-  mapPlaceNumber: { alignItems: 'center', backgroundColor: '#FFF0DE', borderRadius: 10, height: 21, justifyContent: 'center', width: 21 },
+  mapPlaceNumber: { alignItems: 'center', backgroundColor: colors.primarySoft, borderRadius: 10, height: 21, justifyContent: 'center', width: 21 },
   mapPlaceNumberText: { color: palette.orange, fontSize: 9, fontWeight: '900' },
   mapPlaceName: { color: palette.ink, flex: 1, fontSize: 11, fontWeight: '700', paddingHorizontal: 8 },
   mapPlaceTime: { color: palette.gray, fontSize: 10 },
   savedContent: { alignItems: 'center', paddingTop: 3 },
-  savedIcon: { alignItems: 'center', backgroundColor: '#E7F8F3', borderRadius: 31, height: 62, justifyContent: 'center', width: 62 },
+  savedIcon: { alignItems: 'center', backgroundColor: colors.seaSoft, borderRadius: 31, height: 62, justifyContent: 'center', width: 62 },
   savedTitle: { color: palette.ink, fontSize: 16, fontWeight: '900', marginTop: 13 },
   savedText: { color: palette.gray, fontSize: 10, marginBottom: 16, marginTop: 5, textAlign: 'center' },
   requestGuide: { color: palette.gray, fontSize: 11, lineHeight: 17 },
   requestExamples: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 11 },
-  requestChip: { backgroundColor: '#FFF4E7', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 7 },
+  requestChip: { backgroundColor: colors.primarySoft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 7 },
   requestChipText: { color: palette.orange, fontSize: 9, fontWeight: '700' },
   requestInput: { borderColor: palette.line, borderRadius: 12, borderWidth: 1, color: palette.ink, fontSize: 11, marginBottom: 11, marginTop: 12, minHeight: 100, outlineStyle: 'none', padding: 11, textAlignVertical: 'top' } as never,
   modalPrimaryButton: { alignItems: 'center', alignSelf: 'stretch', backgroundColor: palette.orange, borderRadius: 11, justifyContent: 'center', minHeight: 46 },

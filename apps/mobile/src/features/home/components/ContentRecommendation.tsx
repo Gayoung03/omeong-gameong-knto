@@ -4,6 +4,8 @@ import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native
 import type { EditorialCard } from '../types/home';
 import { SectionHeader } from './SectionHeader';
 
+import { colors, overlayColors } from '@/src/theme';
+
 type ContentRecommendationProps = {
   cards: EditorialCard[];
 };
@@ -28,7 +30,7 @@ export function ContentRecommendation({ cards }: ContentRecommendationProps) {
               <View style={styles.scrim} />
               <Text style={styles.title}>{card.title}</Text>
               <View style={styles.arrowCircle}>
-                <Ionicons color="#353535" name="chevron-forward" size={16} />
+                <Ionicons color={colors.textPrimary} name="chevron-forward" size={16} />
               </View>
             </ImageBackground>
           </Pressable>
@@ -49,7 +51,7 @@ const styles = StyleSheet.create({
     aspectRatio: 1.45,
     overflow: 'hidden',
     borderRadius: 15,
-    backgroundColor: '#D5D5D5',
+    backgroundColor: colors.divider,
   },
   pressed: {
     opacity: 0.7,
@@ -66,15 +68,15 @@ const styles = StyleSheet.create({
   },
   scrim: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.24)',
+    backgroundColor: overlayColors.dim,
   },
   title: {
     maxWidth: '88%',
-    color: '#FFFFFF',
+    color: colors.surface,
     fontSize: 13,
     fontWeight: '800',
     lineHeight: 18,
-    textShadowColor: 'rgba(0,0,0,0.28)',
+    textShadowColor: overlayColors.textShadow,
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
@@ -85,6 +87,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: overlayColors.frostedCard,
   },
 });

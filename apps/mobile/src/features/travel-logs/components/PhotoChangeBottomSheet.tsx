@@ -58,7 +58,9 @@ export const PhotoChangeBottomSheet = forwardRef<PhotoChangeBottomSheetHandle, P
         handleIndicatorStyle={styles.handle}
         ref={sheetRef}
       >
-        <BottomSheetView style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+        <BottomSheetView
+          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}
+        >
           <Text style={styles.title}>사진 변경</Text>
           <View style={styles.menu}>
             <PhotoMenuRow
@@ -98,13 +100,17 @@ function PhotoMenuRow({
   label: string;
   onPress: () => void;
 }) {
-  const color = destructive ? colors.error : colors.mintIcon;
+  const color = destructive ? colors.error : colors.sea;
 
   return (
     <Pressable accessibilityRole="button" onPress={onPress} style={styles.menuRow}>
       <Ionicons color={color} name={icon} size={24} />
       <Text style={[styles.menuLabel, destructive && styles.deleteLabel]}>{label}</Text>
-      <Ionicons color={destructive ? colors.error : colors.textPrimary} name="chevron-forward" size={19} />
+      <Ionicons
+        color={destructive ? colors.error : colors.textPrimary}
+        name="chevron-forward"
+        size={19}
+      />
     </Pressable>
   );
 }

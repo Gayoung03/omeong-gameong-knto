@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Alert, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, radius, spacing, typography } from '@/src/theme';
+import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 
 import { MemoryFlipCard } from './components/MemoryFlipCard';
 import { mockLogService } from './services/mockLogService';
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
   content: { alignItems: 'center', flex: 1, gap: spacing.md, justifyContent: 'center', padding: spacing.lg },
   flipHint: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs },
   footer: { padding: spacing.md },
-  memoryCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, maxWidth: 390, padding: spacing.md, shadowColor: '#000000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.09, shadowRadius: 6, width: '100%' },
+  memoryCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, maxWidth: 390, padding: spacing.md, shadowColor: overlayColors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.09, shadowRadius: 6, width: '100%' },
   missingState: { alignItems: 'center', flex: 1, gap: spacing.md, justifyContent: 'center', padding: spacing.lg },
   outlineButton: { alignItems: 'center', borderColor: colors.secondary, borderRadius: radius.sm, borderWidth: 1, flex: 1, flexDirection: 'row', gap: spacing.xs, justifyContent: 'center', padding: spacing.md },
   outlineLabel: { color: colors.secondary, fontWeight: '600' },

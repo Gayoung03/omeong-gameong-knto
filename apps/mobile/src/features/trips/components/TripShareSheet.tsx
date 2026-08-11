@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing, typography } from '@/src/theme';
+import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 
 type TripShareSheetProps = {
   /** 날짜별 저장을 제공할지 여부 (일정이 하나도 없으면 숨긴다) */
@@ -106,7 +106,7 @@ export function TripShareSheet({
 
 const styles = StyleSheet.create({
   backdrop: {
-    backgroundColor: 'rgba(30, 28, 25, 0.45)',
+    backgroundColor: overlayColors.scrim,
     flex: 1,
     justifyContent: 'flex-end',
   },

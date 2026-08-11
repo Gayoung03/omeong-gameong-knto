@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 
-import { colors, radius, spacing, typography } from '@/src/theme';
+import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 
 import type { Trip } from '../types/trip';
 import { DayChips } from './DayChips';
@@ -120,7 +120,7 @@ export function TripImagePreviewModal({
 
 const styles = StyleSheet.create({
   backdrop: {
-    backgroundColor: 'rgba(30, 28, 25, 0.92)',
+    backgroundColor: overlayColors.photoViewer,
     flex: 1,
   },
   header: {

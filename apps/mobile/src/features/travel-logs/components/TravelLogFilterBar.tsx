@@ -51,8 +51,8 @@ export function TravelLogFilterBar({
       <FilterIconButton
         accessibilityLabel="날짜 필터"
         active={isDateFilterActive}
-        activeBackground={colors.orangeBg}
-        activeForeground={colors.orangeIcon}
+        activeBackground={colors.primarySoft}
+        activeForeground={colors.primary}
         icon="calendar-outline"
         onPress={onOpenDateFilter}
       />
@@ -61,8 +61,8 @@ export function TravelLogFilterBar({
         <FilterIconButton
           accessibilityLabel="반려동물 필터"
           active={isPetFilterActive}
-          activeBackground={colors.mintBg}
-          activeForeground={colors.mintIcon}
+          activeBackground={colors.seaSoftLight}
+          activeForeground={colors.sea}
           icon="paw-outline"
           onPress={onOpenPetFilter}
         />

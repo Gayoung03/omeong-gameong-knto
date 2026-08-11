@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors } from '@/src/theme';
+import { colors, overlayColors } from '@/src/theme';
 
 import type { Place } from '../types/place';
 import { KakaoPlaceMap } from './KakaoPlaceMap';
@@ -41,7 +41,7 @@ function MapConfigurationNotice() {
   return (
     <View style={styles.notice}>
       <View style={styles.noticeIcon}>
-        <Ionicons color="#188F7B" name="map-outline" size={32} />
+        <Ionicons color={colors.seaDeep} name="map-outline" size={32} />
       </View>
       <Text style={styles.noticeTitle}>카카오 지도 연결이 필요해요</Text>
       <Text style={styles.noticeDescription}>
@@ -58,9 +58,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#DCEEEB',
+    borderColor: colors.seaSoft,
     borderRadius: 18,
-    backgroundColor: '#EEF8F7',
+    backgroundColor: colors.seaSoftLight,
   },
   summary: {
     position: 'absolute',
@@ -70,8 +70,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 11,
     borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    shadowColor: '#000000',
+    backgroundColor: overlayColors.frostedCard,
+    shadowColor: overlayColors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
     shadowRadius: 6,
@@ -95,9 +95,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#DCEEEB',
+    borderColor: colors.seaSoft,
     borderRadius: 18,
-    backgroundColor: '#F3FBFA',
+    backgroundColor: colors.seaSoftLight,
   },
   noticeIcon: {
     width: 64,
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#E0F4F0',
+    backgroundColor: colors.seaSoft,
   },
   noticeTitle: {
     color: colors.textPrimary,

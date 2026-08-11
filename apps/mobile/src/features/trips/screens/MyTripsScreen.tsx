@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
   },
   weatherBadge: {
     alignItems: 'center',
-    backgroundColor: '#FFF7DF',
+    backgroundColor: colors.leafSoft,
     borderRadius: radius.full,
     flexDirection: 'row',
     gap: 1,

@@ -37,7 +37,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   track: {
-    backgroundColor: '#E9E7E5',
+    backgroundColor: colors.divider,
     height: 2,
     left: '16.666%',
     position: 'absolute',
@@ -64,8 +64,8 @@ const styles = StyleSheet.create({
   },
   circle: {
     alignItems: 'center',
-    backgroundColor: '#F0EFEE',
-    borderColor: '#F0EFEE',
+    backgroundColor: colors.border,
+    borderColor: colors.border,
     borderRadius: 17,
     borderWidth: 2,
     height: 34,
@@ -73,11 +73,11 @@ const styles = StyleSheet.create({
     width: 34,
   },
   circleActive: {
-    backgroundColor: '#FFF3EA',
+    backgroundColor: colors.primarySoft,
     borderColor: colors.primary,
   },
   number: {
-    color: '#A9A7A5',
+    color: colors.textTertiary,
     fontSize: 13,
     fontWeight: '800',
   },
@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   label: {
-    color: '#999693',
+    color: colors.textTertiary,
     fontSize: 11,
     fontWeight: '600',
     textAlign: 'center',

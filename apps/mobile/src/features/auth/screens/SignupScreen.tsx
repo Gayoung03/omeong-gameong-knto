@@ -305,7 +305,7 @@ export function SignupScreen() {
 
                 <Section optional title="출발 지역">
                   <View style={styles.departureField}>
-                    <Ionicons color="#77726E" name="location-outline" size={21} />
+                    <Ionicons color={colors.textSecondary} name="location-outline" size={21} />
                     <TextInput
                       onChangeText={(departure) =>
                         setData((current) => ({
@@ -314,7 +314,7 @@ export function SignupScreen() {
                         }))
                       }
                       placeholder="예: 서울, 부산, 대구"
-                      placeholderTextColor="#AAA6A2"
+                      placeholderTextColor={colors.textTertiary}
                       style={styles.departureInput}
                       value={data.travel.departure}
                     />
@@ -354,7 +354,7 @@ export function SignupScreen() {
                         style={styles.counterButton}
                       >
                         <Ionicons
-                          color={data.travel.companions <= 1 ? '#C7C3BF' : colors.textPrimary}
+                          color={data.travel.companions <= 1 ? colors.textTertiary : colors.textPrimary}
                           name="remove"
                           size={20}
                         />
@@ -381,13 +381,13 @@ export function SignupScreen() {
 
                 <View style={styles.recommendationBanner}>
                   <View style={styles.bannerIcon}>
-                    <Ionicons color="#FF932F" name="sunny" size={28} />
+                    <Ionicons color={colors.warning} name="sunny" size={28} />
                   </View>
                   <View style={styles.bannerCopy}>
                     <Text style={styles.bannerTitle}>입력한 취향을 반영해</Text>
                     <Text style={styles.bannerText}>우리 아이에게 맞는 여행을 추천해드려요.</Text>
                   </View>
-                  <Ionicons color="#3DAE86" name="paw" size={34} />
+                  <Ionicons color={colors.seaDeep} name="paw" size={34} />
                 </View>
 
                 <PrimaryButton
@@ -436,20 +436,20 @@ function InfoCard() {
   return (
     <View style={styles.infoCard}>
       <View style={styles.shieldIcon}>
-        <Ionicons color="#EA9C53" name="shield-checkmark-outline" size={27} />
+        <Ionicons color={colors.primary} name="shield-checkmark-outline" size={27} />
       </View>
       <View style={styles.infoCopy}>
         <Text style={styles.infoTitle}>안전한 서비스 이용을 위해</Text>
         <Text style={styles.infoText}>회원님의 정보는 안전하게 보호할게요.</Text>
       </View>
-      <Ionicons color="#FF9B68" name="heart" size={22} />
+      <Ionicons color={colors.primary} name="heart" size={22} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  safeArea: { backgroundColor: '#FFFFFF', flex: 1 },
+  safeArea: { backgroundColor: colors.surface, flex: 1 },
   scrollContent: { flexGrow: 1 },
   screen: {
     alignSelf: 'center',
@@ -462,12 +462,12 @@ const styles = StyleSheet.create({
   introTitle: { color: colors.textPrimary, fontSize: 25, fontWeight: '900', letterSpacing: -0.8 },
   introDescription: { color: colors.textSecondary, fontSize: 14, lineHeight: 21, marginTop: 8 },
   fieldList: { gap: 13, marginBottom: 20 },
-  terms: { color: '#8A8581', fontSize: 11, lineHeight: 18, marginTop: 13, textAlign: 'center' },
+  terms: { color: colors.iconGray, fontSize: 11, lineHeight: 18, marginTop: 13, textAlign: 'center' },
   termsAccent: { color: colors.primary, fontWeight: '700' },
   infoCard: {
     alignItems: 'center',
-    backgroundColor: '#FFF9F1',
-    borderColor: '#F5E8D9',
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primarySoft,
     borderRadius: 16,
     borderWidth: 1,
     flexDirection: 'row',
@@ -478,23 +478,23 @@ const styles = StyleSheet.create({
   },
   shieldIcon: {
     alignItems: 'center',
-    backgroundColor: '#FFF0DE',
+    backgroundColor: colors.primarySoft,
     borderRadius: 22,
     height: 44,
     justifyContent: 'center',
     width: 44,
   },
   infoCopy: { flex: 1 },
-  infoTitle: { color: '#544D48', fontSize: 13, fontWeight: '800' },
-  infoText: { color: '#8B837D', fontSize: 11, marginTop: 4 },
+  infoTitle: { color: colors.textStrong, fontSize: 13, fontWeight: '800' },
+  infoText: { color: colors.textSecondary, fontSize: 11, marginTop: 4 },
   section: { gap: 12, marginBottom: 27 },
   sectionTitle: { color: colors.textPrimary, fontSize: 16, fontWeight: '800' },
-  optional: { color: '#99938F', fontSize: 12, fontWeight: '500' },
+  optional: { color: colors.textTertiary, fontSize: 12, fontWeight: '500' },
   petTypeGrid: { flexDirection: 'row', gap: 8 },
   petTypeCard: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E7E4E1',
+    backgroundColor: colors.surface,
+    borderColor: colors.divider,
     borderRadius: 15,
     borderWidth: 1,
     flex: 1,
@@ -504,18 +504,18 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: 4,
   },
-  petTypeCardSelected: { backgroundColor: '#EEFBF7', borderColor: '#45BFA4' },
+  petTypeCardSelected: { backgroundColor: colors.seaSoftLight, borderColor: colors.sea },
   petEmoji: { fontSize: 29 },
-  petLabel: { color: '#514C48', fontSize: 12, fontWeight: '700' },
-  petLabelSelected: { color: '#168F77' },
+  petLabel: { color: colors.textStrong, fontSize: 12, fontWeight: '700' },
+  petLabelSelected: { color: colors.seaDeep },
   row: { flexDirection: 'row', gap: 10 },
   wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
   pressed: { opacity: 0.7 },
   bottomAction: { gap: 10, marginTop: 20 },
-  optionalHint: { color: '#99938F', fontSize: 12, textAlign: 'center' },
+  optionalHint: { color: colors.textTertiary, fontSize: 12, textAlign: 'center' },
   departureField: {
     alignItems: 'center',
-    borderColor: '#E6E3E0',
+    borderColor: colors.divider,
     borderRadius: 13,
     borderWidth: 1,
     flexDirection: 'row',
@@ -530,10 +530,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   counterRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  counterDescription: { color: '#77716D', fontSize: 13 },
+  counterDescription: { color: colors.textSecondary, fontSize: 13 },
   counter: {
     alignItems: 'center',
-    borderColor: '#E4E0DD',
+    borderColor: colors.divider,
     borderRadius: 22,
     borderWidth: 1,
     flexDirection: 'row',
@@ -543,7 +543,7 @@ const styles = StyleSheet.create({
   counterValue: { color: colors.textPrimary, fontSize: 14, fontWeight: '800', minWidth: 40, textAlign: 'center' },
   recommendationBanner: {
     alignItems: 'center',
-    backgroundColor: '#EAF9F4',
+    backgroundColor: colors.seaSoftLight,
     borderRadius: 16,
     flexDirection: 'row',
     gap: 11,
@@ -552,13 +552,13 @@ const styles = StyleSheet.create({
   },
   bannerIcon: {
     alignItems: 'center',
-    backgroundColor: '#FFF8E8',
+    backgroundColor: colors.primarySoft,
     borderRadius: 22,
     height: 44,
     justifyContent: 'center',
     width: 44,
   },
   bannerCopy: { flex: 1 },
-  bannerTitle: { color: '#248F77', fontSize: 13, fontWeight: '800' },
-  bannerText: { color: '#4A8B7C', fontSize: 11, lineHeight: 17, marginTop: 3 },
+  bannerTitle: { color: colors.seaDeep, fontSize: 13, fontWeight: '800' },
+  bannerText: { color: colors.seaDeep, fontSize: 11, lineHeight: 17, marginTop: 3 },
 });

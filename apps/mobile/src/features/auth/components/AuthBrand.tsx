@@ -2,6 +2,8 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { authBrandAssets } from '../config/authBrandAssets';
 
+import { colors } from '@/src/theme';
+
 type AuthBrandProps = {
   compact?: boolean;
   showMascot?: boolean;
@@ -51,7 +53,7 @@ const styles = StyleSheet.create({
     width: 33,
   },
   logoText: {
-    color: '#A95620',
+    color: colors.primaryDeep,
     fontSize: 38,
     fontWeight: '900',
     letterSpacing: -2,
@@ -61,7 +63,7 @@ const styles = StyleSheet.create({
     letterSpacing: -1.2,
   },
   tagline: {
-    color: '#A45A2A',
+    color: colors.primaryDeep,
     fontSize: 14,
     fontWeight: '600',
     marginTop: 10,

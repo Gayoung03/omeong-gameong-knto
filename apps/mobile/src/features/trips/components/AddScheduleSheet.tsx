@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 
-import { colors, radius, spacing, typography } from '@/src/theme';
+import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 
 import type { AddScheduleInput, PlaceCandidate, Schedule } from '../types/trip';
 import { toSchedulePlace } from '../utils/placeCandidate';
@@ -135,7 +135,7 @@ export function AddScheduleSheet({
 
 const styles = StyleSheet.create({
   backdrop: {
-    backgroundColor: 'rgba(30, 28, 25, 0.45)',
+    backgroundColor: overlayColors.scrim,
     flex: 1,
     justifyContent: 'flex-end',
   },

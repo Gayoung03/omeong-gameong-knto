@@ -74,28 +74,48 @@
 
 ## 3. 공통 파일 변경 내역
 
-| 파일                                 | 변경 내용                                                                               | 반영 PR |
-| ------------------------------------ | --------------------------------------------------------------------------------------- | ------- |
-| `src/theme/colors.ts`                | 시안 키 컬러 확장 토큰 추가 (primarySoft, leaf, sea, basalt 등)                         | #3      |
-| `src/theme/typography.ts`            | 촘촘한 화면용 확장 스케일 추가 (sectionTitle, subtitle, label, caption, micro)          | #3      |
-| `src/theme/radius.ts`                | radius 토큰 신규 추가                                                                   | #3      |
-| `src/theme/index.ts`                 | radius export 추가                                                                      | #3      |
-| `src/theme/colors.ts`                | 앱 기본 배경색을 화이트(`#FFFFFF`)로 변경 — 팀 결정 사항                                | #6      |
-| `app.config.ts`                      | `plugins` 배열에 `@react-native-community/datetimepicker` 추가                          | #5      |
-| `app/_layout.tsx`                    | 최상단을 `GestureHandlerRootView`로 감싸기 (드래그 제스처 인식용)                       | #8      |
-| `package.json` / `package-lock.json` | draggable-flatlist, reanimated 추가                                                     | #8      |
-| `app.config.ts`                      | `plugins`에 `expo-sharing` 추가, `expo-media-library`를 사진 접근 권한 문구와 함께 추가 | #9      |
-| `package.json` / `package-lock.json` | clipboard, sharing, view-shot, media-library 추가                                       | #9      |
-| `apps/mobile/.gitignore`             | `/ios`, `/android` 추가 (expo prebuild 산출물 커밋 방지)                                | #9      |
-| `apps/mobile/.env.example`           | 신규. `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_KAKAO_JS_KEY`                                 | #10     |
-| `.env.example`                       | Mobile 항목은 `apps/mobile/.env` 에 넣어야 한다는 안내 추가                             | #10     |
-| `package.json` / `package-lock.json` | react-native-webview 추가                                                               | #10     |
-| `app/_layout.tsx`                    | `Stack.Screen`에 `trips/[tripId]/add-schedule` 라우트 추가 (목업 10)                    | 예정    |
-| `app.config.ts`                      | `web.output` 을 `static` → `single` 로 변경 (웹 프리렌더 제거)                          | 예정    |
+| 파일                                 | 변경 내용                                                                                                                               | 반영 PR |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `src/theme/colors.ts`                | 시안 키 컬러 확장 토큰 추가 (primarySoft, leaf, sea, basalt 등)                                                                         | #3      |
+| `src/theme/typography.ts`            | 촘촘한 화면용 확장 스케일 추가 (sectionTitle, subtitle, label, caption, micro)                                                          | #3      |
+| `src/theme/radius.ts`                | radius 토큰 신규 추가                                                                                                                   | #3      |
+| `src/theme/index.ts`                 | radius export 추가                                                                                                                      | #3      |
+| `src/theme/colors.ts`                | 앱 기본 배경색을 화이트(`#FFFFFF`)로 변경 — 팀 결정 사항                                                                                | #6      |
+| `app.config.ts`                      | `plugins` 배열에 `@react-native-community/datetimepicker` 추가                                                                          | #5      |
+| `app/_layout.tsx`                    | 최상단을 `GestureHandlerRootView`로 감싸기 (드래그 제스처 인식용)                                                                       | #8      |
+| `package.json` / `package-lock.json` | draggable-flatlist, reanimated 추가                                                                                                     | #8      |
+| `app.config.ts`                      | `plugins`에 `expo-sharing` 추가, `expo-media-library`를 사진 접근 권한 문구와 함께 추가                                                 | #9      |
+| `package.json` / `package-lock.json` | clipboard, sharing, view-shot, media-library 추가                                                                                       | #9      |
+| `apps/mobile/.gitignore`             | `/ios`, `/android` 추가 (expo prebuild 산출물 커밋 방지)                                                                                | #9      |
+| `apps/mobile/.env.example`           | 신규. `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_KAKAO_JS_KEY`                                                                                 | #10     |
+| `.env.example`                       | Mobile 항목은 `apps/mobile/.env` 에 넣어야 한다는 안내 추가                                                                             | #10     |
+| `package.json` / `package-lock.json` | react-native-webview 추가                                                                                                               | #10     |
+| `app/_layout.tsx`                    | `Stack.Screen`에 `trips/[tripId]/add-schedule` 라우트 추가 (목업 10)                                                                    | 예정    |
+| `app.config.ts`                      | `web.output` 을 `static` → `single` 로 변경 (웹 프리렌더 제거)                                                                          | 예정    |
+| `src/theme/colors.ts`                | **색상 토큰 전면 정리.** 중복 토큰 4개 통합, 신규 토큰 8개 추가, `categoryColors`·`brandColors`·`overlayColors`·`thumbnailPalette` 신설 | 예정    |
+| 화면·컴포넌트 50개                   | 하드코딩된 색상 323건을 전부 theme 토큰 참조로 치환 (전 기능 대상)                                                                      | 예정    |
 
 > **`app/_layout.tsx`는 충돌 위험이 큰 파일이다.** 다른 팀원도 라우트를 추가하면서 건드리게 된다.
 > 변경 내용 자체는 기존 트리를 `GestureHandlerRootView`로 한 겹 감싼 것뿐이라
 > 충돌이 나면 바깥 래퍼만 살리고 안쪽 `Stack.Screen` 목록은 양쪽 것을 합치면 된다.
+
+### 색상 토큰 정리 — 팀원이 알아야 할 것
+
+통합 시점에 화면마다 색이 제각각이라(같은 역할에 서로 다른 값 229종) theme 토큰으로 일괄 정리했다.
+**앞으로 화면 파일에 hex 를 직접 쓰지 않는다.** 필요한 색이 없으면 `src/theme/colors.ts` 에 토큰을 먼저 추가한다.
+
+| 바뀐 것     | 내용                                                                                                                          |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 없어진 토큰 | `orangeBg`→`primarySoft` / `orangeIcon`→`primary` / `mintBg`→`seaSoftLight` / `mintIcon`→`sea`                                |
+| 새 토큰     | `primaryDeep` `primaryInk` `primarySoftStrong` `textStrong` `seaDeep` `seaSoftLight` `calendarSunday` `calendarSaturday`      |
+| 새 묶음     | `categoryColors`(데이터용 색) / `brandColors`(소셜 로그인, **변경 금지**) / `overlayColors`(rgba·그림자) / `thumbnailPalette` |
+
+눈에 띄게 달라지는 화면은 **루트 추천**이다. 주황을 `#FF7A00` 으로 쓰고 있었는데 팀 확정값인
+`#FF7A45`(`colors.primary`)로 맞췄다. 루트 추천의 로컬 팔레트 객체(`palette`, `colors`)는
+참조 코드를 건드리지 않으려고 남겨두었고, 값만 theme 토큰을 가리키도록 바꿨다 (파일 상단 TODO 참고).
+
+지도 WebView 의 HTML 은 토큰을 직접 못 쓰므로 `buildKakaoMapDocument.ts` 의 `mapColors` 객체를
+거쳐 문자열에 주입한다. 지도 색을 바꾸려면 그 객체를 고친다.
 
 ---
 
@@ -186,13 +206,14 @@ git add package-lock.json
 
 ## 변경 이력
 
-| 날짜       | 내용                                                                                                                                                                    |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-08-04 | 문서 최초 작성. 목업 01·02·04·05·08 완료 시점 기준 정리                                                                                                                 |
-| 2026-08-04 | 09 일정 편집 작업 — draggable-flatlist·reanimated 설치, `app/_layout.tsx`에 GestureHandlerRootView 추가                                                                 |
-| 2026-08-04 | 09 머지(#8) 반영. 06·07 공유+이미지 저장 작업 — clipboard·sharing·view-shot·media-library 설치, `app.config.ts`에 사진 권한 추가, `.gitignore`에 `/ios`·`/android` 추가 |
-| 2026-08-04 | 06·07 머지(#9) 반영. 03 지도 탭 연동 방식 비교(WebView vs 네이티브 SDK) 정리, 초안은 WebView로 결정                                                                     |
-| 2026-08-04 | 03 지도 탭 작업 — react-native-webview 설치, `.env.example`에 `EXPO_PUBLIC_KAKAO_JS_KEY` 추가                                                                           |
-| 2026-08-04 | 03 지도 탭 머지(#10). 카카오 팀 앱 "오멍가멍"(ID 1533456) 등록 및 카카오맵 사용 설정 ON                                                                                 |
-| 2026-08-05 | 10 일정 추가 작업 — 신규 설치 라이브러리 없음. `app/_layout.tsx`에 add-schedule 라우트 추가, places 담당자 협의 사항 기록                                               |
-| 2026-08-06 | 웹 실행 오류 수정 — `app.config.ts`의 `web.output`을 `single`로 변경, `expo-media-library` 호출을 `utils/saveImageToLibrary`(+`.web.ts`)로 분리. 신규 라이브러리 없음    |
+| 날짜       | 내용                                                                                                                                                                                                                                   |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-04 | 문서 최초 작성. 목업 01·02·04·05·08 완료 시점 기준 정리                                                                                                                                                                                |
+| 2026-08-04 | 09 일정 편집 작업 — draggable-flatlist·reanimated 설치, `app/_layout.tsx`에 GestureHandlerRootView 추가                                                                                                                                |
+| 2026-08-04 | 09 머지(#8) 반영. 06·07 공유+이미지 저장 작업 — clipboard·sharing·view-shot·media-library 설치, `app.config.ts`에 사진 권한 추가, `.gitignore`에 `/ios`·`/android` 추가                                                                |
+| 2026-08-04 | 06·07 머지(#9) 반영. 03 지도 탭 연동 방식 비교(WebView vs 네이티브 SDK) 정리, 초안은 WebView로 결정                                                                                                                                    |
+| 2026-08-04 | 03 지도 탭 작업 — react-native-webview 설치, `.env.example`에 `EXPO_PUBLIC_KAKAO_JS_KEY` 추가                                                                                                                                          |
+| 2026-08-04 | 03 지도 탭 머지(#10). 카카오 팀 앱 "오멍가멍"(ID 1533456) 등록 및 카카오맵 사용 설정 ON                                                                                                                                                |
+| 2026-08-05 | 10 일정 추가 작업 — 신규 설치 라이브러리 없음. `app/_layout.tsx`에 add-schedule 라우트 추가, places 담당자 협의 사항 기록                                                                                                              |
+| 2026-08-06 | 웹 실행 오류 수정 — `app.config.ts`의 `web.output`을 `single`로 변경, `expo-media-library` 호출을 `utils/saveImageToLibrary`(+`.web.ts`)로 분리. 신규 라이브러리 없음                                                                  |
+| 2026-08-10 | 프론트 통합 후 디자인 색상 통일 — 하드코딩 색상 323건(값 229종)을 theme 토큰으로 일괄 치환. `colors.ts` 중복 토큰 4개 통합·신규 8개 추가, `categoryColors`·`brandColors`·`overlayColors`·`thumbnailPalette` 신설. 신규 라이브러리 없음 |

@@ -1,5 +1,7 @@
 import type { EditorialCard, QuickMenuItem, WeatherSummary } from '../types/home';
 
+import { categoryColors } from '@/src/theme';
+
 // TODO: 백엔드 날씨 API 연동 후 동일한 WeatherSummary 타입으로 교체합니다.
 export const mockWeather: WeatherSummary = {
   greeting: '안녕, 보호자님!',
@@ -17,8 +19,8 @@ export const quickMenuItems: QuickMenuItem[] = [
     title: '여행가이드',
     subtitle: '제주 여행 정보',
     icon: 'book-outline',
-    iconColor: '#138A78',
-    iconBackgroundColor: '#E4F7F2',
+    iconColor: categoryColors.green.fg,
+    iconBackgroundColor: categoryColors.green.bg,
     destination: 'coming-soon',
   },
   {
@@ -26,8 +28,8 @@ export const quickMenuItems: QuickMenuItem[] = [
     title: '동반장소찾기',
     subtitle: '함께 갈 장소',
     icon: 'location-outline',
-    iconColor: '#E56E45',
-    iconBackgroundColor: '#FFF0E9',
+    iconColor: categoryColors.orange.fg,
+    iconBackgroundColor: categoryColors.orange.bg,
     destination: 'place-explorer',
   },
   {
@@ -35,8 +37,8 @@ export const quickMenuItems: QuickMenuItem[] = [
     title: '내 캐릭터 만들기',
     subtitle: '우리 아이 캐릭터',
     icon: 'paw-outline',
-    iconColor: '#E5A421',
-    iconBackgroundColor: '#FFF7DC',
+    iconColor: categoryColors.yellow.fg,
+    iconBackgroundColor: categoryColors.yellow.bg,
     destination: 'coming-soon',
   },
   {
@@ -44,8 +46,8 @@ export const quickMenuItems: QuickMenuItem[] = [
     title: 'Log 만들기',
     subtitle: '여행 기록 남기기',
     icon: 'create-outline',
-    iconColor: '#5187D4',
-    iconBackgroundColor: '#EAF2FF',
+    iconColor: categoryColors.blue.fg,
+    iconBackgroundColor: categoryColors.blue.bg,
     destination: 'coming-soon',
   },
 ];

@@ -29,7 +29,7 @@ const styles = StyleSheet.create({
   },
   editButtonOverlay: {
     alignItems: 'center',
-    backgroundColor: colors.mintIcon,
+    backgroundColor: colors.sea,
     borderRadius: 9999,
     bottom: spacing.xs,
     height: 40,
