@@ -90,10 +90,10 @@
 | `apps/mobile/.env.example`           | 신규. `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_KAKAO_JS_KEY`                                                                                 | #10     |
 | `.env.example`                       | Mobile 항목은 `apps/mobile/.env` 에 넣어야 한다는 안내 추가                                                                             | #10     |
 | `package.json` / `package-lock.json` | react-native-webview 추가                                                                                                               | #10     |
-| `app/_layout.tsx`                    | `Stack.Screen`에 `trips/[tripId]/add-schedule` 라우트 추가 (목업 10)                                                                    | 예정    |
-| `app.config.ts`                      | `web.output` 을 `static` → `single` 로 변경 (웹 프리렌더 제거)                                                                          | 예정    |
-| `src/theme/colors.ts`                | **색상 토큰 전면 정리.** 중복 토큰 4개 통합, 신규 토큰 8개 추가, `categoryColors`·`brandColors`·`overlayColors`·`thumbnailPalette` 신설 | 예정    |
-| 화면·컴포넌트 50개                   | 하드코딩된 색상 323건을 전부 theme 토큰 참조로 치환 (전 기능 대상)                                                                      | 예정    |
+| `app/_layout.tsx`                    | `Stack.Screen`에 `trips/[tripId]/add-schedule` 라우트 추가 (목업 10)                                                                    | #14     |
+| `app.config.ts`                      | `web.output` 을 `static` → `single` 로 변경 (웹 프리렌더 제거)                                                                          | #15     |
+| `src/theme/colors.ts`                | **색상 토큰 전면 정리.** 중복 토큰 4개 통합, 신규 토큰 8개 추가, `categoryColors`·`brandColors`·`overlayColors`·`thumbnailPalette` 신설 | #23     |
+| 화면·컴포넌트 50개                   | 하드코딩된 색상 323건을 전부 theme 토큰 참조로 치환 (전 기능 대상)                                                                      | #23     |
 
 > **`app/_layout.tsx`는 충돌 위험이 큰 파일이다.** 다른 팀원도 라우트를 추가하면서 건드리게 된다.
 > 변경 내용 자체는 기존 트리를 `GestureHandlerRootView`로 한 겹 감싼 것뿐이라
@@ -217,3 +217,4 @@ git add package-lock.json
 | 2026-08-05 | 10 일정 추가 작업 — 신규 설치 라이브러리 없음. `app/_layout.tsx`에 add-schedule 라우트 추가, places 담당자 협의 사항 기록                                                                                                              |
 | 2026-08-06 | 웹 실행 오류 수정 — `app.config.ts`의 `web.output`을 `single`로 변경, `expo-media-library` 호출을 `utils/saveImageToLibrary`(+`.web.ts`)로 분리. 신규 라이브러리 없음                                                                  |
 | 2026-08-10 | 프론트 통합 후 디자인 색상 통일 — 하드코딩 색상 323건(값 229종)을 theme 토큰으로 일괄 치환. `colors.ts` 중복 토큰 4개 통합·신규 8개 추가, `categoryColors`·`brandColors`·`overlayColors`·`thumbnailPalette` 신설. 신규 라이브러리 없음 |
+| 2026-08-12 | **main 머지 완료(#21).** 색상 통일은 #23 으로 `dev/integration` 에 반영 후 함께 올라갔다. 3번 표의 '예정' 항목을 실제 PR 번호(#14·#15·#23)로 갱신. `constants/map.ts`·`constants/share.ts` 의 옛 주석 정리 — 카카오 팀 앱 등록이 끝났는데 개인 키를 쓰는 중이라고 적혀 있던 부분을 사실대로 고치고, 배포 도메인 관련 TODO 를 한 곳으로 모았다. |
