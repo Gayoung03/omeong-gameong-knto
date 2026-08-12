@@ -254,9 +254,25 @@ pets.birth_date
 > `reviews.visited_at`은 날짜(`2026-08-12`), `travel_logs.visited_at`은 시각(`2026-08-12T14:30:00+09:00`)입니다.
 > 앱에서 같은 이름이라고 같은 형식으로 다루면 안 됩니다.
 
-### 필드 이름 **[확정]**
+### 필드 이름 **[제안]**
 
-DB 컬럼과 같은 snake_case를 씁니다. 앱에서 camelCase로 바꾸는 것은 클라이언트 쪽 책임입니다.
+DB 컬럼은 snake_case입니다. **API 응답도 snake_case로 내릴지는 결정이 필요합니다.**
+
+모바일의 기존 타입은 이미 camelCase로 작성되어 있습니다.
+
+```text
+프론트   petId, profileImage, deletedAt        (apps/mobile/src/types/pet.ts)
+DB       id, image_url, deleted_at
+```
+
+어느 쪽으로 정하든 변환하는 지점이 한 곳이어야 합니다.
+
+| 안 | 변환 위치 |
+| --- | --- |
+| API가 snake_case로 내림 | 앱의 `apiClient` 응답 인터셉터에서 일괄 변환 |
+| API가 camelCase로 내림 | 서버 Pydantic 스키마에서 alias로 변환 |
+
+화면 코드가 이미 camelCase 타입에 맞춰져 있으므로, 앱을 고치지 않는 쪽이 변경량이 적습니다.
 
 ### 삭제 **[제안]**
 
@@ -298,9 +314,16 @@ GET /api/v1/places?latitude=33.4996&longitude=126.5312&radius=3000
 
 ---
 
-## 7. Enum 값 **[확정]**
+## 7. Enum 값
 
-`apps/api/app/db/models/enums.py`에 정의된 12개입니다. 앱과 서버가 같은 문자열을 씁니다.
+DB에 저장되는 값은 **[확정]** 이지만, **API가 이 값을 그대로 내릴지는 [제안]** 입니다.
+
+> **주의** — 모바일에는 이미 다른 값이 들어가 있습니다.
+> `apps/mobile/src/types/pet.ts`의 `PetSpecies`는 `'강아지' | '고양이'` 두 개뿐인데,
+> DB `pet_species`는 `dog` `cat` `rabbit` `bird` `other` 다섯 개입니다.
+> 영문↔한글 변환을 어디서 할지, 종류 개수를 어느 쪽에 맞출지 정해야 합니다.
+
+`apps/api/app/db/models/enums.py`에 정의된 12개입니다.
 
 | Enum | 값 |
 | --- | --- |
@@ -339,6 +362,41 @@ generating → generated → saved → ongoing → completed
 ## 8. 팀에서 결정할 항목
 
 회의에서 이 목록을 순서대로 확인하면 됩니다.
+**프론트 타입 정합성**이 가장 급합니다 — 이미 작성된 화면 코드에 영향을 주기 때문입니다.
+
+**프론트 타입 정합성**
+
+- [ ] 응답 필드를 snake_case로 내릴지, camelCase로 내릴지
+- [ ] 위 변환을 앱 인터셉터에서 할지, 서버 스키마 alias에서 할지
+- [ ] enum을 영문 코드로 내리고 앱이 한글로 표시할지, 서버가 한글을 내릴지
+- [ ] `pet_species`를 5종 그대로 쓸지, 앱처럼 강아지·고양이 2종으로 줄일지
+- [ ] 반려동물 나이 — DB는 `birth_date`, 앱은 `age` 숫자. 서버가 계산해서 내릴지 앱이 계산할지
+- [ ] soft delete 표현 — `deleted_at` 시각을 내릴지, 앱처럼 `status: active|deleted`로 내릴지
+
+#### 해결 원칙 **[제안]**
+
+**DB도 앱도 고치지 않고 API 레이어가 흡수합니다.** 변경 비용이 가장 낮기 때문입니다.
+
+| 대상 | 현재 상태 | 고치는 비용 |
+| --- | --- | --- |
+| DB 모델 | 마이그레이션까지 완료, `main`에 머지됨 | 높음 |
+| 앱 화면·타입 | 화면 다수가 이미 타입에 의존 | 높음 |
+| **API** | **코드 0줄** | **낮음** |
+
+따라서 Pydantic 응답 스키마가 변환을 담당합니다.
+
+```text
+DB          birth_date, image_url, weight_kg, deleted_at
+  ↓ 응답 스키마에서 변환
+API 응답    age, profileImage, weight, status
+  ↓ 그대로
+앱          수정 없음
+```
+
+기준은 **API 명세서 담당이 잡고** 양쪽 담당에게 확인받습니다. 단, 다음은 기술이 아니라 제품 결정이라
+기획 차원에서 정해야 합니다.
+
+- 반려동물 종류를 5종 지원할지 2종만 지원할지
 
 **인증**
 
@@ -398,3 +456,4 @@ generating → generated → saved → ongoing → completed
 | 날짜 | 내용 |
 | --- | --- |
 | 2026-08-12 | 초안 작성. 인증·에러·페이지네이션은 제안 상태 |
+| 2026-08-12 | 모바일 기존 타입과 대조. 필드명·enum을 확정에서 제안으로 정정하고 해결 원칙 추가 |
