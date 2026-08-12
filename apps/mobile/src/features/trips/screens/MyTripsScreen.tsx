@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppHeader } from '@/src/components/layout/AppHeader';
+import { ScreenTitleBar } from '@/src/components/layout/ScreenTitleBar';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
 import { ChecklistTab } from '../components/ChecklistTab';
@@ -159,18 +161,20 @@ export function MyTripsScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>내 여행</Text>
-        <Pressable
-          accessibilityLabel="공유하기"
-          accessibilityRole="button"
-          hitSlop={spacing.sm}
-          onPress={handlePressShare}
-          style={styles.headerAction}
-        >
-          <Ionicons color={colors.basalt} name="share-outline" size={20} />
-        </Pressable>
-      </View>
+      <AppHeader notifications="popup" />
+      <ScreenTitleBar
+        right={
+          <Pressable
+            accessibilityLabel="공유하기"
+            accessibilityRole="button"
+            hitSlop={spacing.sm}
+            onPress={handlePressShare}
+          >
+            <Ionicons color={colors.basalt} name="share-outline" size={20} />
+          </Pressable>
+        }
+        title="내 여행"
+      />
 
       <TripSummaryCard onPressInfo={handlePressTripInfo} trip={trip} />
       <TripTabBar activeTab={activeTab} onChangeTab={setActiveTab} />
@@ -281,22 +285,6 @@ const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: colors.background,
     flex: 1,
-  },
-  header: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    height: 48,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  headerTitle: {
-    color: colors.basalt,
-    fontSize: typography.body.fontSize,
-    fontWeight: '700',
-  },
-  headerAction: {
-    position: 'absolute',
-    right: spacing.md,
   },
   scrollContent: {
     paddingBottom: spacing.xl,

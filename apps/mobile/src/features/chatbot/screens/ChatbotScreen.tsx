@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 
-import { brandAssets } from '@/src/config/brandAssets';
+import { AppHeader } from '@/src/components/layout/AppHeader';
 import { colors, spacing } from '@/src/theme';
 
 import { ChatMapResponse } from '../components/ChatMapResponse';
@@ -150,22 +150,7 @@ export function ChatbotScreen() {
         style={styles.keyboardArea}
       >
         <View style={styles.screen}>
-          <View style={styles.content}>
-            <View style={styles.header}>
-              <View style={styles.brand}>
-                <Image
-                  accessibilityLabel="오멍가멍 심볼"
-                  resizeMode="contain"
-                  source={brandAssets.symbol}
-                  style={styles.brandSymbol}
-                />
-                <Text style={styles.brandText}>오멍가멍</Text>
-              </View>
-              <Pressable accessibilityLabel="알림" hitSlop={10}>
-                <Ionicons color={colors.textPrimary} name="notifications-outline" size={23} />
-              </Pressable>
-            </View>
-          </View>
+          <AppHeader notifications="popup" />
 
           {hasMessages ? (
             <>
@@ -274,27 +259,6 @@ const styles = StyleSheet.create({
     maxWidth: 720,
     paddingHorizontal: spacing.md,
     alignSelf: 'center',
-  },
-  header: {
-    height: 54,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  brand: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  brandSymbol: {
-    width: 27,
-    height: 31,
-  },
-  brandText: {
-    color: colors.primary,
-    fontSize: 19,
-    fontWeight: '900',
-    letterSpacing: -0.8,
   },
   hero: {
     alignItems: 'center',

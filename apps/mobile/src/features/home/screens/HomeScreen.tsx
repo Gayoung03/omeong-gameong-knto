@@ -1,8 +1,7 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
 
-import { brandAssets } from '@/src/config/brandAssets';
+import { AppHeader } from '@/src/components/layout/AppHeader';
 import { colors, spacing } from '@/src/theme';
 
 import { ContentRecommendation } from '../components/ContentRecommendation';
@@ -37,35 +36,11 @@ export function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <AppHeader />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.brandHeader}>
-          <View style={styles.brand}>
-            <Image
-              accessibilityLabel="오멍가멍 심볼"
-              resizeMode="contain"
-              source={brandAssets.symbol}
-              style={styles.brandSymbol}
-            />
-            <Text style={styles.brandText}>오멍가멍</Text>
-          </View>
-          <View style={styles.headerActions}>
-            <Pressable accessibilityLabel="알림" hitSlop={10}>
-              <Ionicons color={colors.textPrimary} name="notifications-outline" size={23} />
-            </Pressable>
-            <View style={styles.profileCircle}>
-              <Image
-                accessibilityLabel="혼디 강아지 캐릭터"
-                resizeMode="cover"
-                source={brandAssets.character.avatar}
-                style={styles.profileImage}
-              />
-            </View>
-          </View>
-        </View>
-
         <WeatherHero onPressChatbot={() => router.push('/chatbot')} weather={mockWeather} />
 
         <View style={styles.section}>
@@ -95,47 +70,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.md,
     paddingBottom: 96,
-  },
-  brandHeader: {
-    height: 54,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  brand: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  brandSymbol: {
-    width: 27,
-    height: 31,
-  },
-  brandText: {
-    color: colors.primary,
-    fontSize: 19,
-    fontWeight: '900',
-    letterSpacing: -0.8,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 13,
-  },
-  profileCircle: {
-    width: 31,
-    height: 31,
-    borderWidth: 1,
-    borderColor: colors.basaltSoft,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primarySoft,
-    overflow: 'hidden',
-  },
-  profileImage: {
-    width: '100%',
-    height: '100%',
   },
   section: {
     marginTop: 25,
