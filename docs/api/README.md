@@ -1,14 +1,29 @@
 # 오멍가멍 API 공통 규약
 
-작성일: 2026-08-12 · 상태: **초안 (팀 합의 전)**
+작성일: 2026-08-12 · 갱신: 2026-08-12 · 상태: **확정 (2026-08-12 팀 회의)**
 
-이 문서는 API를 구현하기 전에 프론트엔드와 백엔드가 미리 합의할 공통 규칙을 정리한 것입니다.
-아직 확정된 규격이 아니며, **[제안]** 으로 표시한 항목은 팀 논의로 결정해야 합니다.
+이 문서는 프론트엔드와 백엔드가 공유하는 API 공통 규칙입니다.
+2026-08-12 팀 회의에서 10개 항목을 확정했으며, 아래 표기를 씁니다.
 
 | 표기 | 뜻 |
 | --- | --- |
-| **[확정]** | 이미 코드에 있는 값. 논의 대상 아님 |
-| **[제안]** | 코드에 근거가 없어 이 문서에서 제안하는 값. **합의 필요** |
+| **[확정]** | 코드에 이미 있거나 팀 회의에서 결정됨 |
+| **[확인 필요]** | 결정은 됐으나 구현 전 확인이 남은 항목 |
+
+### 2026-08-12 팀 회의 결정 사항
+
+| # | 항목 | 결정 | 본문 |
+| --- | --- | --- | --- |
+| 1 | 값 표기 | 영문 코드로 통일 (`dog`). 앱이 화면용 한글 라벨로 변환 | 7장 |
+| 2 | 필드명 표기법 | API 응답은 camelCase (`imageUrl`) | 6장 |
+| 3 | 반려동물 종류 | 강아지 / 고양이 / 기타(직접 입력) | 7장 |
+| 4 | 반려동물 나이 | 서버가 `birthDate`로 계산해 `age` 포함 | 6장 |
+| 5 | Soft delete 표현 | `deletedAt` 대신 `status: active \| deleted` | 6장 |
+| 6 | `ChatMessage.id` | number가 아닌 UUID 문자열 (버그 수정) | 6장 |
+| 7 | 인증 토큰 | access token + refresh token 분리 | 3장 |
+| 8 | 에러 응답 | FastAPI 기본 형식(`detail`) 유지 | 4장 |
+| 9 | 목록 조회 | limit/offset, `{ items, total, limit, offset }` | 5장 |
+| 10 | 이름 통일 기준 | 단어는 DB를 따르고 표기법만 레이어별 관습 | 6장 |
 
 DB 설계 결정은 [`docs/database/README.md`](../database/README.md)가 원본입니다. 이 문서에서 다시 정하지 않고 참조만 합니다.
 
@@ -75,7 +90,7 @@ http://localhost:19006    Expo Web
 
 ---
 
-## 3. 인증 **[제안]**
+## 3. 인증 **[확정]** — 결정: 2026-08-12 팀 회의
 
 `users` 테이블에 `auth_provider`, `provider_user_id`, `password_hash`가 있으므로
 자체 로그인과 소셜 로그인을 함께 지원하는 구조입니다.
@@ -84,13 +99,37 @@ http://localhost:19006    Expo Web
 auth_provider: local | kakao | apple | google
 ```
 
-### 제안하는 방식
+### 토큰 구조 — access token + refresh token 분리
 
-로그인에 성공하면 서버가 자체 토큰을 발급하고, 이후 요청은 헤더에 담아 보냅니다.
+로그인에 성공하면 서버가 토큰 두 개를 발급합니다.
+
+```json
+{
+  "accessToken": "eyJhbGciOi...",
+  "refreshToken": "eyJhbGciOi...",
+  "tokenType": "bearer",
+  "expiresIn": 1800
+}
+```
+
+| 토큰 | 용도 | 담는 곳 |
+| --- | --- | --- |
+| access token | 모든 인증 요청에 첨부 | `Authorization` 헤더 |
+| refresh token | access token 만료 시 재발급 | `POST /auth/refresh` 요청 본문 |
 
 ```text
-Authorization: Bearer <access_token>
+Authorization: Bearer <accessToken>
 ```
+
+`expiresIn`은 access token의 남은 초입니다. 앱이 만료 시각을 직접 계산하지 않도록 서버가 내려줍니다.
+
+access token이 만료되면 `401`이 오고, 앱은 refresh token으로 재발급을 시도한 뒤 원래 요청을 다시 보냅니다.
+refresh token까지 만료되면 로그인 화면으로 돌려보냅니다.
+
+두 토큰 모두 `expo-secure-store`에 저장합니다. `AsyncStorage`는 암호화되지 않아 쓰지 않습니다.
+
+> **[확인 필요]** 토큰 만료 시간(access / refresh)은 구현 시점에 정합니다.
+> 위 예시의 1800초(30분)는 임시값입니다.
 
 소셜 로그인도 카카오·애플·구글 토큰을 그대로 쓰지 않고, 서버가 검증한 뒤 자체 토큰으로 교환합니다.
 제공처가 4곳이라 각각의 토큰을 앱과 서버가 따로 관리하면 복잡해지기 때문입니다.
@@ -115,18 +154,17 @@ Authorization: Bearer <access_token>
 장소와 공지는 비로그인 상태에서도 앱을 둘러볼 수 있어야 하므로 공개로 둡니다.
 단, 즐겨찾기 여부처럼 사용자별 정보는 로그인했을 때만 응답에 포함합니다.
 
-### 결정 필요
+### 남은 확인 사항
 
-- access token만 쓸지, refresh token을 분리할지
-- 토큰 만료 시간
-- 모바일에서 토큰을 어디에 저장할지 (`expo-secure-store` 등)
-- 탈퇴(`users.deleted_at`) 후 같은 계정으로 재가입을 허용할지
+- 토큰 만료 시간 (access / refresh)
+- 탈퇴(`users.deleted_at`) 후 같은 계정으로 재가입을 허용할지 — 개인정보 처리방침과 함께 결정
+- 로그아웃 시 refresh token을 서버에서 무효화할지 (블랙리스트 필요 여부)
 
 ---
 
-## 4. 에러 응답 **[제안]**
+## 4. 에러 응답 **[확정]** — 결정: 2026-08-12 팀 회의
 
-FastAPI 기본 형식은 다음과 같습니다.
+**FastAPI 기본 형식을 그대로 씁니다.** 별도 래핑을 하지 않습니다.
 
 ```json
 { "detail": "Pet not found" }
@@ -142,11 +180,13 @@ FastAPI 기본 형식은 다음과 같습니다.
 }
 ```
 
-### 제안
+### 이렇게 정한 이유
 
-기본 형식을 그대로 씁니다. 프론트에서 화면에 문구를 직접 매칭해야 하는 경우가 생기면
-그때 `code` 필드를 추가하는 쪽으로 확장합니다. 처음부터 감싸면 FastAPI가 자동으로 만들어 주는
-검증 에러까지 직접 변환해야 해서 손이 많이 갑니다.
+처음부터 자체 형식으로 감싸면 FastAPI가 자동으로 만들어 주는 검증 에러(422)까지 직접 변환해야 합니다.
+프론트에서 에러 종류를 코드로 구분해야 하는 상황이 실제로 생기면, 그때 `code` 필드를 더하는 쪽으로 확장합니다.
+
+에러 형식이 두 가지(문자열 / 배열)라는 점만 앱이 알고 있으면 됩니다.
+`detail`이 배열이면 검증 실패입니다.
 
 ### 상태 코드
 
@@ -163,18 +203,17 @@ FastAPI 기본 형식은 다음과 같습니다.
 | 422 | 요청 형식·타입 검증 실패 (FastAPI 자동) |
 | 500 | 서버 오류 |
 
-### 결정 필요
+### 남은 확인 사항
 
-- 기본 형식 유지 여부
-- 에러 메시지를 한국어로 내려서 앱이 그대로 표시할지, 코드만 내리고 앱이 문구를 가질지
+- 에러 메시지를 한국어로 내려서 앱이 그대로 표시할지, 영문으로 내리고 앱이 문구를 가질지
 
 ---
 
-## 5. 목록 조회와 페이지네이션 **[제안]**
+## 5. 목록 조회와 페이지네이션 **[확정]** — 결정: 2026-08-12 팀 회의
 
 장소·리뷰·알림·여행기록 등 목록을 돌려주는 API에 공통으로 적용합니다.
 
-### 제안: limit / offset
+### limit / offset
 
 ```text
 GET /api/v1/places?limit=20&offset=0
@@ -210,12 +249,16 @@ offset   기본 0
 | 장소 | 거리순 (좌표를 받은 경우) / 이름순 |
 | 리뷰 | 최신순 |
 | 알림 | 최신순 |
-| 여행기록 | `recorded_date` 최신순 |
+| 여행기록 | `recordedDate` 최신순 |
 
-### 결정 필요
+### 목록 응답은 항상 감쌉니다
 
-- limit/offset 채택 여부
-- 응답을 `items`로 감쌀지, 배열을 그대로 내리고 개수는 헤더로 줄지
+배열을 그대로 내리지 않습니다. 항목이 하나뿐인 목록도 같은 형태를 유지해,
+앱이 목록 응답을 한 가지 방식으로만 다루면 되게 합니다.
+
+```json
+{ "items": [], "total": 0, "limit": 20, "offset": 0 }
+```
 
 ---
 
@@ -254,41 +297,60 @@ pets.birth_date
 > `reviews.visited_at`은 날짜(`2026-08-12`), `travel_logs.visited_at`은 시각(`2026-08-12T14:30:00+09:00`)입니다.
 > 앱에서 같은 이름이라고 같은 형식으로 다루면 안 됩니다.
 
-### 필드 이름 **[제안]**
+### 필드 이름 **[확정]** — 결정: 2026-08-12 팀 회의
 
-DB 컬럼은 snake_case입니다. **API 응답도 snake_case로 내릴지는 결정이 필요합니다.**
-
-모바일의 기존 타입은 이미 camelCase로 작성되어 있습니다.
+**단어는 DB를 따르고, 표기법만 레이어별 관습을 씁니다.**
 
 ```text
-프론트   petId, profileImage, deletedAt        (apps/mobile/src/types/pet.ts)
-DB       id, image_url, deleted_at
+DB 컬럼      image_url      snake_case 유지
+API 응답     imageUrl       camelCase
+앱 타입      imageUrl       그대로 사용
 ```
 
-어느 쪽으로 정하든 변환하는 지점이 한 곳이어야 합니다.
+단어를 맞춘다는 뜻이지 표기법까지 맞춘다는 뜻이 아닙니다.
+`image_url` → `imageUrl` 은 정상이고, `image_url` → `profileImage` 처럼 **단어가 달라지는 것이 금지**입니다.
 
-| 안 | 변환 위치 |
-| --- | --- |
-| API가 snake_case로 내림 | 앱의 `apiClient` 응답 인터셉터에서 일괄 변환 |
-| API가 camelCase로 내림 | 서버 Pydantic 스키마에서 alias로 변환 |
+변환은 서버 Pydantic 응답 스키마에서 합니다. 앱은 받은 그대로 씁니다.
 
-화면 코드가 이미 camelCase 타입에 맞춰져 있으므로, 앱을 고치지 않는 쪽이 변경량이 적습니다.
+기존 프론트 타입 중 단어가 다른 것들은 DB 단어로 맞춥니다.
 
-### 삭제 **[제안]**
+| 프론트 현재 | 변경 후 | DB |
+| --- | --- | --- |
+| `petId` `userId` `logId` | `id` | `pets.id` `users.id` `travel_logs.id` |
+| `profileImage` | `imageUrl` / `profileImageUrl` | `pets.image_url` / `users.profile_image_url` |
+| `weight` | `weightKg` | `pets.weight_kg` |
+| `placeName` (기록) | `placeNameSnapshot` | `travel_logs.place_name_snapshot` |
+| `images` (문의) | `imageUrls` | `inquiries.image_urls` |
+| `text` (채팅) | `content` | `chat_messages.content` |
+
+전체 목록은 [`type-mismatch-report.md`](./type-mismatch-report.md) 참고.
+
+### 삭제 **[확정]** — 결정: 2026-08-12 팀 회의
 
 `users`와 `pets`는 물리 삭제가 아니라 `deleted_at`을 기록하는 soft delete입니다
 ([DB 문서](../database/README.md) 참고).
 
-API에서는 이렇게 다룹니다.
+**API 응답에는 `deletedAt` 대신 `status`를 씁니다.**
+
+```json
+{ "id": "...", "name": "몽이", "status": "active" }
+```
+
+| 값 | 뜻 |
+| --- | --- |
+| `active` | `deleted_at IS NULL` |
+| `deleted` | `deleted_at`이 기록됨 |
+
+시각 자체는 앱에서 쓸 일이 없어 노출하지 않습니다. 앱은 상태만 보고 화면을 그립니다.
 
 ```text
-DELETE 요청              deleted_at 기록
-목록 · 상세 조회         deleted_at IS NULL 만 반환
+DELETE 요청              deleted_at 기록, status가 deleted로 바뀜
+목록 · 상세 조회         기본적으로 active만 반환
 삭제된 리소스 재조회     404
 ```
 
-앱에는 "삭제됨" 상태를 노출하지 않습니다. 과거 여행 기록에 남은 이름·사진은
-`travel_log_pets`의 스냅샷을 쓰므로 삭제 후에도 기록 화면이 유지됩니다.
+과거 여행 기록에 남은 이름·사진은 `travel_log_pets`의 스냅샷을 쓰므로
+삭제 후에도 기록 화면이 유지됩니다.
 
 ### 계산해서 내려주는 값 **[확정]**
 
@@ -296,12 +358,16 @@ DB에 저장하지 않고 조회 시 계산하는 값들이 있습니다. **저�
 
 ```text
 nights, days      여행 일수 · 숙박 일수
-log_count         여행기록 개수
-saved_count       저장(즐겨찾기) 개수
-review_count      리뷰 개수
+logCount          여행기록 개수
+savedCount        저장(즐겨찾기) 개수
+reviewCount       리뷰 개수
+age               반려동물 나이 — birthDate에서 계산
 여행 총거리 · 총시간
 장소까지의 거리
 ```
+
+`age`는 앱이 계산하면 기기 시간대에 따라 값이 달라질 수 있어 서버가 담당합니다.
+`birthDate`가 없으면 `age`도 `null`입니다.
 
 ### 좌표 **[확정]**
 
@@ -314,14 +380,17 @@ GET /api/v1/places?latitude=33.4996&longitude=126.5312&radius=3000
 
 ---
 
-## 7. Enum 값
+## 7. Enum 값 **[확정]** — 결정: 2026-08-12 팀 회의
 
-DB에 저장되는 값은 **[확정]** 이지만, **API가 이 값을 그대로 내릴지는 [제안]** 입니다.
+**API는 영문 코드를 그대로 내리고, 화면에 보일 한글은 앱이 라벨로 변환합니다.**
 
-> **주의** — 모바일에는 이미 다른 값이 들어가 있습니다.
-> `apps/mobile/src/types/pet.ts`의 `PetSpecies`는 `'강아지' | '고양이'` 두 개뿐인데,
-> DB `pet_species`는 `dog` `cat` `rabbit` `bird` `other` 다섯 개입니다.
-> 영문↔한글 변환을 어디서 할지, 종류 개수를 어느 쪽에 맞출지 정해야 합니다.
+```ts
+// 앱이 갖는 라벨 맵 (예시)
+const PET_SPECIES_LABEL = { dog: '강아지', cat: '고양이', other: '기타' };
+```
+
+값과 표시 문구를 분리하면 화면 문구를 바꿔도 데이터가 그대로입니다.
+[`signupOptions.ts`](../../apps/mobile/src/features/auth/data/signupOptions.ts)가 이미 이 방식입니다.
 
 `apps/api/app/db/models/enums.py`에 정의된 12개입니다.
 
@@ -357,89 +426,82 @@ generating → generated → saved → ongoing → completed
 
 추천을 다시 생성하면 `routes.version`이 올라갑니다.
 
----
+### 반려동물 종류 **[확정]** — 결정: 2026-08-12 팀 회의
 
-## 8. 팀에서 결정할 항목
+앱에서 제공하는 선택지는 **강아지 / 고양이 / 기타(사용자 직접 입력)** 세 가지입니다.
+`pet_species` enum은 그대로 두고 값만 아래처럼 씁니다.
 
-회의에서 이 목록을 순서대로 확인하면 됩니다.
-**프론트 타입 정합성**이 가장 급합니다 — 이미 작성된 화면 코드에 영향을 주기 때문입니다.
-
-**프론트 타입 정합성**
-
-- [ ] 응답 필드를 snake_case로 내릴지, camelCase로 내릴지
-- [ ] 위 변환을 앱 인터셉터에서 할지, 서버 스키마 alias에서 할지
-- [ ] enum을 영문 코드로 내리고 앱이 한글로 표시할지, 서버가 한글을 내릴지
-- [ ] `pet_species`를 5종 그대로 쓸지, 앱처럼 강아지·고양이 2종으로 줄일지
-- [ ] 반려동물 나이 — DB는 `birth_date`, 앱은 `age` 숫자. 서버가 계산해서 내릴지 앱이 계산할지
-- [ ] soft delete 표현 — `deleted_at` 시각을 내릴지, 앱처럼 `status: active|deleted`로 내릴지
-
-#### 해결 원칙 **[제안]**
-
-**DB도 앱도 고치지 않고 API 레이어가 흡수합니다.** 변경 비용이 가장 낮기 때문입니다.
-
-| 대상 | 현재 상태 | 고치는 비용 |
+| 앱 선택지 | API 값 | 비고 |
 | --- | --- | --- |
-| DB 모델 | 마이그레이션까지 완료, `main`에 머지됨 | 높음 |
-| 앱 화면·타입 | 화면 다수가 이미 타입에 의존 | 높음 |
-| **API** | **코드 0줄** | **낮음** |
+| 강아지 | `dog` | |
+| 고양이 | `cat` | |
+| 기타 | `other` | 사용자가 종류를 직접 입력 |
 
-따라서 Pydantic 응답 스키마가 변환을 담당합니다.
+`rabbit` `bird`는 enum에 남아 있지만 앱 선택지에서는 제공하지 않습니다.
 
-```text
-DB          birth_date, image_url, weight_kg, deleted_at
-  ↓ 응답 스키마에서 변환
-API 응답    age, profileImage, weight, status
-  ↓ 그대로
-앱          수정 없음
-```
-
-기준은 **API 명세서 담당이 잡고** 양쪽 담당에게 확인받습니다. 단, 다음은 기술이 아니라 제품 결정이라
-기획 차원에서 정해야 합니다.
-
-- 반려동물 종류를 5종 지원할지 2종만 지원할지
-
-**인증**
-
-- [ ] access token만 쓸지, refresh token을 분리할지
-- [ ] 토큰 만료 시간
-- [ ] 모바일 토큰 저장 위치
-- [ ] 소셜 토큰을 자체 토큰으로 교환하는 방식이 맞는지
-- [ ] 탈퇴 후 재가입 허용 여부
-
-**에러**
-
-- [ ] FastAPI 기본 형식(`detail`)을 그대로 쓸지
-- [ ] 에러 메시지를 한국어로 내릴지, 코드만 내릴지
-
-**목록**
-
-- [ ] limit/offset 채택 여부
-- [ ] 응답을 `items`로 감쌀지
-
-**기타**
-
-- [ ] soft delete 리소스의 DELETE 응답 코드 (204 통일 여부)
-- [ ] 이미지 업로드 방식 — 앱이 직접 스토리지에 올리고 URL만 보낼지, 서버가 받을지
-      (`review_images.image_url`, `travel_logs.original_image_url`, `inquiries.image_urls`가 모두 URL 문자열)
+> **[확인 필요] — DB 컬럼 추가가 필요합니다.**
+> "기타" 선택 시 사용자가 입력한 종류 텍스트(예: 햄스터)를 저장할 컬럼이 `pets` 테이블에 없습니다.
+> 마이그레이션(`5eead3cb186c`)까지 확인했습니다.
+> `breed`는 품종(말티즈·푸들)을 담는 컬럼이라 종류와 용도가 다릅니다.
+> 컬럼 추가는 이 문서 범위 밖이므로 별도 논의가 필요합니다.
+>
+> ```text
+> 현재 pets 컬럼
+> id, user_id, name, species, breed, size, weight_kg,
+> birth_date, image_url, health_notes, is_primary,
+> deleted_at, created_at, updated_at
+> ```
 
 ---
 
-## 9. 앞으로 작성할 도메인 문서
+## 8. 결정 현황
 
-이 문서의 규약이 확정된 뒤에 도메인별로 나눠 작성합니다.
+### 확정 (2026-08-12 팀 회의)
+
+- [x] 값 표기 — 영문 코드, 앱이 한글 라벨로 변환 (7장)
+- [x] 필드명 표기법 — API 응답은 camelCase (6장)
+- [x] 반려동물 종류 — 강아지 / 고양이 / 기타(직접 입력) (7장)
+- [x] 반려동물 나이 — 서버가 `birthDate`로 계산해 `age` 포함 (6장)
+- [x] Soft delete 표현 — `status: active | deleted` (6장)
+- [x] `ChatMessage.id` — UUID 문자열 (6장, [`chatbot.md`](./chatbot.md))
+- [x] 인증 토큰 — access + refresh 분리 (3장)
+- [x] 에러 응답 — FastAPI 기본 형식 유지 (4장)
+- [x] 목록 조회 — limit/offset, `{ items, total, limit, offset }` (5장)
+- [x] 이름 통일 기준 — 단어는 DB, 표기법은 레이어별 (6장)
+
+### 남은 항목
+
+구현을 막지 않는 것들이라 진행하면서 정합니다.
+
+| 항목 | 정해야 할 시점 |
+| --- | --- |
+| 토큰 만료 시간 (access / refresh) | 인증 구현 시 |
+| 로그아웃 시 refresh token 서버 무효화 여부 | 인증 구현 시 |
+| 에러 메시지 언어 (한국어 / 영문 + 앱이 문구 보유) | 첫 도메인 구현 시 |
+| 탈퇴 후 재가입 허용 여부 | 개인정보 처리방침과 함께 |
+| 이미지 업로드 방식 (앱이 직접 업로드 후 URL 전달 / 서버 수신) | 리뷰·여행기록 구현 전 |
+| 여행 취향 태그 목록 | 추천 기능 구현 전 |
+| `pets` 테이블에 "기타" 종류 텍스트 컬럼 추가 | 반려동물 등록 구현 전 (7장) |
+
+`review_images.image_url`, `travel_logs.original_image_url`, `inquiries.image_urls`가
+모두 URL 문자열이라, 이미지 업로드 방식은 세 도메인에 공통으로 영향을 줍니다.
+
+---
+
+## 9. 도메인 문서
 
 | 문서 | 대응 DB 테이블 | 엔드포인트 스텁 |
 | --- | --- | --- |
-| `auth.md` | `users` | `auth.py` |
-| `users.md` | `users`, `pets`, `user_travel_preferences` | `users.py`, `pets.py` |
-| `places.md` | `places`, `place_business_hours`, `place_pet_policies`, `place_tags`, `place_tag_links`, `favorites` | `places.py` |
-| `reviews.md` | `reviews`, `review_images` | `reviews.py` |
-| `routes.md` | `route_requests`, `route_request_pets`, `route_request_stays`, `routes`, `route_days`, `route_items`, `route_moves`, `route_checklist_items`, `route_memos` | `routes.py` |
-| `travel-logs.md` | `travel_logs`, `travel_log_pets` | `trips.py` |
-| `chatbot.md` | `chat_conversations`, `chat_messages` | `chatbot.py` |
-| `weather.md` | `weather_snapshots` | `weather.py` |
-| `notifications.md` | `notices`, `notifications`, `inquiries` | 없음 |
-| `guides.md` | 없음 | `guides.py` |
+| [`auth.md`](./auth.md) | `users` | `auth.py` |
+| [`users.md`](./users.md) | `users`, `pets`, `user_travel_preferences` | `users.py`, `pets.py` |
+| [`places.md`](./places.md) | `places`, `place_business_hours`, `place_pet_policies`, `place_tags`, `place_tag_links`, `favorites` | `places.py` |
+| [`reviews.md`](./reviews.md) | `reviews`, `review_images` | `reviews.py` |
+| [`routes.md`](./routes.md) | `route_requests`, `route_request_pets`, `route_request_stays`, `routes`, `route_days`, `route_items`, `route_moves`, `route_checklist_items`, `route_memos` | `routes.py` |
+| [`travel-logs.md`](./travel-logs.md) | `travel_logs`, `travel_log_pets` | `trips.py` |
+| [`chatbot.md`](./chatbot.md) | `chat_conversations`, `chat_messages` | `chatbot.py` |
+| [`weather.md`](./weather.md) | `weather_snapshots` | `weather.py` |
+| [`notifications.md`](./notifications.md) | `notices`, `notifications`, `inquiries` | 없음 |
+| [`guides.md`](./guides.md) | 없음 | `guides.py` |
 
 ### 이름이 어긋난 곳
 
@@ -457,3 +519,4 @@ API 응답    age, profileImage, weight, status
 | --- | --- |
 | 2026-08-12 | 초안 작성. 인증·에러·페이지네이션은 제안 상태 |
 | 2026-08-12 | 모바일 기존 타입과 대조. 필드명·enum을 확정에서 제안으로 정정하고 해결 원칙 추가 |
+| 2026-08-12 | **팀 회의에서 10개 항목 확정.** 제안 항목을 모두 확정으로 갱신하고 남은 항목만 8장에 정리 |
