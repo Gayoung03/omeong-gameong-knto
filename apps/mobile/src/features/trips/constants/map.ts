@@ -2,8 +2,8 @@
  * 카카오 지도 JavaScript 앱 키.
  * `.env` 의 EXPO_PUBLIC_KAKAO_JS_KEY 에 넣는다. (`.env.example` 참고)
  *
- * TODO: 현재는 개인 앱 키를 빌려 쓰는 중이다.
- *       카카오 개발자 콘솔에 '오멍가멍' 앱을 따로 등록하고 팀 키로 교체할 것.
+ * 카카오 개발자 콘솔의 팀 앱 '오멍가멍'(ID 1533456) 키를 사용한다.
+ * 제품 설정 > 카카오맵 > 사용 설정이 ON 이어야 하고, 무료 쿼터도 이 앱에 배정돼 있다.
  */
 export const KAKAO_JS_KEY = process.env.EXPO_PUBLIC_KAKAO_JS_KEY ?? '';
 
