@@ -16,7 +16,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { recommendedDays } from '../mocks/routes.mock';
-import { RouteBottomNavigation } from '../components/RouteBottomNavigation';
 import type { RoutePlace } from '../types';
 import {
   formatRouteDate,
@@ -463,8 +462,6 @@ export function RouteRecommendationScreen() {
           <Ionicons color={palette.orange} name="chevron-forward" size={20} />
         </Pressable>
       </ScrollView>
-
-      <RouteBottomNavigation />
 
       <Modal
         animationType="fade"

@@ -2,12 +2,14 @@ import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppHeader } from '@/src/components/layout/AppHeader';
+import { ScreenTitleBar } from '@/src/components/layout/ScreenTitleBar';
+import { IconButton } from '@/src/components/ui/IconButton';
 import { SectionHeader } from '@/src/components/ui/SectionHeader';
 import { colors, spacing } from '@/src/theme';
 
 import { PetProfileSection } from './components/PetProfileSection';
 import { ProfileFooterLinks } from './components/ProfileFooterLinks';
-import { ProfileHeader } from './components/ProfileHeader';
 import { TravelSummarySection } from './components/TravelSummarySection';
 import { UserProfileSection } from './components/UserProfileSection';
 import { usePets } from './hooks/usePets';
@@ -22,7 +24,17 @@ export function ProfileScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <ProfileHeader />
+      <AppHeader />
+      <ScreenTitleBar
+        right={
+          <IconButton
+            accessibilityLabel="설정"
+            icon="settings-outline"
+            onPress={() => router.push('/settings')}
+          />
+        }
+        title="마이페이지"
+      />
       <ScrollView contentContainerStyle={styles.content} style={styles.scrollView}>
         {/* 메뉴 바만 화면 너비를 꽉 채워야 해서 좌우 여백은 이 래퍼가 갖는다. */}
         <View style={styles.sections}>

@@ -20,10 +20,10 @@ import {
   CalendarPicker,
   WheelTimePicker,
 } from '../components/InlineDateTimePicker';
-import { RouteBottomNavigation } from '../components/RouteBottomNavigation';
 import { formatTripDuration } from '../utils/tripDuration';
 
-import { colors as theme, overlayColors } from '@/src/theme';
+import { AppHeader } from '@/src/components/layout/AppHeader';
+import { colors as theme, overlayColors, typography } from '@/src/theme';
 
 const DRAFT_KEY = 'route-input-draft';
 
@@ -49,7 +49,7 @@ type Stay = { id: string; name: string; period: string; address: string };
 type Pet = { name: string; species: string; size: string; weight: string };
 type EditTarget = 'trip' | 'pet' | 'stay' | null;
 type PickerTarget = 'start-date' | 'start-time' | 'end-date' | 'end-time' | null;
-type UtilityModal = 'notifications' | 'profile' | 'later' | null;
+type UtilityModal = 'later' | null;
 
 type RouteDraft = {
   trip: Trip;
@@ -490,26 +490,7 @@ export function RouteInputScreen() {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <View style={styles.mobileFrame}>
-        <View style={styles.header}>
-          <View style={styles.brandRow}>
-            <View style={styles.brandIcon}>
-              <Ionicons color={colors.white} name="paw" size={18} />
-            </View>
-            <Text style={styles.brandText}>오멍가멍</Text>
-          </View>
-          <View style={styles.headerActions}>
-            <Pressable accessibilityLabel="알림 보기" onPress={() => setUtilityModal('notifications')}>
-              <Ionicons color={colors.ink} name="notifications-outline" size={21} />
-            </Pressable>
-            <Pressable
-              accessibilityLabel="반려동물 프로필 보기"
-              onPress={() => setUtilityModal('profile')}
-              style={styles.profileBadge}
-            >
-              <Text style={styles.profileEmoji}>🐶</Text>
-            </Pressable>
-          </View>
-        </View>
+        <AppHeader notifications="popup" />
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.titleArea}>
@@ -720,8 +701,6 @@ export function RouteInputScreen() {
             </Pressable>
           </View>
         </ScrollView>
-
-        <RouteBottomNavigation />
       </View>
 
       <Modal animationType="slide" onRequestClose={closeEditor} transparent visible={editTarget !== null}>
@@ -884,63 +863,11 @@ export function RouteInputScreen() {
           <Pressable onPress={() => setUtilityModal(null)} style={styles.utilityDismissArea} />
           <View style={styles.utilityModalCard}>
             <View style={styles.utilityModalHeader}>
-              <Text style={styles.utilityModalTitle}>
-                {utilityModal === 'notifications'
-                  ? '알림'
-                  : utilityModal === 'profile'
-                    ? '반려동물 프로필'
-                    : '나중에 입력하기'}
-              </Text>
+              <Text style={styles.utilityModalTitle}>나중에 입력하기</Text>
               <Pressable accessibilityLabel="닫기" onPress={() => setUtilityModal(null)}>
                 <Ionicons color={colors.gray} name="close" size={23} />
               </Pressable>
             </View>
-
-            {utilityModal === 'notifications' ? (
-              <View style={styles.notificationList}>
-                <View style={styles.notificationItem}>
-                  <View style={styles.notificationIcon}>
-                    <Ionicons color={colors.orange} name="sunny-outline" size={19} />
-                  </View>
-                  <View style={styles.flexOne}>
-                    <Text style={styles.notificationTitle}>제주 날씨를 확인했어요</Text>
-                    <Text style={styles.notificationText}>여행 첫날은 맑고 산책하기 좋은 날씨예요.</Text>
-                  </View>
-                </View>
-                <View style={styles.notificationItem}>
-                  <View style={[styles.notificationIcon, styles.notificationIconMint]}>
-                    <Ionicons color={colors.deepMint} name="paw-outline" size={19} />
-                  </View>
-                  <View style={styles.flexOne}>
-                    <Text style={styles.notificationTitle}>반려동물 정보를 확인해주세요</Text>
-                    <Text style={styles.notificationText}>몽이의 체중과 크기를 언제든 수정할 수 있어요.</Text>
-                  </View>
-                </View>
-              </View>
-            ) : null}
-
-            {utilityModal === 'profile' ? (
-              <View>
-                <View style={styles.profileModalPet}>
-                  <View style={styles.profileModalAvatar}><Text style={styles.profileModalEmoji}>🐶</Text></View>
-                  <View style={styles.flexOne}>
-                    <Text style={styles.profileModalName}>{draft.pet.name}</Text>
-                    <Text style={styles.profileModalText}>
-                      {draft.pet.species} · {draft.pet.size} · {draft.pet.weight}
-                    </Text>
-                  </View>
-                </View>
-                <Pressable
-                  onPress={() => {
-                    setUtilityModal(null);
-                    openPetEditor();
-                  }}
-                  style={styles.utilityPrimaryButton}
-                >
-                  <Text style={styles.utilityPrimaryText}>정보 수정하기</Text>
-                </Pressable>
-              </View>
-            ) : null}
 
             {utilityModal === 'later' ? (
               <View>
@@ -1020,16 +947,9 @@ function FormInput({
 const styles = StyleSheet.create({
   safeArea: { alignItems: 'center', backgroundColor: colors.white, flex: 1 },
   mobileFrame: { backgroundColor: colors.white, flex: 1, maxWidth: 430, width: '100%' },
-  header: { alignItems: 'center', backgroundColor: colors.white, flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 7, paddingHorizontal: 18, paddingTop: 9 },
-  brandRow: { alignItems: 'center', flexDirection: 'row', gap: 7 },
-  brandIcon: { alignItems: 'center', backgroundColor: colors.orange, borderRadius: 16, height: 32, justifyContent: 'center', width: 32 },
-  brandText: { color: colors.orange, fontSize: 19, fontWeight: '900', letterSpacing: -0.7 },
-  headerActions: { alignItems: 'center', flexDirection: 'row', gap: 12 },
-  profileBadge: { alignItems: 'center', backgroundColor: colors.cream, borderColor: theme.primarySoftStrong, borderRadius: 17, borderWidth: 1, height: 34, justifyContent: 'center', width: 34 },
-  profileEmoji: { fontSize: 18 },
   content: { backgroundColor: colors.white, paddingBottom: 28, paddingHorizontal: 15, paddingTop: 10 },
   titleArea: { marginBottom: 10 },
-  pageTitle: { color: theme.textPrimary, fontSize: 27, fontWeight: '900', letterSpacing: -1.1 },
+  pageTitle: { color: theme.textPrimary, fontSize: typography.title.fontSize, fontWeight: '700' },
   pageDescription: { color: colors.gray, fontSize: 11, marginTop: 5 },
   progressRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 11 },
   quickBadge: { alignItems: 'center', backgroundColor: theme.seaSoft, borderRadius: 999, flexDirection: 'row', gap: 4, paddingHorizontal: 10, paddingVertical: 5 },
@@ -1128,17 +1048,6 @@ const styles = StyleSheet.create({
   utilityModalCard: { backgroundColor: colors.white, borderRadius: 20, maxWidth: 398, padding: 18, width: '100%' },
   utilityModalHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
   utilityModalTitle: { color: colors.ink, fontSize: 18, fontWeight: '900' },
-  notificationList: { gap: 9 },
-  notificationItem: { alignItems: 'center', backgroundColor: theme.surface, borderColor: colors.line, borderRadius: 12, borderWidth: 1, flexDirection: 'row', gap: 10, padding: 11 },
-  notificationIcon: { alignItems: 'center', backgroundColor: theme.primarySoft, borderRadius: 19, height: 38, justifyContent: 'center', width: 38 },
-  notificationIconMint: { backgroundColor: theme.seaSoftLight },
-  notificationTitle: { color: colors.ink, fontSize: 11, fontWeight: '800' },
-  notificationText: { color: colors.gray, fontSize: 9, lineHeight: 14, marginTop: 3 },
-  profileModalPet: { alignItems: 'center', backgroundColor: theme.primarySoft, borderRadius: 14, flexDirection: 'row', gap: 11, marginBottom: 13, padding: 13 },
-  profileModalAvatar: { alignItems: 'center', backgroundColor: theme.primarySoftStrong, borderRadius: 26, height: 52, justifyContent: 'center', width: 52 },
-  profileModalEmoji: { fontSize: 29 },
-  profileModalName: { color: colors.ink, fontSize: 15, fontWeight: '900' },
-  profileModalText: { color: colors.gray, fontSize: 10, marginTop: 4 },
   laterDescription: { color: colors.gray, fontSize: 11, lineHeight: 18, marginBottom: 15 },
   utilityPrimaryButton: { alignItems: 'center', backgroundColor: colors.orange, borderRadius: 11, justifyContent: 'center', minHeight: 46 },
   utilityPrimaryText: { color: colors.white, fontSize: 12, fontWeight: '900' },

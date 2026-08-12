@@ -94,6 +94,14 @@
 | `app.config.ts`                      | `web.output` 을 `static` → `single` 로 변경 (웹 프리렌더 제거)                                                                          | #15     |
 | `src/theme/colors.ts`                | **색상 토큰 전면 정리.** 중복 토큰 4개 통합, 신규 토큰 8개 추가, `categoryColors`·`brandColors`·`overlayColors`·`thumbnailPalette` 신설 | #23     |
 | 화면·컴포넌트 50개                   | 하드코딩된 색상 323건을 전부 theme 토큰 참조로 치환 (전 기능 대상)                                                                      | #23     |
+| `assets/brand/brand-symbol.png`      | **심볼 교체.** 하트 없는 버전으로 바꾸고 주황을 `#FF7A45`(`theme.primary`)로 보정, 203×240 로 축소                                      | 예정    |
+| `src/components/layout/` (신규)      | **공통 상단 바 신설.** `AppHeader`(브랜드+알림+프로필), `ScreenTitleBar`(화면 제목+액션)                                                | 예정    |
+| `app/_layout.tsx`                    | `Stack.Screen` 에 `notifications` 라우트 추가                                                                                            | 예정    |
+| 탭 5개 화면 헤더                     | 홈·루트 추천·챗봇·내 여행·마이페이지의 자체 헤더를 `AppHeader` 로 교체                                                                  | 예정    |
+| `app/(tabs)/routes.tsx` → `routes/`  | 기본 탭바 숨김 제거. 폴더 라우트로 바꾸고 결과 화면을 탭 안으로 이동                                                                     | 예정    |
+| `app/routes/result.tsx`              | `app/(tabs)/routes/result.tsx` 로 이동 (경로 `/routes/result` 는 그대로)                                                                 | 예정    |
+| `app/_layout.tsx`                    | `routes/result` 라우트 등록 제거 (탭 스택으로 옮겨감)                                                                                    | 예정    |
+| `src/components/layout/NotificationPopup.tsx` (신규) | 상단 바 알림 간이 팝업. `notificationPreview.mock.ts` 의 임시 목록을 보여준다                                            | 예정    |
 
 > **`app/_layout.tsx`는 충돌 위험이 큰 파일이다.** 다른 팀원도 라우트를 추가하면서 건드리게 된다.
 > 변경 내용 자체는 기존 트리를 `GestureHandlerRootView`로 한 겹 감싼 것뿐이라
@@ -116,6 +124,87 @@
 
 지도 WebView 의 HTML 은 토큰을 직접 못 쓰므로 `buildKakaoMapDocument.ts` 의 `mapColors` 객체를
 거쳐 문자열에 주입한다. 지도 색을 바꾸려면 그 객체를 고친다.
+
+### 브랜드 심볼 — 팀원이 알아야 할 것
+
+`assets/brand/brand-symbol.png` 를 교체했다. `src/config/brandAssets.ts` 를 거쳐 참조하므로
+경로를 직접 쓰는 화면은 없고, 파일만 바뀌었다.
+
+| 항목 | 변경 전 | 변경 후 |
+| --- | --- | --- |
+| 도안 | 발바닥 안에 하트 있음 | 하트 없는 단순형 |
+| 주황 | `#EB9850` | `#FF7A45` (`theme.primary` 와 동일) |
+| 크기 | 215×240 | 203×240 (투명 여백 제거) |
+
+화면 색을 전부 `#FF7A45` 로 통일했는데 심볼만 다른 주황이라 나란히 놓이면 톤이 튀었다.
+주황 계열 픽셀만 골라 시프트했고 잎(초록)·현무암(회색)은 원본 그대로다.
+
+### 공통 상단 바 — 팀원이 알아야 할 것
+
+헤더가 화면마다 달랐다. 높이 3종(54/48/가변), 알림 아이콘 크기 2종(23/21),
+좌우 여백 3종(18/16/24), 브랜드형과 제목형 두 패턴 혼재, 심볼은 홈에만.
+루트 추천은 심볼 대신 `Ionicons` 의 `paw` 아이콘을 쓰고 있었다.
+
+**하단 탭 5개 화면은 이제 `src/components/layout/AppHeader` 를 쓴다.**
+
+```
+┌──────────────────────────────────┐
+│ [심볼] 오멍가멍      [알림] [프로필] │  AppHeader (54, 모든 탭 공통)
+├──────────────────────────────────┤
+│ 내 여행                    [공유] │  ScreenTitleBar (48, 필요한 화면만)
+└──────────────────────────────────┘
+```
+
+- 새 탭 화면을 만들면 `<AppHeader />` 를 **`ScrollView` 바깥**에 놓는다.
+  안에 넣으면 스크롤할 때 같이 밀려 올라간다 (홈이 그랬다).
+- 심볼과 '오멍가멍' 글자는 **홈으로 가는 버튼**이다. 어느 탭에서든 눌러서 홈으로 돌아올 수 있다.
+- 화면 제목과 그 화면만의 버튼은 `<ScreenTitleBar title="..." right={...} />` 로 그 아래 놓는다.
+- **프로필은 어느 화면에서든 마이페이지로 간다.** 화면별로 다르게 동작하지 않는다.
+- 알림은 화면 성격에 따라 두 가지다. `notifications` prop 으로 고른다.
+
+| 값 | 동작 | 쓰는 화면 | 이유 |
+| --- | --- | --- | --- |
+| `screen` (기본) | `/notifications` 로 이동 | 홈, 마이페이지 | 둘러보는 화면이라 이동해도 잃을 게 없다 |
+| `popup` | `NotificationPopup` 을 겹쳐 띄움 | 루트 추천, 챗봇, 내 여행 | 입력·대화 중이라 화면을 떠나면 흐름이 끊긴다 |
+
+```tsx
+<AppHeader />                        // 홈, 마이페이지
+<AppHeader notifications="popup" />  // 루트 추천, 챗봇, 내 여행
+```
+
+팝업 내용은 `src/components/layout/notificationPreview.mock.ts` 에 있다.
+알림 API 가 생기면 이 파일을 Query 훅으로 바꾸고 `features/notifications/` 로 옮긴다.
+- 상세 화면(여행 정보, 장소 상세 등)은 뒤로가기 헤더를 그대로 쓴다. 이번 통일 대상이 아니다.
+
+`app/notifications.tsx` 는 `ComingSoonScreen` 을 띄운다. 알림 화면이 생기면 이 파일만 바꾸면 된다.
+
+### 루트 추천의 하단 바
+
+루트 추천 탭만 하단 바 비율이 달랐다. `app/(tabs)/routes.tsx` 가 **기본 탭바를 숨기고**
+(`tabBarStyle: { display: 'none' }`) `RouteBottomNavigation` 이라는 자체 하단 바를 그리고 있었다.
+아이콘 22 / 글자 9 / 높이 62 로 기본 탭바와 수치가 달라 눈에 띄었다.
+
+숨김을 풀고 자체 하단 바를 걷어내 다른 탭과 같은 탭바를 쓰도록 했다.
+**탭 화면에서는 하단 바를 직접 그리지 않는다.**
+
+결과 화면도 같은 문제가 있었다. 탭 **밖**(`app/routes/result.tsx`)에 있어서 진짜 탭바가 없었고,
+역시 자체 하단 바를 그리고 있었다. **결과 화면을 루트 탭 안으로 옮겨** 해결했다.
+
+```
+app/(tabs)/routes.tsx          →  app/(tabs)/routes/_layout.tsx   (Stack)
+app/routes/result.tsx          →  app/(tabs)/routes/index.tsx     (입력)
+                                  app/(tabs)/routes/result.tsx    (결과)
+```
+
+`(tabs)` 는 주소에 안 들어가는 Route Group 이라 **경로는 `/routes`·`/routes/result` 그대로다.**
+이동 코드는 한 줄도 바뀌지 않았다. 홈 탭이 `place-explorer` 를 다루는 방식과 같은 구조다.
+
+`RouteBottomNavigation` 컴포넌트는 쓰는 곳이 없어져 삭제했다.
+**하단 바가 필요한 화면은 탭 안에 두면 된다. 직접 그리지 않는다.**
+
+같은 화면의 '루트 추천 정보 입력' 제목도 혼자 27pt 였다. `typography.title`(21pt)로 맞췄다.
+
+`src/features/profile/components/ProfileHeader.tsx` 는 `ScreenTitleBar` 로 대체되어 삭제했다.
 
 ---
 
@@ -218,3 +307,8 @@ git add package-lock.json
 | 2026-08-06 | 웹 실행 오류 수정 — `app.config.ts`의 `web.output`을 `single`로 변경, `expo-media-library` 호출을 `utils/saveImageToLibrary`(+`.web.ts`)로 분리. 신규 라이브러리 없음                                                                  |
 | 2026-08-10 | 프론트 통합 후 디자인 색상 통일 — 하드코딩 색상 323건(값 229종)을 theme 토큰으로 일괄 치환. `colors.ts` 중복 토큰 4개 통합·신규 8개 추가, `categoryColors`·`brandColors`·`overlayColors`·`thumbnailPalette` 신설. 신규 라이브러리 없음 |
 | 2026-08-12 | **main 머지 완료(#21).** 색상 통일은 #23 으로 `dev/integration` 에 반영 후 함께 올라갔다. 3번 표의 '예정' 항목을 실제 PR 번호(#14·#15·#23)로 갱신. `constants/map.ts`·`constants/share.ts` 의 옛 주석 정리 — 카카오 팀 앱 등록이 끝났는데 개인 키를 쓰는 중이라고 적혀 있던 부분을 사실대로 고치고, 배포 도메인 관련 TODO 를 한 곳으로 모았다. |
+| 2026-08-12 | 브랜드 심볼 교체 — 하트 없는 버전으로 바꾸고 주황을 `#FF7A45` 로 보정, 투명 여백 제거(203×240). 심볼 노출을 홈·로그인 두 곳으로 제한하고 챗봇 헤더에서 제거. 신규 라이브러리 없음 |
+| 2026-08-12 | 공통 상단 바 신설 — `AppHeader`·`ScreenTitleBar` 를 `src/components/layout/` 에 추가하고 탭 5개 화면의 자체 헤더를 교체. 알림·프로필 아이콘에 동작 연결(`/notifications` 신규, `/profile` 이동). `app/_layout.tsx` 에 라우트 1개 추가. `ProfileHeader.tsx` 삭제. 신규 라이브러리 없음 |
+| 2026-08-12 | 상단 바 후속 — 심볼·브랜드 영역을 홈 이동 버튼으로. 루트 추천 탭의 기본 탭바 숨김을 풀고 자체 `RouteBottomNavigation` 제거(결과 화면은 유지), '루트 추천 정보 입력' 제목을 27pt → `typography.title`(21pt)로 통일 |
+| 2026-08-12 | 루트 추천 결과 화면을 탭 안으로 이동(`app/(tabs)/routes/` 폴더 라우트로 재구성). 경로는 `/routes`·`/routes/result` 그대로. 자체 하단 바 `RouteBottomNavigation` 삭제 — 하단 바가 다섯 화면 모두 동일해졌다 |
+| 2026-08-12 | 상단 바 동작 정리 — 프로필은 화면 불문 마이페이지로 통일(루트 추천의 반려동물 모달 제거, 편집은 선호 정보 섹션으로 계속 가능). 알림은 `notifications` prop 으로 화면 이동(홈·마이) / 팝업(루트·챗봇·내 여행) 선택. `NotificationPopup` 신설 |
