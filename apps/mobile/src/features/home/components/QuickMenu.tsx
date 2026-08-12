@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '@/src/theme';
 
 import type { QuickMenuItem } from '../types/home';
-import { SectionHeader } from './SectionHeader';
+import { SectionHeader } from '@/src/components/ui/SectionHeader';
 
 type QuickMenuProps = {
   items: QuickMenuItem[];
@@ -14,7 +14,7 @@ type QuickMenuProps = {
 export function QuickMenu({ items, onPressItem }: QuickMenuProps) {
   return (
     <View>
-      <SectionHeader title="빠른 메뉴" />
+      <SectionHeader title="빠른 메뉴" style={styles.sectionHeader} />
       <View style={styles.grid}>
         {items.map((item) => (
           <Pressable
@@ -42,6 +42,9 @@ export function QuickMenu({ items, onPressItem }: QuickMenuProps) {
 }
 
 const styles = StyleSheet.create({
+  sectionHeader: {
+    marginBottom: 12,
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

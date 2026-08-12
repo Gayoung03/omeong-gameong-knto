@@ -16,8 +16,9 @@ import {
 import { colors, spacing } from '@/src/theme';
 
 import { InteractivePlaceMap } from '../components/InteractivePlaceMap';
-import { mockPlaces, placeCategories } from '../data/placeMockData';
-import { isPlaceRegion, placeRegions, type PlaceRegionFilter } from '../data/placeRegions';
+import { placeCategories } from '../constants/placeCategories';
+import { mockPlaces } from '../mocks/place.mock';
+import { isPlaceRegion, placeRegions, type PlaceRegionFilter } from '../constants/placeRegions';
 import type { Place } from '../types/place';
 
 type ViewMode = 'list' | 'map';

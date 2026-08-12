@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { EditorialCard } from '../types/home';
-import { SectionHeader } from './SectionHeader';
+import { SectionHeader } from '@/src/components/ui/SectionHeader';
 
 import { colors, overlayColors } from '@/src/theme';
 
@@ -13,7 +13,7 @@ type ContentRecommendationProps = {
 export function ContentRecommendation({ cards }: ContentRecommendationProps) {
   return (
     <View>
-      <SectionHeader title="제주 여행 이야기" />
+      <SectionHeader title="제주 여행 이야기" style={styles.sectionHeader} />
       <View style={styles.grid}>
         {cards.map((card) => (
           <Pressable
@@ -41,6 +41,9 @@ export function ContentRecommendation({ cards }: ContentRecommendationProps) {
 }
 
 const styles = StyleSheet.create({
+  sectionHeader: {
+    marginBottom: 12,
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

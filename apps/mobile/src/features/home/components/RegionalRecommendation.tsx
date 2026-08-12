@@ -3,9 +3,9 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, overlayColors } from '@/src/theme';
 
-import { homeRegions } from '../data/homeRegions';
+import { homeRegions } from '../constants/homeRegions';
 import type { PlaceRegion } from '@/src/features/places/types/place';
-import { SectionHeader } from './SectionHeader';
+import { SectionHeader } from '@/src/components/ui/SectionHeader';
 
 const JEJU_MAP = require('@/assets/illustrations/jeju-region-map.png');
 
@@ -20,7 +20,12 @@ export function RegionalRecommendation({
 }: RegionalRecommendationProps) {
   return (
     <View>
-      <SectionHeader actionLabel="전체보기" onPressAction={onPressViewAll} title="제주 권역별 추천 장소" />
+      <SectionHeader
+        actionLabel="전체보기"
+        onActionPress={onPressViewAll}
+        style={styles.sectionHeader}
+        title="제주 권역별 추천 장소"
+      />
       <View style={styles.mapCard}>
         <View style={styles.mapVisual}>
           <Image resizeMode="contain" source={JEJU_MAP} style={styles.mapImage} />
@@ -58,6 +63,9 @@ export function RegionalRecommendation({
 }
 
 const styles = StyleSheet.create({
+  sectionHeader: {
+    marginBottom: 12,
+  },
   mapCard: {
     overflow: 'hidden',
     borderWidth: 1,

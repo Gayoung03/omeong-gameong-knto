@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 
 import type { TravelLogListItem } from '@/src/types/travelLog';
 
-import { fetchTravelLogItems } from '../mocks/travelLogMocks';
+import { fetchTravelLogItems } from '../mocks/travelLog.mock';
 import { useSavedLogStore } from '../stores/useSavedLogStore';
 
 export const travelLogQueryKey = ['travel-logs'] as const;
