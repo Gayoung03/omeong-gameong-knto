@@ -115,6 +115,7 @@ DB에는 `transport_type` 하나뿐이고 7종입니다. 앱은 이를 둘로 �
 | `ScheduleItem` | `route_items` | `trips/types/trip.ts` |
 | `TripMemo.scheduleId` | `route_memos.route_day_id` | `trips/types/trip.ts` |
 | `companions` | `travel_log_pets` | `types/travelLog.ts` |
+| `description` | `notifications.content` | `components/layout/notificationPreview.mock.ts` |
 
 `travelLog.ts` 주석에 `DB의 trip_pets` 라고 적혀 있으나 **그런 테이블은 없습니다.**
 실제로는 `route_request_pets` 입니다.
@@ -193,6 +194,19 @@ rating, distanceSummary, accommodationSummary, travelStyle
 이건 불일치가 아닙니다. DB 설계 문서에 "중복 저장하지 않고 조회 시 계산" 으로 명시된 값들이라,
 **API 응답에는 반드시 포함되어야 합니다.**
 
+**앱에 있는데 DB에도 없고 계산도 안 되는 값**
+
+```text
+notificationPreview.tone     'primary' | 'sea'   아이콘 배경 톤
+WeatherSummary.greeting      "좋은 아침이에요"
+WeatherSummary.tip           "산책하기 좋은 날씨예요"
+```
+
+셋 다 **표현(presentation) 영역**이라 DB에 둘 성격이 아닙니다.
+서버가 만들어 내려줄지 앱이 정할지 결정이 필요하며, 앱이 정하는 쪽이면 문구·색상 변경에
+서버 배포가 필요 없습니다. 자세한 내용은 [`notifications.md`](./notifications.md),
+[`weather.md`](./weather.md) 참고.
+
 ---
 
 ## 4. 제안
@@ -254,8 +268,11 @@ TypeScript라서 일괄 rename 후 `npm run typecheck`가 통과하면 누락이
 | 필드명 표기 규칙 확정 (4-3) | 프론트 200곳 가까이 영향 |
 | 여행 취향 태그 목록 | 추천 알고리즘 입력값. 장소 데이터에 태그를 다시 붙여야 해서 되돌리기 비쌈 |
 | `petFriendly` 를 5종 정책으로 확장할지 | 장소 카드·필터 UI가 바뀜 |
-| 이미지 업로드 방식 | 스토리지 비용, 여러 도메인 공통 |
 | 탈퇴 후 재가입 허용 | 제품·정책 판단 |
+
+**이미지 업로드 방식은 2026-08-12에 정해졌습니다.** 공통 엔드포인트 `POST /uploads`로 분리하고
+서버가 파일을 받아 URL을 돌려주는 방식입니다. [`uploads.md`](./uploads.md) 참고.
+단, 스토리지 제공처는 아직 미정입니다.
 
 여행 취향 태그 현황
 
@@ -297,7 +314,7 @@ distanceKm, age, accommodationSummary, travelStyle
 
 ## 부록: 확인한 파일
 
-**프론트 타입 (14)**
+**프론트 타입 (15)**
 
 ```text
 src/types/          user.ts  pet.ts  profile.ts  travelLog.ts
@@ -306,7 +323,12 @@ src/features/       auth/types/auth.ts        auth/data/signupOptions.ts
                     places/types/place.ts     trips/types/trip.ts
                     chatbot/types/chatbot.ts  home/types/home.ts
                     route-recommendation/types.ts
+src/components/     layout/notificationPreview.mock.ts        (PR #26으로 추가)
 ```
+
+> **이 문서는 시점 스냅샷입니다.** 프론트가 머지될 때마다 대조 결과가 달라질 수 있습니다.
+> 2026-08-12 PR #26 머지 시점까지 반영했으며, 그때 위 12개 타입 파일은 변경되지 않았고
+> `notificationPreview.mock.ts` 하나가 추가되었습니다.
 
 **DB 모델 (30개 테이블 / 12개 Enum)**
 
@@ -321,3 +343,4 @@ apps/api/app/db/models/  users.py  places.py  routes.py  community.py  enums.py
 | 날짜 | 내용 |
 | --- | --- |
 | 2026-08-12 | 최초 점검 |
+| 2026-08-12 | PR #26 머지 반영 — `notificationPreview.mock.ts` 대조 추가, 표현 영역 값(`tone` 등) 분류 신설 |

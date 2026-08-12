@@ -176,6 +176,30 @@ GET /api/v1/travel-logs?routeId=...&petIds=...&from=2026-08-01&to=2026-08-31
 
 ---
 
+## 여행 모아보기 화면 구성
+
+앱의 [`TripMemoryScreen`](../../apps/mobile/src/features/travel-logs/TripMemoryScreen.tsx)은
+여행 하나에 속한 기록을 날짜별로 묶어 보여줍니다.
+화면 파라미터 이름은 `tripId`이지만 **실제로 담기는 값은 `routeId`입니다.**
+
+이 화면에는 전용 엔드포인트가 없습니다. 기존 두 개를 조합합니다.
+
+| 화면 영역 | 엔드포인트 | 쓰는 필드 |
+| --- | --- | --- |
+| 헤더 | [`GET /routes/{routeId}`](./routes.md) | `title` `startAt` `endAt` `logCount` |
+| 본문 | `GET /travel-logs?routeId={routeId}` | 기록 목록 |
+
+[`useTripMemoryLogs.ts`](../../apps/mobile/src/features/travel-logs/hooks/useTripMemoryLogs.ts)가
+이미 헤더용·본문용 두 번의 조회로 나눠 부르고 있어 구조가 그대로 맞습니다.
+
+`logCount`는 `GET /routes` **목록**에는 있었으나 **상세**에는 빠져 있어 추가했습니다
+([`routes.md`](./routes.md) 참고).
+
+월 단위로 묶인 개별 기록(`kind`가 `ungrouped`)은 대응하는 여행이 없으므로
+`GET /travel-logs?routeId=none&from=...&to=...`로 조회합니다.
+
+---
+
 ## POST /travel-logs
 
 기록을 만들고 AI 이미지 생성을 시작합니다. 생성이 오래 걸리므로 **`202`를 즉시 돌려줍니다.**
@@ -213,9 +237,10 @@ GET /api/v1/travel-logs?routeId=...&petIds=...&from=2026-08-01&to=2026-08-31
 `petIds`도 마찬가지로 이름과 프로필 사진을 `travel_log_pets`에 스냅샷으로 저장합니다.
 `(travel_log_id, pet_id)`에 UNIQUE 제약이 있어 같은 반려동물을 중복으로 넣을 수 없습니다.
 
-> **[확인 필요]** 이미지 업로드 방식.
-> 이 문서는 앱이 스토리지에 먼저 올리고 URL만 보내는 방식으로 작성했습니다.
-> 리뷰·문의와 함께 정해야 합니다.
+`originalImageUrl`은 **필수**이며, [`uploads.md`](./uploads.md)의 `POST /uploads`로 먼저 받습니다
+(`purpose`는 `travel_log`). 업로드가 끝나기 전에는 이 요청을 보낼 수 없습니다.
+
+`generatedImageUrl`은 앱이 올리지 않습니다. AI 생성 후 서버가 직접 저장합니다.
 
 ### 응답 `202`
 
@@ -232,6 +257,33 @@ GET /api/v1/travel-logs?routeId=...&petIds=...&from=2026-08-01&to=2026-08-31
 | --- | --- |
 | 403 | 다른 사용자의 `petId` 또는 `routeId` |
 | 422 | `writingStyle`·`mood` 값 오류, 미래 `recordedDate` |
+
+---
+
+## GET /travel-logs/{logId}
+
+기록 하나만 조회합니다.
+
+### 응답 `200`
+
+`GET /travel-logs`의 항목 하나와 동일한 구조입니다.
+
+**목록 화면에서 사진을 눌러 크게 볼 때는 이 요청이 필요 없습니다.**
+이미 받아둔 목록에서 찾아 쓰면 됩니다. 앱의 `MemoryPhotoModal`이 그렇게 동작합니다.
+
+목록을 거치지 않고 기록 하나로 바로 들어오는 경우에 씁니다.
+
+```text
+알림·딥링크로 특정 기록을 바로 여는 경우
+이미지 생성이 끝난 뒤 최신 상태를 다시 읽는 경우
+```
+
+### 에러
+
+| 코드 | 상황 |
+| --- | --- |
+| 403 | 다른 사용자의 기록 |
+| 404 | 없는 `logId` |
 
 ---
 
@@ -342,3 +394,5 @@ DB에 제약이 없으므로 서버가 처리해야 합니다.
 | 날짜 | 내용 |
 | --- | --- |
 | 2026-08-12 | 초안 작성 |
+| 2026-08-12 | 이미지 업로드 확인 필요 항목을 [`uploads.md`](./uploads.md) 참조로 교체. `originalImageUrl`이 필수임을 명시 |
+| 2026-08-12 | 목록에만 있고 본문이 없던 `GET /travel-logs/{logId}` 명세 작성. 여행 모아보기 화면 구성 절 추가 (전용 엔드포인트 없이 `GET /routes/{routeId}` + `GET /travel-logs?routeId=` 조합) |

@@ -200,6 +200,8 @@ refresh token까지 만료되면 로그인 화면으로 돌려보냅니다.
 | 403 | 로그인했으나 권한 없음 (남의 리뷰 수정 등) |
 | 404 | 대상이 없음 |
 | 409 | 중복 (이미 즐겨찾기한 장소 등) |
+| 413 | 업로드 파일 크기 초과 (`POST /uploads` 전용) |
+| 415 | 허용하지 않는 파일 형식 (`POST /uploads` 전용) |
 | 422 | 요청 형식·타입 검증 실패 (FastAPI 자동) |
 | 500 | 서버 오류 |
 
@@ -479,12 +481,23 @@ generating → generated → saved → ongoing → completed
 | 로그아웃 시 refresh token 서버 무효화 여부 | 인증 구현 시 |
 | 에러 메시지 언어 (한국어 / 영문 + 앱이 문구 보유) | 첫 도메인 구현 시 |
 | 탈퇴 후 재가입 허용 여부 | 개인정보 처리방침과 함께 |
-| 이미지 업로드 방식 (앱이 직접 업로드 후 URL 전달 / 서버 수신) | 리뷰·여행기록 구현 전 |
 | 여행 취향 태그 목록 | 추천 기능 구현 전 |
 | `pets` 테이블에 "기타" 종류 텍스트 컬럼 추가 | 반려동물 등록 구현 전 (7장) |
+| 스토리지 제공처 · 파일 크기 상한 · HEIC 처리 | 업로드 구현 전 ([`uploads.md`](./uploads.md)) |
+| 사용자 등록 장소의 노출 범위 · 등록 화면 존재 여부 | 장소 검색 구현 전 ([`places.md`](./places.md)) |
 
-`review_images.image_url`, `travel_logs.original_image_url`, `inquiries.image_urls`가
-모두 URL 문자열이라, 이미지 업로드 방식은 세 도메인에 공통으로 영향을 줍니다.
+### 추가 확정 (2026-08-12, 팀 회의 외)
+
+회의 이후 명세서를 점검하다 발견한 공백을 메운 항목입니다.
+**위 10개와 달리 팀 회의에서 정한 것이 아니므로 공유와 추인이 필요합니다.**
+
+- [x] 이미지 업로드 — 공통 엔드포인트 `POST /uploads`로 분리, 서버가 파일을 받아 URL 반환
+      ([`uploads.md`](./uploads.md))
+
+`review_images.image_url`, `travel_logs.original_image_url`, `inquiries.image_urls`,
+`users.profile_image_url`, `pets.image_url`, `places.primary_image_url`이 모두 URL 문자열이라
+6개 도메인이 이 결정에 공통으로 걸려 있었습니다. 특히 `travel_logs.original_image_url`은
+NOT NULL이라 업로드 없이는 여행기록 기능 자체가 성립하지 않습니다.
 
 ---
 
@@ -502,6 +515,7 @@ generating → generated → saved → ongoing → completed
 | [`weather.md`](./weather.md) | `weather_snapshots` | `weather.py` |
 | [`notifications.md`](./notifications.md) | `notices`, `notifications`, `inquiries` | 없음 |
 | [`guides.md`](./guides.md) | 없음 | `guides.py` |
+| [`uploads.md`](./uploads.md) | 없음 (파일은 스토리지, DB에는 URL만) | 없음 |
 
 ### 이름이 어긋난 곳
 
@@ -510,6 +524,7 @@ generating → generated → saved → ongoing → completed
 - `trips.py` — 파일명은 trips이지만 대응 테이블은 `travel_logs`입니다. 파일명을 바꿀지 정해야 합니다.
 - `guides.py` — 대응하는 테이블이 없습니다. 어떤 기능인지 먼저 정의해야 합니다.
 - `notices` / `notifications` / `inquiries` — 테이블은 있는데 엔드포인트 스텁 파일이 없습니다.
+- `uploads.py` — 스텁 파일이 없습니다. 구현 시 새로 만들어야 합니다.
 
 ---
 
@@ -520,3 +535,5 @@ generating → generated → saved → ongoing → completed
 | 2026-08-12 | 초안 작성. 인증·에러·페이지네이션은 제안 상태 |
 | 2026-08-12 | 모바일 기존 타입과 대조. 필드명·enum을 확정에서 제안으로 정정하고 해결 원칙 추가 |
 | 2026-08-12 | **팀 회의에서 10개 항목 확정.** 제안 항목을 모두 확정으로 갱신하고 남은 항목만 8장에 정리 |
+| 2026-08-12 | 이미지 업로드 엔드포인트 부재를 확인하고 [`uploads.md`](./uploads.md) 신설. 4장에 `413`·`415` 추가, 8장 남은 항목에서 업로드 방식 제거 (팀 회의 외 결정, 추인 필요) |
+| 2026-08-12 | 목록에만 있고 본문이 없던 엔드포인트 5개 명세 작성, 사용자 등록 장소 노출 규칙 부재를 8장 남은 항목에 추가 |

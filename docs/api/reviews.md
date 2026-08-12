@@ -132,10 +132,14 @@ GET /api/v1/places/{placeId}/reviews?limit=20&offset=0&sort=recent
 `imageUrls`의 배열 순서가 그대로 `review_images.sort_order`가 됩니다.
 `(review_id, sort_order)`에 UNIQUE 제약이 있어 중복 순서는 저장되지 않습니다.
 
-> **[확인 필요]** 이미지 업로드 방식.
-> 이 문서는 앱이 스토리지에 먼저 올리고 URL만 보내는 방식으로 작성했습니다.
-> 서버가 파일을 직접 받는 방식이면 `multipart/form-data`로 바뀝니다.
-> 여행기록·문의와 함께 정해야 합니다.
+`imageUrls`에 담을 주소는 [`uploads.md`](./uploads.md)의 `POST /uploads`로 미리 받습니다
+(`purpose`는 `review`). 사진을 한 장씩 올려 받은 `fileUrl`을 순서대로 배열에 담아 보냅니다.
+
+```text
+POST /uploads (1장째)  → fileUrl A
+POST /uploads (2장째)  → fileUrl B
+POST /places/{placeId}/reviews   { "imageUrls": [A, B] }
+```
 
 ### 응답 `201`
 
@@ -243,3 +247,4 @@ GET /api/v1/places/{placeId}/reviews?limit=20&offset=0&sort=recent
 | 날짜 | 내용 |
 | --- | --- |
 | 2026-08-12 | 초안 작성 |
+| 2026-08-12 | 이미지 업로드 확인 필요 항목을 [`uploads.md`](./uploads.md) 참조로 교체 |

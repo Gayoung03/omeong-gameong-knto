@@ -108,6 +108,40 @@
 
 ---
 
+## GET /chat/conversations/{conversationId}
+
+대화 하나의 정보입니다. **메시지는 포함하지 않습니다.**
+
+### 응답 `200`
+
+`GET /chat/conversations`의 항목 하나와 동일한 구조입니다.
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "title": "제주 동부 강아지 카페",
+  "routeId": null,
+  "lastMessagePreview": "함덕 근처 카페 세 곳을 추천드릴게요.",
+  "messageCount": 8,
+  "createdAt": "2026-08-10T14:00:00+09:00",
+  "updatedAt": "2026-08-10T14:12:00+09:00"
+}
+```
+
+메시지를 함께 내리지 않는 이유는 개수가 많을 수 있어 페이지네이션이 필요하기 때문입니다.
+대화 화면은 이 요청과 `GET .../messages`를 함께 부릅니다.
+
+제목만 있으면 되는 경우(대화 목록을 거치지 않고 바로 들어올 때)는 이 요청만으로 충분합니다.
+
+### 에러
+
+| 코드 | 상황 |
+| --- | --- |
+| 403 | 다른 사용자의 대화 |
+| 404 | 없는 `conversationId` |
+
+---
+
 ## GET /chat/conversations/{conversationId}/messages
 
 ### 요청
@@ -253,3 +287,4 @@ DB에는 `referenced_place_ids`(UUID 배열)만 저장하고, **응답에서는 
 | 날짜 | 내용 |
 | --- | --- |
 | 2026-08-12 | 초안 작성. 확정 #6(`id`를 UUID 문자열로)과 앱 타입 정리 반영 |
+| 2026-08-12 | 목록에만 있고 본문이 없던 `GET /chat/conversations/{conversationId}` 명세 작성 |

@@ -166,10 +166,51 @@ DB CHECK 제약이 `is_read = false OR read_at IS NOT NULL`이라,
 `actionPath`는 서버가 앱 라우트를 알고 있어야 만들 수 있습니다.
 앱 라우터 경로가 바뀌면 과거 알림의 링크가 깨집니다.
 
+### 앱 타입과의 대조
+
+2026-08-12 머지(PR #26)로 상단 바 알림 팝업이 추가되면서 앱에 알림 타입이 생겼습니다.
+[`components/layout/notificationPreview.mock.ts`](../../apps/mobile/src/components/layout/notificationPreview.mock.ts)의
+`NotificationPreview`입니다.
+
+```ts
+export type NotificationPreview = {
+  id: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  tone: 'primary' | 'sea';
+  title: string;
+  description: string;
+};
+```
+
+| 앱 필드 | API / DB | 처리 |
+| --- | --- | --- |
+| `id: string` (`'weather'` `'pet'`) | `notifications.id` (UUID) | 목업 고정값 → UUID로 교체 |
+| `title` | `title` | 일치 |
+| `description` | `content` | **단어 불일치.** DB 단어를 따라 `content`로 통일 |
+| `icon` | `iconKey` | 앱이 Ionicons 이름(`sunny-outline`)을 직접 사용 |
+| `tone` | **DB 컬럼 없음** | 아래 참고 |
+
+`NotificationPopup`은 목록만 그리고 항목에 `onPress`가 없어, 아직 `actionPath`를 쓰지 않습니다.
+`isRead`·`createdAt`도 없습니다. 팝업이 미리보기 전용이기 때문이며,
+전체 알림 화면(`app/notifications.tsx`)은 현재 `ComingSoonScreen`입니다.
+
+> **[확인 필요] — `tone`을 담을 DB 컬럼이 없습니다.**
+> 앱은 아이콘 배경을 귤(`primary`)과 바다(`sea`) 두 톤으로 번갈아 칠합니다.
+> `notifications` 테이블에는 이 값을 담을 컬럼이 없습니다.
+>
+> 두 가지 선택지가 있습니다.
+>
+> | 안 | 내용 |
+> | --- | --- |
+> | 앱이 결정 | 목록 순서대로 번갈아 칠함. DB 변경 없음 |
+> | 서버가 내려줌 | `notifications`에 컬럼 추가 필요 |
+>
+> 색상은 표현 영역이라 앱이 정하는 쪽을 권합니다. 컬럼은 추가하지 않았습니다.
+
 > **[확인 필요]** `type`과 `iconKey`에 쓸 값 목록.
-> DB가 자유 문자열이라 제약이 없어, 서버와 앱이 같은 값을 쓰도록 목록을 합의해야 합니다.
-> 앱에는 아직 알림 목록 타입 자체가 없습니다
-> ([`types/notification.ts`](../../apps/mobile/src/types/notification.ts)에는 수신 설정만 있음).
+> DB가 자유 문자열(`String(30)`, `String(50)`)이라 제약이 없어,
+> 서버와 앱이 같은 값을 쓰도록 목록을 합의해야 합니다.
+> 목업에 쓰인 아이콘은 `sunny-outline`, `paw-outline` 두 개뿐입니다.
 >
 > `actionPath`를 서버가 만들지, `type` + 대상 ID만 내려주고 앱이 경로를 조립할지도 정해야 합니다.
 > 후자가 라우트 변경에 강합니다.
@@ -297,7 +338,8 @@ DB에 `(user_id, status, created_at)` 인덱스가 있습니다.
 문의 이미지는 별도 테이블 없이 배열 컬럼에 저장합니다
 ([DB 문서](../database/README.md) 참고).
 
-> **[확인 필요]** 이미지 업로드 방식. 리뷰·여행기록과 함께 정해야 합니다.
+`imageUrls`에 담을 주소는 [`uploads.md`](./uploads.md)의 `POST /uploads`로 미리 받습니다
+(`purpose`는 `inquiry`).
 
 ### 응답 `201`
 
@@ -355,3 +397,5 @@ DB CHECK 제약이 이를 보장합니다.
 | 날짜 | 내용 |
 | --- | --- |
 | 2026-08-12 | 초안 작성 |
+| 2026-08-12 | PR #26 머지 반영 — `NotificationPreview` 타입 추가에 따른 대조표, `tone` 컬럼 부재 기록 |
+| 2026-08-12 | 문의 첨부 이미지 업로드 확인 필요 항목을 [`uploads.md`](./uploads.md) 참조로 교체 |

@@ -273,6 +273,7 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
   "memo": "선크림 챙기기",
   "isPublic": false,
   "shareToken": null,
+  "logCount": 5,
   "pets": [
     { "id": "...", "name": "몽이", "species": "dog", "size": "small" }
   ],
@@ -349,6 +350,7 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
 | `weather` | `route_days.weather_snapshot_id` 조인. 없으면 `null` |
 | `isSelected` | 추천 항목 중 사용자가 뺀 것을 구분. 기본 `true` |
 | `distanceSummary` | 계산값. 하위 `moveToNext` 합계 |
+| `logCount` | 계산값. 이 여행에 속한 `travel_logs` 개수. 여행 모아보기 화면 헤더가 씀 ([`travel-logs.md`](./travel-logs.md)) |
 
 `route_moves`에는 순서와 이동수단만 영구 저장하고, 거리·시간·polyline은 캐시에서 가져옵니다.
 
@@ -560,6 +562,18 @@ memo, shareToken, 체크리스트, 개인 메모
 
 라벨과 `sortOrder`도 수정 가능합니다.
 
+### DELETE /checklist-items/{itemId}
+
+물리 삭제입니다. 응답 `204`, 본문 없음.
+
+`isRecommended`가 `true`인 기본 제공 항목도 지울 수 있습니다.
+지운 뒤 추천 항목을 되돌리는 기능은 없습니다.
+
+| 코드 | 상황 |
+| --- | --- |
+| 403 | 다른 사용자의 여행 |
+| 404 | 없는 `itemId` |
+
 ---
 
 ## 메모
@@ -600,6 +614,29 @@ memo, shareToken, 체크리스트, 개인 메모
 
 `content`만 필수입니다.
 
+### PATCH /memos/{memoId}
+
+```json
+{ "title": "1일차 준비물", "content": "차 안에 물그릇 두기" }
+```
+
+보낸 필드만 수정합니다. `routeDayId`는 수정할 수 없습니다.
+다른 일차로 옮기려면 삭제 후 다시 작성합니다.
+
+| 코드 | 상황 |
+| --- | --- |
+| 403 | 다른 사용자의 메모 |
+| 404 | 없는 `memoId` |
+
+### DELETE /memos/{memoId}
+
+물리 삭제입니다. 응답 `204`, 본문 없음.
+
+| 코드 | 상황 |
+| --- | --- |
+| 403 | 다른 사용자의 메모 |
+| 404 | 없는 `memoId` |
+
 ---
 
 ## 변경 이력
@@ -607,3 +644,5 @@ memo, shareToken, 체크리스트, 개인 메모
 | 날짜 | 내용 |
 | --- | --- |
 | 2026-08-12 | 초안 작성 |
+| 2026-08-12 | `GET /routes/{routeId}` 응답에 `logCount` 추가 — 목록에는 있었으나 상세에 빠져 있어 여행 모아보기 헤더를 그릴 수 없었음 |
+| 2026-08-12 | 목록에만 있고 본문이 없던 `DELETE /checklist-items/{itemId}`, `PATCH`·`DELETE /memos/{memoId}` 명세 작성 |

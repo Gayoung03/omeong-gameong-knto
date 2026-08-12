@@ -113,6 +113,9 @@ deleted_at, created_at, updated_at
 두 필드 모두 선택입니다. 보낸 필드만 수정합니다.
 `profileImageUrl`을 `null`로 보내면 기본 이미지로 되돌립니다.
 
+새 이미지를 쓸 때는 [`uploads.md`](./uploads.md)의 `POST /uploads`로 먼저 주소를 받습니다
+(`purpose`는 `profile`).
+
 ### 응답 `200`
 
 `GET /users/me` 와 동일한 구조입니다.
@@ -348,6 +351,9 @@ GET /api/v1/pets?includeDeleted=true
 
 첫 번째 반려동물은 서버가 `isPrimary = true`로 설정합니다.
 
+`imageUrl`은 [`uploads.md`](./uploads.md)의 `POST /uploads`로 먼저 받습니다
+(`purpose`는 `pet`). `PATCH /pets/{petId}`도 같습니다.
+
 ### 응답 `201`
 
 `GET /pets`의 항목 하나와 동일한 구조입니다.
@@ -421,3 +427,4 @@ API는 **404로 통일**합니다. 삭제된 리소스는 조회되지 않는다
 | --- | --- |
 | 2026-08-12 | 초안 작성 |
 | 2026-08-12 | 확정 규약 반영 — camelCase 응답, `status` 표현, 종류 3종, 목록 래핑. "기타" 종류 DB 컬럼 부재를 확인 필요로 기록 |
+| 2026-08-12 | `profileImageUrl`·반려동물 `imageUrl` 업로드 경로를 [`uploads.md`](./uploads.md) 참조로 명시 |
