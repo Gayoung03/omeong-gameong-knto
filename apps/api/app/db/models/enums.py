@@ -84,6 +84,11 @@ class RouteStatus(StrEnum):
     FAILED = "failed"
 
 
+class RouteCreationType(StrEnum):
+    RECOMMENDED = "recommended"
+    MANUAL = "manual"
+
+
 class ScheduleItemType(StrEnum):
     ATTRACTION = "attraction"
     RESTAURANT = "restaurant"

@@ -1,7 +1,10 @@
 """Database metadata regression tests."""
 
+from sqlalchemy import CheckConstraint
+
 from app.db import models  # noqa: F401
 from app.db.base import Base
+from app.db.models.enums import RouteCreationType
 
 EXPECTED_TABLES = {
     "chat_conversations",
@@ -25,6 +28,7 @@ EXPECTED_TABLES = {
     "route_items",
     "route_memos",
     "route_moves",
+    "route_pets",
     "route_request_pets",
     "route_request_stays",
     "route_requests",
@@ -39,3 +43,41 @@ EXPECTED_TABLES = {
 
 def test_all_documented_tables_are_registered() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
+
+
+def test_pet_species_detail_schema() -> None:
+    pets = Base.metadata.tables["pets"]
+    species_detail = pets.c.species_detail
+
+    assert species_detail.nullable is True
+    assert species_detail.type.length == 50
+    assert any(
+        constraint.name == "ck_pets_species_detail_consistency"
+        for constraint in pets.constraints
+        if isinstance(constraint, CheckConstraint)
+    )
+
+
+def test_manual_route_schema() -> None:
+    routes = Base.metadata.tables["routes"]
+    route_pets = Base.metadata.tables["route_pets"]
+
+    assert routes.c.route_request_id.nullable is True
+    assert routes.c.creation_type.nullable is False
+    assert routes.c.creation_type.type.enums == [member.value for member in RouteCreationType]
+    assert any(
+        constraint.name == "ck_routes_creation_type_request_consistency"
+        for constraint in routes.constraints
+        if isinstance(constraint, CheckConstraint)
+    )
+    assert {column.name for column in route_pets.primary_key.columns} == {"route_id", "pet_id"}
+
+
+def test_unverifiable_place_scores_are_removed() -> None:
+    places = Base.metadata.tables["places"]
+
+    assert not {
+        "activity_level",
+        "crowd_level",
+        "weather_sensitivity",
+    }.intersection(places.c.keys())

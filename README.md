@@ -51,8 +51,17 @@ make dev
 종료할 때는 `Ctrl+C`를 누릅니다. Expo와 FastAPI가 함께 종료되고 PostgreSQL
 컨테이너도 자동으로 종료됩니다. PostgreSQL 데이터 볼륨은 삭제되지 않습니다.
 
-`make dev`는 PostgreSQL이 준비될 때까지 기다린 뒤 `alembic upgrade head`를 실행하므로,
-팀원마다 동일한 최신 테이블 구조가 자동으로 적용됩니다.
+`make dev`는 PostgreSQL이 준비될 때까지 기다린 뒤 다음을 순서대로 실행합니다.
+
+```text
+alembic upgrade head
+→ alembic current --check-heads
+→ alembic check
+```
+
+최신 마이그레이션을 적용하고 DB revision이 head인지, SQLAlchemy 모델 변경에서
+누락된 마이그레이션이 없는지 검증합니다. 하나라도 실패하면 FastAPI와 Expo를
+실행하지 않습니다.
 
 - FastAPI: `http://localhost:8000`
 - Swagger: `http://localhost:8000/docs`
@@ -64,9 +73,25 @@ make dev
 ```bash
 make db-up
 make db-migrate
+make db-migrate-check
 make api-dev
 make mobile-dev
 ```
+
+### 마이그레이션 전체 재현 검사
+
+마이그레이션을 추가·수정한 뒤에는 다음 명령을 실행합니다.
+
+```bash
+make db-migration-smoke
+```
+
+이 명령은 기존 개발 DB와 분리된 임시 PostgreSQL에서 `upgrade head → downgrade base →
+upgrade head`를 검증합니다. 호스트 포트와 영구 volume을 사용하지 않으며 검사 후
+임시 컨테이너와 DB는 자동으로 정리됩니다. Docker Desktop이 실행 중이어야 합니다.
+
+- `make db-down`: PostgreSQL 컨테이너만 종료하고 기존 DB volume은 유지합니다.
+- `make db-migration-smoke`: 기존 DB와 volume에 접근하지 않습니다.
 
 실제 휴대폰에서 API를 호출할 때는 `.env`의 `EXPO_PUBLIC_API_URL`에 컴퓨터의
 같은 Wi-Fi 내부 IP를 지정해야 합니다.

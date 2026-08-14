@@ -44,6 +44,7 @@
 | `user_id` | 반려동물의 보호자 |
 | `name` | 반려동물 이름 |
 | `species` | 강아지, 고양이 등 종류 |
+| `species_detail` | `species=other`일 때 사용자가 입력한 실제 종류 |
 | `breed` | 품종 자유 문자열. MVP에서 별도 품종 테이블 사용 안 함 |
 | `size` | 소형, 중형, 대형 |
 | `weight_kg` | 입장 무게 제한 판단에 사용 |
@@ -55,7 +56,8 @@
 주의사항:
 
 - 회원별 `is_primary = true`는 최대 한 건만 허용합니다.
-- 여러 마리를 한 여행에 선택할 때는 `route_request_pets`를 사용합니다.
+- `species=other`이면 공백이 아닌 `species_detail`이 필수이고, 다른 종류에서는 null이어야 합니다.
+- 추천 요청에서 선택한 반려동물은 `route_request_pets`, 실제 저장된 여행의 동반 반려동물은 `route_pets`를 사용합니다.
 - 과거 여행과 기록의 참조를 보존하기 위해 물리 삭제하지 않습니다.
 
 ### `user_travel_preferences`
@@ -93,9 +95,6 @@
 | `environment` | 실내, 실외, 혼합 |
 | `amenities` | 주차장, 화장실, Wi-Fi 등 편의시설 배열 |
 | `average_stay_minutes` | 추천 일정 체류시간 |
-| `activity_level` | 활동량 1~5 |
-| `crowd_level` | 혼잡도 1~5 |
-| `weather_sensitivity` | 날씨 민감도 1~5 |
 | `created_by_user_id` | 사용자가 직접 등록한 장소일 때 작성 회원 |
 | `is_active` | 서비스 노출 여부 |
 
@@ -221,8 +220,9 @@ AI 추천 결과와 사용자가 저장한 내 여행의 공통 루트 본체입
 
 | 컬럼 | 설명 |
 | --- | --- |
-| `route_request_id` | 생성에 사용한 입력 조건 |
+| `route_request_id` | 추천 생성에 사용한 입력 조건. 수동 여행은 null |
 | `status` | 생성 중, 추천 완료, 저장, 여행 중, 완료, 실패 |
+| `creation_type` | `recommended`(추천 생성) 또는 `manual`(사용자 직접 생성) |
 | `version` | AI 재추천 버전 |
 | `pace`, `transport` | 적용된 여행 조건 |
 | `explanation` | AI 추천 설명 |
@@ -239,6 +239,11 @@ generating → generated → saved → ongoing → completed
 ```
 
 추천 결과를 내 여행에 저장할 때 별도 여행 테이블을 복사하지 않고 `status`를 `saved`로 변경합니다.
+사용자가 직접 만든 여행은 `creation_type=manual`, `route_request_id=null`, `status=saved`로 생성합니다.
+
+### `route_pets`
+
+저장된 여행과 실제 동반하는 반려동물의 N:M 연결 테이블입니다. 추천 여행과 수동 여행이 공통으로 사용합니다.
 
 ### `route_days`
 

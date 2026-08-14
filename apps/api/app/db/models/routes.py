@@ -26,6 +26,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 from app.db.models.enums import (
+    RouteCreationType,
     RouteStatus,
     ScheduleItemType,
     TransportType,
@@ -106,14 +107,19 @@ class Route(Base):
     __tablename__ = "routes"
     __table_args__ = (
         UniqueConstraint("route_request_id", "version"),
+        CheckConstraint(
+            "(creation_type = 'recommended' AND route_request_id IS NOT NULL) "
+            "OR (creation_type = 'manual' AND route_request_id IS NULL)",
+            name="creation_type_request_consistency",
+        ),
         CheckConstraint("end_at > start_at", name="date_order"),
         CheckConstraint("version >= 1", name="version_positive"),
         Index("ix_routes_user_status", "user_id", "status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    route_request_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("route_requests.id", ondelete="CASCADE"), nullable=False
+    route_request_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("route_requests.id", ondelete="CASCADE")
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
@@ -121,6 +127,9 @@ class Route(Base):
     title: Mapped[str] = mapped_column(String(150), nullable=False)
     status: Mapped[RouteStatus] = mapped_column(
         db_enum(RouteStatus, "route_status"), nullable=False, server_default="generating"
+    )
+    creation_type: Mapped[RouteCreationType] = mapped_column(
+        db_enum(RouteCreationType, "route_creation_type"), nullable=False
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -142,6 +151,17 @@ class Route(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class RoutePet(Base):
+    __tablename__ = "route_pets"
+
+    route_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("routes.id", ondelete="CASCADE"), primary_key=True
+    )
+    pet_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pets.id", ondelete="RESTRICT"), primary_key=True
     )
 
 
