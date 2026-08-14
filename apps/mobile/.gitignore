@@ -4,3 +4,8 @@
 
 expo-env.d.ts
 # @end expo-cli
+
+# expo prebuild(run:ios / run:android)가 만드는 네이티브 폴더.
+# 이 프로젝트는 app.config.ts 로 네이티브 설정을 관리하므로 커밋하지 않는다.
+/ios
+/android
