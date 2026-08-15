@@ -6,6 +6,8 @@ COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir uv && uv sync --frozen --no-dev
 
 COPY app ./app
+COPY alembic.ini ./alembic.ini
+COPY migrations ./migrations
 
 EXPOSE 8000
 

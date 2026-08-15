@@ -66,6 +66,12 @@ class Pet(Base):
     __tablename__ = "pets"
     __table_args__ = (
         CheckConstraint("weight_kg IS NULL OR weight_kg >= 0", name="weight_nonnegative"),
+        CheckConstraint(
+            "(species = 'other' AND species_detail IS NOT NULL "
+            "AND btrim(species_detail) <> '') "
+            "OR (species <> 'other' AND species_detail IS NULL)",
+            name="species_detail_consistency",
+        ),
         Index(
             "uq_pets_user_primary_active",
             "user_id",
@@ -81,6 +87,7 @@ class Pet(Base):
     )
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     species: Mapped[PetSpecies] = mapped_column(db_enum(PetSpecies, "pet_species"), nullable=False)
+    species_detail: Mapped[str | None] = mapped_column(String(50))
     breed: Mapped[str | None] = mapped_column(String(100))
     size: Mapped[PetSize | None] = mapped_column(db_enum(PetSize, "pet_size"))
     weight_kg: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))

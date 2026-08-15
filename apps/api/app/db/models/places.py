@@ -34,18 +34,6 @@ class Place(Base):
     __table_args__ = (
         CheckConstraint("latitude BETWEEN -90 AND 90", name="latitude_range"),
         CheckConstraint("longitude BETWEEN -180 AND 180", name="longitude_range"),
-        CheckConstraint(
-            "activity_level IS NULL OR activity_level BETWEEN 1 AND 5",
-            name="activity_level_range",
-        ),
-        CheckConstraint(
-            "crowd_level IS NULL OR crowd_level BETWEEN 1 AND 5",
-            name="crowd_level_range",
-        ),
-        CheckConstraint(
-            "weather_sensitivity IS NULL OR weather_sensitivity BETWEEN 1 AND 5",
-            name="weather_sensitivity_range",
-        ),
         Index("ix_places_latitude_longitude", "latitude", "longitude"),
         Index("ix_places_category", "category"),
         Index("ix_places_region", "region"),
@@ -72,9 +60,6 @@ class Place(Base):
     )
     amenities: Mapped[list[str] | None] = mapped_column(ARRAY(String))
     average_stay_minutes: Mapped[int | None] = mapped_column(Integer)
-    activity_level: Mapped[int | None] = mapped_column(SmallInteger)
-    crowd_level: Mapped[int | None] = mapped_column(SmallInteger)
-    weather_sensitivity: Mapped[int | None] = mapped_column(SmallInteger)
     reservation_required: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
