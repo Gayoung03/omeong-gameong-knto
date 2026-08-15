@@ -1,0 +1,36 @@
+name: omeong-migration-smoke
+
+services:
+  postgres-smoke:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: omeong_smoke
+      POSTGRES_USER: omeong
+      POSTGRES_PASSWORD: omeong
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omeong -d omeong_smoke"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  migrate-smoke:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://omeong:omeong@postgres-smoke:5432/omeong_smoke
+    depends_on:
+      postgres-smoke:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        uv run alembic upgrade head
+        uv run alembic current --check-heads
+        uv run alembic check
+        uv run alembic downgrade base
+        uv run alembic upgrade head
+        uv run alembic current --check-heads

@@ -109,12 +109,13 @@ Enum 12개
 | `normal` | 4개 | 25분 | 09~19시 |
 | `packed` | 5개 | 15분 | 08~21시 |
 
-여행 속도는 장소 테이블의 속성이 아니라 추천 서비스의 일정 생성 규칙입니다. 장소의 `average_stay_minutes`, `activity_level`, `crowd_level`, `weather_sensitivity`와 함께 사용합니다.
+여행 속도는 장소 테이블의 속성이 아니라 추천 서비스의 일정 생성 규칙입니다. 여행 속도별 하루 장소 수와 휴식 시간, 장소의 `average_stay_minutes`를 사용해 일정을 구성합니다.
 
 ## 반려동물 프로필
 
 ```text
 species: enum
+species_detail: species가 other일 때 필수 자유 문자열
 size: enum
 breed: varchar
 ```
@@ -209,6 +210,8 @@ MVP에서는 허용 동물·크기를 별도 연결 테이블로 쪼개지 않�
 ## 추천 결과와 내 여행
 
 추천과 저장된 여행에 동일한 일정 구조가 필요하므로 둘을 별도 테이블로 중복하지 않습니다.
+추천 여행은 `creation_type=recommended`와 `route_request_id`를, 사용자가 직접 만든 여행은 `creation_type=manual`과 null `route_request_id`를 사용합니다.
+저장된 여행의 동반 반려동물은 생성 방식과 관계없이 `route_pets`에 저장합니다.
 
 ```text
 routes.status
@@ -240,8 +243,8 @@ travel_logs
 ```
 
 여러 반려동물이 한 기록에 참여할 수 있고 프로필 삭제 후에도 이름·사진이 남아야 하므로
-`travel_log_pets`만 별도 연결 테이블로 둡니다. 여행 자체의 반려동물은 기존
-`route_request_pets`에서 확인하므로 `trip_pets`를 중복 생성하지 않습니다.
+`travel_log_pets`만 별도 연결 테이블로 둡니다. 추천 요청의 반려동물은 `route_request_pets`,
+실제 저장된 여행의 반려동물은 `route_pets`에서 확인합니다.
 
 ## 문의·공지·알림 설정
 
@@ -293,7 +296,6 @@ GPS를 서버로 전송해야 하는 경우 DB에 저장하지 않고 API·프�
 ## PostgreSQL/Alembic 제약조건
 
 - `reviews.rating BETWEEN 1 AND 5`
-- `activity_level`, `crowd_level`, `weather_sensitivity BETWEEN 1 AND 5`
 - 강수확률·신뢰점수 0~100
 - `route_requests.end_at > start_at`
 - `route_items.ends_at > starts_at`

@@ -71,6 +71,11 @@ Enum route_status {
   failed
 }
 
+Enum route_creation_type {
+  recommended
+  manual
+}
+
 Enum schedule_item_type {
   attraction
   restaurant
@@ -118,6 +123,7 @@ Table pets {
   user_id uuid [not null, ref: > users.id]
   name varchar(50) [not null]
   species pet_species [not null]
+  species_detail varchar(50)
   breed varchar(100)
   size pet_size
   weight_kg decimal(5,2)
@@ -158,9 +164,6 @@ Table places {
   environment place_environment
   amenities varchar[]
   average_stay_minutes int
-  activity_level smallint
-  crowd_level smallint
-  weather_sensitivity smallint
   reservation_required boolean [not null, default: false]
   created_by_user_id uuid [ref: > users.id]
   is_active boolean [not null, default: true]
@@ -277,10 +280,11 @@ Table route_request_stays {
 
 Table routes {
   id uuid [pk]
-  route_request_id uuid [not null, ref: > route_requests.id]
+  route_request_id uuid [ref: > route_requests.id]
   user_id uuid [not null, ref: > users.id]
   title varchar(150) [not null]
   status route_status [not null, default: 'generating']
+  creation_type route_creation_type [not null]
   version int [not null, default: 1]
   start_at timestamptz [not null]
   end_at timestamptz [not null]
@@ -300,6 +304,15 @@ Table routes {
   indexes {
     (route_request_id, version) [unique]
     (user_id, status)
+  }
+}
+
+Table route_pets {
+  route_id uuid [ref: > routes.id]
+  pet_id uuid [ref: > pets.id]
+
+  indexes {
+    (route_id, pet_id) [pk]
   }
 }
 

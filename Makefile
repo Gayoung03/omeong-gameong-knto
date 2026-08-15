@@ -1,9 +1,9 @@
 .PHONY: setup dev mobile-install api-install mobile-dev api-dev db-up db-down db-logs db-migrate \
-	lint typecheck test check
+	db-migrate-check db-migration-smoke lint typecheck test check
 
 setup: mobile-install api-install
 
-dev: db-up db-migrate
+dev: db-up db-migrate-check
 	@trap '$(MAKE) --no-print-directory -C "$(CURDIR)" db-down' EXIT; \
 	cd apps/mobile && npx concurrently \
 		--kill-others \
@@ -29,6 +29,17 @@ db-up:
 
 db-migrate:
 	cd apps/api && uv run alembic upgrade head
+
+db-migrate-check: db-migrate
+	cd apps/api && uv run alembic current --check-heads
+	cd apps/api && uv run alembic check
+
+db-migration-smoke:
+	@status=0; \
+	docker compose -f infra/docker-compose.migration-smoke.yml \
+		up --build --abort-on-container-exit --exit-code-from migrate-smoke || status=$$?; \
+	docker compose -f infra/docker-compose.migration-smoke.yml down --remove-orphans; \
+	exit $$status
 
 db-down:
 	docker compose -f infra/docker-compose.yml down
