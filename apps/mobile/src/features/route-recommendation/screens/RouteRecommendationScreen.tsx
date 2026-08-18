@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
@@ -23,6 +22,7 @@ import {
   getTripDates,
 } from '../utils/tripDuration';
 
+import { useSaveRoute } from '@/src/features/saved/hooks/useSavedRoutes';
 import { colors, overlayColors } from '@/src/theme';
 
 /**
@@ -198,6 +198,8 @@ export function RouteRecommendationScreen() {
     (total, place, index) => total + (index === 0 ? 0 : (place.travelMinutes ?? 0)),
     0,
   );
+  const saveRouteMutation = useSaveRoute();
+
   const shareRoute = async () => {
     const itinerary = tripDays
       .map((day) => {
@@ -229,33 +231,31 @@ export function RouteRecommendationScreen() {
   };
 
   const saveRoute = async () => {
+    const days = tripDays.map((day) => ({
+      date: day.date,
+      day: day.day,
+      places: day.places
+        .filter((place) => selectedPlaceIds.includes(place.id))
+        .map((place, index) => ({
+          id: place.id,
+          name: place.name,
+          order: index + 1,
+          time: place.time,
+        })),
+    }));
+
     try {
-      await AsyncStorage.setItem(
-        'saved-recommended-route',
-        JSON.stringify({
-          savedAt: new Date().toISOString(),
-          tripTitle: params.tripTitle ?? '제주 여행',
-          startAt: params.startAt,
-          endAt: params.endAt,
-          duration,
-          pace: params.pace ?? '여유롭게',
-          petName: params.petName ?? '몽이',
-          selectedPlaces: params.selectedPlaces?.split(',').filter(Boolean) ?? [],
-          days: tripDays.map((day) => ({
-            date: day.date,
-            day: day.day,
-            places: day.places
-              .filter((place) => selectedPlaceIds.includes(place.id))
-              .map((place, index, places) => ({
-                id: place.id,
-                name: place.name,
-                order: index + 1,
-                time: place.time,
-                travelMinutes: index === 0 ? 0 : (place.travelMinutes ?? 0),
-              })),
-          })),
-        }),
-      );
+      await saveRouteMutation.mutateAsync({
+        days,
+        duration,
+        endAt: params.endAt,
+        id: `route-${Date.now()}`,
+        petName: params.petName ?? '몽이',
+        placeCount: days.reduce((total, day) => total + day.places.length, 0),
+        savedAt: new Date().toISOString(),
+        startAt: params.startAt,
+        title: params.tripTitle ?? '제주 여행',
+      });
       setOpenModal('saved');
     } catch {
       setFeedback('코스를 저장하지 못했어요. 다시 시도해주세요.');

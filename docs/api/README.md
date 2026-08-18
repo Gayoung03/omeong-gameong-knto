@@ -615,10 +615,12 @@ NOT NULL이라 업로드 없이는 여행기록 기능 자체가 성립하지 �
 
 위 결정 중 앱을 함께 고쳐야 하는 항목입니다. 문서에만 반영했고 코드는 아직 그대로입니다.
 
+> `PetPolicyBadge`의 `unknown` 추가는 **2026-08-18 PR #37로 반영 완료**되어 목록에서 뺐습니다.
+> 파일도 `src/components/domain/PetPolicyBadge.tsx`로 옮겨졌습니다.
+
 | 파일 | 필요한 수정 |
 | --- | --- |
 | `features/auth/constants/signupOptions.ts` | `vibeOptions`를 `{ value: 'nature', label: '자연' }` 형태로 |
-| `features/trips/components/PetPolicyBadge.tsx` | `BADGE_COLORS`에 `unknown` 추가 — **없으면 화면이 죽습니다** |
 | `components/layout/NotificationPopup.tsx` | 서버가 `tone`을 안 보내므로 인덱스 기반 계산으로 변경 |
 | `features/places/mocks/place.mock.ts` | `petFriendly: boolean` → `petPolicy`로 통일 |
 | `types/inquiry.ts` | 문의 카테고리를 코드 + 라벨로 분리 |

@@ -1,5 +1,6 @@
+import { getPetPolicyLabel } from '@/src/types/place';
+
 import type {
-  PetPolicy,
   PlaceCategory,
   ScheduleWeather,
   TransportType,
@@ -101,16 +102,8 @@ export function formatMoveInfo(
   return `${formatDistance(distanceMeters)} · ${TRANSPORT_LABELS[transport]} ${durationMinutes}분`;
 }
 
-const PET_POLICY_LABELS: Record<PetPolicy, string> = {
-  outdoorOnly: '야외 · 목줄 필수',
-  indoorAllowed: '실내 동반 가능',
-  partialAllowed: '일부 구역 동반',
-  notAllowed: '동반 불가',
-};
-
-export function getPetPolicyLabel(petPolicy: PetPolicy): string {
-  return PET_POLICY_LABELS[petPolicy];
-}
+// 라벨 정본은 `src/types/place.ts` 에 있다. 기존 import 경로를 지키려고 여기서 다시 내보낸다.
+export { getPetPolicyLabel };
 
 const PLACE_CATEGORY_LABELS: Record<PlaceCategory, string> = {
   attraction: '관광지',
