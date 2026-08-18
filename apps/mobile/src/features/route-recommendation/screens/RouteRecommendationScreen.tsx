@@ -16,11 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { recommendedDays } from '../mocks/routes.mock';
 import type { RoutePlace } from '../types';
-import {
-  formatRouteDate,
-  formatTripDuration,
-  getTripDates,
-} from '../utils/tripDuration';
+import { formatRouteDate, formatTripDuration, getTripDates } from '../utils/tripDuration';
 
 import { useSaveRoute } from '@/src/features/saved/hooks/useSavedRoutes';
 import { colors, overlayColors } from '@/src/theme';
@@ -155,16 +151,17 @@ export function RouteRecommendationScreen() {
   }, [params.endAt, params.startAt]);
 
   const [selectedDay, setSelectedDay] = useState(1);
-  const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>(
-    () => tripDays.flatMap((day) => day.places.map((place) => place.id)),
+  const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>(() =>
+    tripDays.flatMap((day) => day.places.map((place) => place.id)),
   );
   const [feedback, setFeedback] = useState<string | null>(null);
   const [openModal, setOpenModal] = useState<'map' | 'saved' | 'request' | null>(null);
   const [requestText, setRequestText] = useState('');
 
-  const duration = params.startAt && params.endAt
-    ? formatTripDuration(params.startAt, params.endAt)
-    : `${recommendedDays.length - 1}박 ${recommendedDays.length}일`;
+  const duration =
+    params.startAt && params.endAt
+      ? formatTripDuration(params.startAt, params.endAt)
+      : `${recommendedDays.length - 1}박 ${recommendedDays.length}일`;
 
   const activeDay = tripDays[selectedDay - 1];
   const activeIds = useMemo(() => activeDay.places.map((place) => place.id), [activeDay]);
@@ -173,9 +170,7 @@ export function RouteRecommendationScreen() {
   const togglePlace = (placeId: string) => {
     setFeedback(null);
     setSelectedPlaceIds((current) =>
-      current.includes(placeId)
-        ? current.filter((id) => id !== placeId)
-        : [...current, placeId],
+      current.includes(placeId) ? current.filter((id) => id !== placeId) : [...current, placeId],
     );
   };
 
@@ -291,10 +286,7 @@ export function RouteRecommendationScreen() {
         </Pressable>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.heroCard}>
           <View style={styles.heroCopy}>
             <View style={styles.recommendationBadge}>
@@ -401,7 +393,9 @@ export function RouteRecommendationScreen() {
             ))}
           </View>
           <View style={styles.routeSummaryCopy}>
-            <Text style={styles.routeSummaryTitle}>총 이동 {formatTravelMinutes(activeTravelMinutes)}</Text>
+            <Text style={styles.routeSummaryTitle}>
+              총 이동 {formatTravelMinutes(activeTravelMinutes)}
+            </Text>
             <Text style={styles.routeSummaryText}>
               선택한 {activeSelectedPlaces.length}개 장소를 기준으로 계산했어요.
             </Text>
@@ -510,7 +504,9 @@ export function RouteRecommendationScreen() {
                 <View style={styles.mapPlaceList}>
                   {activeSelectedPlaces.map((place, index) => (
                     <View key={place.id} style={styles.mapPlaceRow}>
-                      <View style={styles.mapPlaceNumber}><Text style={styles.mapPlaceNumberText}>{index + 1}</Text></View>
+                      <View style={styles.mapPlaceNumber}>
+                        <Text style={styles.mapPlaceNumberText}>{index + 1}</Text>
+                      </View>
                       <Text style={styles.mapPlaceName}>{place.name}</Text>
                       <Text style={styles.mapPlaceTime}>{place.time}</Text>
                     </View>
@@ -525,7 +521,9 @@ export function RouteRecommendationScreen() {
                   <Ionicons color={palette.deepMint} name="checkmark" size={31} />
                 </View>
                 <Text style={styles.savedTitle}>{selectedCount}개 장소를 저장했어요</Text>
-                <Text style={styles.savedText}>저장한 코스는 내 여행에서 다시 확인할 수 있어요.</Text>
+                <Text style={styles.savedText}>
+                  저장한 코스는 내 여행에서 다시 확인할 수 있어요.
+                </Text>
                 <Pressable
                   onPress={() => {
                     setOpenModal(null);
@@ -544,13 +542,19 @@ export function RouteRecommendationScreen() {
                   바꾸고 싶은 장소나 일정 조건을 자연스럽게 적어주세요.
                 </Text>
                 <View style={styles.requestExamples}>
-                  {['카페를 한 곳 더 넣어줘', '비 오는 날 실내 위주로 바꿔줘', '이동 시간을 줄여줘'].map(
-                    (example) => (
-                      <Pressable key={example} onPress={() => setRequestText(example)} style={styles.requestChip}>
-                        <Text style={styles.requestChipText}>{example}</Text>
-                      </Pressable>
-                    ),
-                  )}
+                  {[
+                    '카페를 한 곳 더 넣어줘',
+                    '비 오는 날 실내 위주로 바꿔줘',
+                    '이동 시간을 줄여줘',
+                  ].map((example) => (
+                    <Pressable
+                      key={example}
+                      onPress={() => setRequestText(example)}
+                      style={styles.requestChip}
+                    >
+                      <Text style={styles.requestChipText}>{example}</Text>
+                    </Pressable>
+                  ))}
                 </View>
                 <TextInput
                   multiline
@@ -577,12 +581,10 @@ export function RouteRecommendationScreen() {
 }
 
 const styles = StyleSheet.create({
+  // 다른 화면과 같이 화면 폭을 그대로 쓴다 (입력 화면과 동일).
   safeArea: {
-    alignSelf: 'center',
     backgroundColor: palette.white,
     flex: 1,
-    maxWidth: 430,
-    width: '100%',
   },
   header: {
     alignItems: 'center',
@@ -731,12 +733,23 @@ const styles = StyleSheet.create({
     width: 12,
   },
   timeText: { color: palette.ink, fontSize: 10, fontWeight: '800', marginTop: 7 },
-  thumbnail: { alignItems: 'center', borderRadius: 12, height: 76, justifyContent: 'center', width: 76 },
+  thumbnail: {
+    alignItems: 'center',
+    borderRadius: 12,
+    height: 76,
+    justifyContent: 'center',
+    width: 76,
+  },
   thumbnailEmoji: { fontSize: 32 },
   placeContent: { flex: 1, paddingHorizontal: 11 },
   placeTitleRow: { alignItems: 'center', flexDirection: 'row', gap: 6 },
   placeName: { color: palette.ink, flexShrink: 1, fontSize: 14, fontWeight: '800' },
-  categoryBadge: { backgroundColor: colors.neutralGray, borderRadius: 5, paddingHorizontal: 5, paddingVertical: 3 },
+  categoryBadge: {
+    backgroundColor: colors.neutralGray,
+    borderRadius: 5,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
+  },
   categoryText: { color: colors.textSecondary, fontSize: 8, fontWeight: '700' },
   placeSubtitle: { color: palette.gray, fontSize: 10, lineHeight: 15, marginTop: 4 },
   petBadge: {
@@ -765,7 +778,13 @@ const styles = StyleSheet.create({
   },
   routeStops: { alignItems: 'center', flexDirection: 'row', marginBottom: 10 },
   routeStopWrap: { alignItems: 'center', flex: 1, flexDirection: 'row' },
-  routeStop: { alignItems: 'center', borderRadius: 15, height: 30, justifyContent: 'center', width: 30 },
+  routeStop: {
+    alignItems: 'center',
+    borderRadius: 15,
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
+  },
   routeStopEmoji: { fontSize: 14 },
   routeSummaryCopy: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   routeSummaryTitle: { color: palette.ink, fontSize: 12, fontWeight: '800' },
@@ -827,32 +846,143 @@ const styles = StyleSheet.create({
   aiRequestCopy: { flex: 1, paddingHorizontal: 10 },
   aiRequestTitle: { color: palette.ink, fontSize: 12, fontWeight: '800' },
   aiRequestText: { color: palette.gray, fontSize: 10, lineHeight: 15, marginTop: 3 },
-  modalBackdrop: { alignItems: 'center', backgroundColor: overlayColors.scrim, flex: 1, justifyContent: 'center', padding: 18 },
+  modalBackdrop: {
+    alignItems: 'center',
+    backgroundColor: overlayColors.scrim,
+    flex: 1,
+    justifyContent: 'center',
+    padding: 18,
+  },
   modalDismissArea: { bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 },
-  modalCard: { backgroundColor: palette.white, borderRadius: 20, maxWidth: 398, padding: 18, width: '100%' },
-  modalHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
+  modalCard: {
+    backgroundColor: palette.white,
+    borderRadius: 20,
+    maxWidth: 398,
+    padding: 18,
+    width: '100%',
+  },
+  modalHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15,
+  },
   modalTitle: { color: palette.ink, fontSize: 18, fontWeight: '900' },
-  mockMap: { backgroundColor: colors.leafSoft, borderRadius: 15, height: 170, overflow: 'hidden', position: 'relative' },
-  mapRoad: { backgroundColor: colors.primarySoft, borderColor: colors.primarySoftStrong, borderRadius: 30, borderWidth: 2, height: 48, left: 20, position: 'absolute', right: 18, top: 62, transform: [{ rotate: '-8deg' }] },
-  mapPin: { alignItems: 'center', backgroundColor: palette.orange, borderColor: palette.white, borderRadius: 14, borderWidth: 3, height: 28, justifyContent: 'center', position: 'absolute', width: 28 },
+  mockMap: {
+    backgroundColor: colors.leafSoft,
+    borderRadius: 15,
+    height: 170,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  mapRoad: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primarySoftStrong,
+    borderRadius: 30,
+    borderWidth: 2,
+    height: 48,
+    left: 20,
+    position: 'absolute',
+    right: 18,
+    top: 62,
+    transform: [{ rotate: '-8deg' }],
+  },
+  mapPin: {
+    alignItems: 'center',
+    backgroundColor: palette.orange,
+    borderColor: palette.white,
+    borderRadius: 14,
+    borderWidth: 3,
+    height: 28,
+    justifyContent: 'center',
+    position: 'absolute',
+    width: 28,
+  },
   mapPinNumber: { color: palette.white, fontSize: 10, fontWeight: '900' },
-  mapCompass: { alignItems: 'center', backgroundColor: palette.white, borderRadius: 18, bottom: 10, height: 36, justifyContent: 'center', position: 'absolute', right: 10, width: 36 },
+  mapCompass: {
+    alignItems: 'center',
+    backgroundColor: palette.white,
+    borderRadius: 18,
+    bottom: 10,
+    height: 36,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 10,
+    width: 36,
+  },
   mapPlaceList: { gap: 7, marginTop: 12 },
-  mapPlaceRow: { alignItems: 'center', borderBottomColor: palette.line, borderBottomWidth: 1, flexDirection: 'row', minHeight: 34, paddingBottom: 7 },
-  mapPlaceNumber: { alignItems: 'center', backgroundColor: colors.primarySoft, borderRadius: 10, height: 21, justifyContent: 'center', width: 21 },
+  mapPlaceRow: {
+    alignItems: 'center',
+    borderBottomColor: palette.line,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    minHeight: 34,
+    paddingBottom: 7,
+  },
+  mapPlaceNumber: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 10,
+    height: 21,
+    justifyContent: 'center',
+    width: 21,
+  },
   mapPlaceNumberText: { color: palette.orange, fontSize: 9, fontWeight: '900' },
-  mapPlaceName: { color: palette.ink, flex: 1, fontSize: 11, fontWeight: '700', paddingHorizontal: 8 },
+  mapPlaceName: {
+    color: palette.ink,
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '700',
+    paddingHorizontal: 8,
+  },
   mapPlaceTime: { color: palette.gray, fontSize: 10 },
   savedContent: { alignItems: 'center', paddingTop: 3 },
-  savedIcon: { alignItems: 'center', backgroundColor: colors.seaSoft, borderRadius: 31, height: 62, justifyContent: 'center', width: 62 },
+  savedIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.seaSoft,
+    borderRadius: 31,
+    height: 62,
+    justifyContent: 'center',
+    width: 62,
+  },
   savedTitle: { color: palette.ink, fontSize: 16, fontWeight: '900', marginTop: 13 },
-  savedText: { color: palette.gray, fontSize: 10, marginBottom: 16, marginTop: 5, textAlign: 'center' },
+  savedText: {
+    color: palette.gray,
+    fontSize: 10,
+    marginBottom: 16,
+    marginTop: 5,
+    textAlign: 'center',
+  },
   requestGuide: { color: palette.gray, fontSize: 11, lineHeight: 17 },
   requestExamples: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 11 },
-  requestChip: { backgroundColor: colors.primarySoft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 7 },
+  requestChip: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
   requestChipText: { color: palette.orange, fontSize: 9, fontWeight: '700' },
-  requestInput: { borderColor: palette.line, borderRadius: 12, borderWidth: 1, color: palette.ink, fontSize: 11, marginBottom: 11, marginTop: 12, minHeight: 100, outlineStyle: 'none', padding: 11, textAlignVertical: 'top' } as never,
-  modalPrimaryButton: { alignItems: 'center', alignSelf: 'stretch', backgroundColor: palette.orange, borderRadius: 11, justifyContent: 'center', minHeight: 46 },
+  requestInput: {
+    borderColor: palette.line,
+    borderRadius: 12,
+    borderWidth: 1,
+    color: palette.ink,
+    fontSize: 11,
+    marginBottom: 11,
+    marginTop: 12,
+    minHeight: 100,
+    outlineStyle: 'none',
+    padding: 11,
+    textAlignVertical: 'top',
+  } as never,
+  modalPrimaryButton: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: palette.orange,
+    borderRadius: 11,
+    justifyContent: 'center',
+    minHeight: 46,
+  },
   modalPrimaryText: { color: palette.white, fontSize: 12, fontWeight: '900' },
   pressed: { opacity: 0.72 },
 });
