@@ -151,9 +151,8 @@ DB에는 `transport_type` 하나뿐이고 7종입니다. 앱은 이를 둘로 �
 DB가 기본값을 `unknown`으로 두고 있는데, 앱에는 이를 표시할 방법이 없습니다.
 
 > **2026-08-18 확정 — `unknown`은 회색 "정보 없음" 뱃지로 표시합니다.**
-> [`PetPolicyBadge.tsx`](../../apps/mobile/src/features/trips/components/PetPolicyBadge.tsx)의
-> `BADGE_COLORS`가 4종만 갖고 있어 **서버가 `unknown`을 내려주면 화면이 죽습니다.**
-> 항목 추가가 필요합니다. [`places.md`](./places.md) 참고.
+> **앱 반영 완료 (PR #37).** [`PetPolicyBadge.tsx`](../../apps/mobile/src/components/domain/PetPolicyBadge.tsx)의 `BADGE_COLORS`와
+> `PetPolicy` 타입을 5종으로 맞췄습니다. [`places.md`](./places.md) 참고.
 
 ### 유형 D. 타입·의미가 다름 → rename으로 해결 안 됨
 
@@ -342,6 +341,15 @@ src/features/       auth/types/auth.ts        auth/constants/signupOptions.ts
 src/components/     layout/notificationPreview.mock.ts        (PR #26으로 추가)
 ```
 
+**PR #32·#36 이후 새로 생긴 타입 (대조 안 함)**
+
+```text
+src/types/          place.ts                       PetPolicy 정본. trips/types/trip.ts 가 재export
+src/features/       places/types/placeDetail.ts    장소 상세 어댑터가 쓰는 단일 모델
+                    saved/types/saved.ts           저장한 장소·코스
+                    notifications/types/notification.ts
+```
+
 > **이 문서는 시점 스냅샷입니다.** 프론트가 머지될 때마다 대조 결과가 달라질 수 있습니다.
 > 2026-08-12 PR #26 머지 시점까지 반영했으며, 그때 위 12개 타입 파일은 변경되지 않았고
 > `notificationPreview.mock.ts` 하나가 추가되었습니다.
@@ -350,6 +358,10 @@ src/components/     layout/notificationPreview.mock.ts        (PR #26으로 추�
 > `~Mocks.ts` → `~.mock.ts`. 위 경로는 새 위치로 고쳤지만 **타입 내용은 다시 대조하지 않았습니다.**
 > `features/places/constants/placeCategories.ts`처럼 새로 생긴 파일도 있어, 다음 점검 때
 > 전체를 다시 훑어야 합니다.
+>
+> **2026-08-18 — PR #32·#36으로 타입 4개가 새로 생겼습니다.** 위 목록에 적어두었고
+> 아직 DB와 대조하지 않았습니다. 특히 `places/types/placeDetail.ts`는
+> `GET /places/{placeId}` 응답과 직접 맞물리므로 다음 점검에서 우선 볼 대상입니다.
 
 **DB 모델 (30개 테이블 / 12개 Enum)**
 
@@ -366,4 +378,5 @@ apps/api/app/db/models/  users.py  places.py  routes.py  community.py  enums.py
 | 2026-08-12 | 최초 점검 |
 | 2026-08-12 | PR #26 머지 반영 — `notificationPreview.mock.ts` 대조 추가, 표현 영역 값(`tone` 등) 분류 신설 |
 | 2026-08-15 | PR #29 머지 반영 — `places`에서 drop된 `activity_level` `crowd_level` `weather_sensitivity`를 유형 E 목록에서 제거 |
+| 2026-08-18 | (율무) PR #37 반영 — `unknown` 뱃지 앱 적용 완료 표시, `PetPolicyBadge` 경로를 `src/components/domain/` 으로 수정, PR #32·#36 신규 타입 4개를 부록에 추가. 분석·판단 내용은 건드리지 않음 |
 | 2026-08-18 | 도메인 미정 19건 확정 반영 — `petFriendly` 5종 유지, `unknown` 뱃지 처리, 표현 영역 값(`tone`·`greeting`·`tip`) 셋 다 앱이 생성, 스토리지 S3, 취향 태그 영문 코드. PR #30 파일 이동으로 깨진 `signupOptions.ts` 경로 수정 |
