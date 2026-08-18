@@ -10,7 +10,7 @@ export const quickMenuItems: QuickMenuItem[] = [
     icon: 'book-outline',
     iconColor: categoryColors.green.fg,
     iconBackgroundColor: categoryColors.green.bg,
-    destination: 'coming-soon',
+    destination: 'travel-guides',
   },
   {
     id: 'pet-friendly-place',
@@ -28,6 +28,7 @@ export const quickMenuItems: QuickMenuItem[] = [
     icon: 'paw-outline',
     iconColor: categoryColors.yellow.fg,
     iconBackgroundColor: categoryColors.yellow.bg,
+    // 캐릭터 생성 기능은 아직 설계 전이라 준비 중 화면으로 둔다.
     destination: 'coming-soon',
   },
   {
@@ -37,7 +38,7 @@ export const quickMenuItems: QuickMenuItem[] = [
     icon: 'create-outline',
     iconColor: categoryColors.blue.fg,
     iconBackgroundColor: categoryColors.blue.bg,
-    destination: 'coming-soon',
+    destination: 'travel-log-new',
   },
 ];
 

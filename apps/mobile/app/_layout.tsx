@@ -32,6 +32,12 @@ export default function RootLayout() {
             <Stack.Screen name="travel-logs/new-moment/generating" options={{ gestureEnabled: false }} />
             <Stack.Screen name="travel-logs/new-moment/complete" options={{ gestureEnabled: false }} />
 
+            <Stack.Screen name="travel-guides/index" />
+            <Stack.Screen name="travel-guides/preparation" />
+
+            <Stack.Screen name="saved/places" />
+            <Stack.Screen name="saved/routes" />
+
             <Stack.Screen name="notifications" />
             <Stack.Screen name="notices" />
             <Stack.Screen name="notification-settings" />
