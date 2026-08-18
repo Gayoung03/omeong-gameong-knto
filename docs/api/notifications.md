@@ -1,6 +1,6 @@
 # 공지 · 알림 · 문의 API
 
-작성일: 2026-08-12 · 상태: **확정 규약 반영** (2026-08-12 팀 회의)
+작성일: 2026-08-12 · 갱신: 2026-08-18 · 상태: **미정 항목 없음 — 구현 착수 가능**
 
 공통 규약은 [`README.md`](./README.md)를 따릅니다.
 
@@ -134,10 +134,9 @@ GET /api/v1/notifications?isRead=false&limit=20&offset=0
     {
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "type": "inquiry_answered",
+      "targetId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
       "title": "문의에 답변이 등록되었습니다",
       "content": "'반려동물 정보' 문의에 답변이 달렸어요.",
-      "iconKey": "chat",
-      "actionPath": "/settings/inquiries/550e8400-...",
       "isRead": false,
       "createdAt": "2026-08-11T10:00:00+09:00",
       "readAt": null
@@ -155,16 +154,44 @@ GET /api/v1/notifications?isRead=false&limit=20&offset=0
 
 | 필드 | 설명 |
 | --- | --- |
-| `type` | `String(30)` 자유 문자열. enum이 아님 |
-| `iconKey` | 앱이 아이콘을 고르는 키. 이미지 URL이 아님 |
-| `actionPath` | 알림을 눌렀을 때 이동할 **앱 내부 경로** |
+| `type` | 알림 종류. 아래 3종 중 하나 |
+| `targetId` | 이동할 대상의 ID. `type`에 따라 가리키는 것이 다름 |
 | `readAt` | `isRead`가 `true`일 때만 값이 있음 |
 
 DB CHECK 제약이 `is_read = false OR read_at IS NOT NULL`이라,
 읽음 처리하면 `readAt`이 반드시 채워집니다.
 
-`actionPath`는 서버가 앱 라우트를 알고 있어야 만들 수 있습니다.
-앱 라우터 경로가 바뀌면 과거 알림의 링크가 깨집니다.
+### 알림 종류 **[확정]** (2026-08-18)
+
+**3종으로 시작합니다.**
+
+| `type` | 언제 보내나 | `targetId` | 앱 아이콘 | 눌렀을 때 |
+| --- | --- | --- | --- | --- |
+| `travel_log_ready` | 여행기록 이미지 생성 완료 | `travel_logs.id` | `image-outline` | 여행기록 상세 |
+| `inquiry_answered` | 내 문의에 답변 등록 | `inquiries.id` | `chatbubble-outline` | 문의 상세 |
+| `notice` | 새 공지사항 등록 | `notices.id` | `megaphone-outline` | 공지 상세 |
+
+DB의 `notifications.type`은 `String(30)` 자유 문자열이라 제약이 없습니다.
+**서버가 이 3개 값만 넣는다는 약속**이며, 늘릴 때는 이 표를 먼저 고칩니다.
+
+### 아이콘과 이동 경로는 앱이 정합니다 **[확정]** (2026-08-18)
+
+`iconKey`와 `actionPath`를 **응답에서 뺐습니다.** 서버는 `type`과 `targetId`만 내려주고,
+앱이 위 표를 보고 아이콘과 경로를 조립합니다.
+
+```ts
+// 앱이 갖는 매핑 (예시)
+const NOTIFICATION_META = {
+  travel_log_ready: { icon: 'image-outline',     path: (id) => `/travel-logs/${id}` },
+  inquiry_answered: { icon: 'chatbubble-outline', path: (id) => `/settings/inquiries/${id}` },
+  notice:           { icon: 'megaphone-outline',  path: (id) => `/notices/${id}` },
+};
+```
+
+서버가 `actionPath`를 만들려면 앱 라우트를 알고 있어야 하고, **앱 라우터 경로가 바뀌면
+이미 발송된 과거 알림의 링크가 전부 깨집니다.** 앱이 조립하면 앱만 고치면 됩니다.
+
+아이콘도 같은 이유입니다. 아이콘은 표현 영역이라 서버가 관여할 이유가 없습니다.
 
 ### 앱 타입과의 대조
 
@@ -187,33 +214,29 @@ export type NotificationPreview = {
 | `id: string` (`'weather'` `'pet'`) | `notifications.id` (UUID) | 목업 고정값 → UUID로 교체 |
 | `title` | `title` | 일치 |
 | `description` | `content` | **단어 불일치.** DB 단어를 따라 `content`로 통일 |
-| `icon` | `iconKey` | 앱이 Ionicons 이름(`sunny-outline`)을 직접 사용 |
-| `tone` | **DB 컬럼 없음** | 아래 참고 |
+| `icon` | **응답에 없음** | 앱이 `type`으로 결정 (위 표) |
+| `tone` | **응답에 없음** | 앱이 순서대로 번갈아 칠함 (아래) |
 
-`NotificationPopup`은 목록만 그리고 항목에 `onPress`가 없어, 아직 `actionPath`를 쓰지 않습니다.
+`NotificationPopup`은 목록만 그리고 항목에 `onPress`가 없습니다.
 `isRead`·`createdAt`도 없습니다. 팝업이 미리보기 전용이기 때문이며,
 전체 알림 화면(`app/notifications.tsx`)은 현재 `ComingSoonScreen`입니다.
 
-> **[확인 필요] — `tone`을 담을 DB 컬럼이 없습니다.**
-> 앱은 아이콘 배경을 귤(`primary`)과 바다(`sea`) 두 톤으로 번갈아 칠합니다.
-> `notifications` 테이블에는 이 값을 담을 컬럼이 없습니다.
->
-> 두 가지 선택지가 있습니다.
->
-> | 안 | 내용 |
-> | --- | --- |
-> | 앱이 결정 | 목록 순서대로 번갈아 칠함. DB 변경 없음 |
-> | 서버가 내려줌 | `notifications`에 컬럼 추가 필요 |
->
-> 색상은 표현 영역이라 앱이 정하는 쪽을 권합니다. 컬럼은 추가하지 않았습니다.
+### 아이콘 배경색은 앱이 번갈아 칠합니다 **[확정]** (2026-08-18)
 
-> **[확인 필요]** `type`과 `iconKey`에 쓸 값 목록.
-> DB가 자유 문자열(`String(30)`, `String(50)`)이라 제약이 없어,
-> 서버와 앱이 같은 값을 쓰도록 목록을 합의해야 합니다.
-> 목업에 쓰인 아이콘은 `sunny-outline`, `paw-outline` 두 개뿐입니다.
+앱은 아이콘 배경을 귤(`primary`)과 바다(`sea`) 두 톤으로 번갈아 칠합니다.
+`notifications` 테이블에는 이 값을 담을 컬럼이 없고, **추가하지 않습니다.**
+
+색상은 표현 영역이고, 앱 목업 주석에도 이미 "번갈아 쓴다"고 적혀 있습니다
+([`notificationPreview.mock.ts:6`](../../apps/mobile/src/components/layout/notificationPreview.mock.ts)).
+서버가 관여할 이유가 없습니다.
+
+> **앱 수정 필요.** [`NotificationPopup.tsx:36`](../../apps/mobile/src/components/layout/NotificationPopup.tsx)이
+> 지금은 목업 항목의 `item.tone`을 그대로 읽습니다.
+> API를 붙일 때 목록 인덱스의 짝수/홀수로 계산하도록 바꿔야 합니다.
 >
-> `actionPath`를 서버가 만들지, `type` + 대상 ID만 내려주고 앱이 경로를 조립할지도 정해야 합니다.
-> 후자가 라우트 변경에 강합니다.
+> ```ts
+> const tone = index % 2 === 0 ? 'primary' : 'sea';
+> ```
 
 ---
 
@@ -280,7 +303,7 @@ GET /api/v1/inquiries?status=pending&limit=20&offset=0
   "items": [
     {
       "id": "550e8400-e29b-41d4-a716-446655440000",
-      "category": "반려동물 정보",
+      "category": "pet",
       "status": "pending",
       "title": "반려동물 정보를 수정할 수 없어요",
       "createdAt": "2026-08-11T10:00:00+09:00",
@@ -298,18 +321,29 @@ GET /api/v1/inquiries?status=pending&limit=20&offset=0
 정렬은 `createdAt` 최신순입니다.
 DB에 `(user_id, status, created_at)` 인덱스가 있습니다.
 
-> **[확인 필요]** `category` 값 목록.
-> DB는 `String(50)` 자유 문자열이고, 앱
-> [`types/inquiry.ts`](../../apps/mobile/src/types/inquiry.ts)는 한글 6종을 쓰고 있습니다.
->
-> ```text
-> 계정 및 회원정보 · 반려동물 정보 · 저장한 장소·코스 · 여행 일정 · 오류·불편 · 기타
-> ```
->
-> 확정 규약 #1(값은 영문 코드)을 따르면 `account` `pet` `saved` `schedule` `bug` `etc` 같은
-> 코드로 바꾸고 앱이 한글 라벨로 변환해야 합니다.
-> 다만 문의 분류는 운영자가 읽는 값이라 한글을 그대로 두는 선택지도 있습니다.
-> **이 문서는 앱의 현재 한글 값을 그대로 예시에 썼습니다.**
+### 문의 카테고리 **[확정]** (2026-08-18)
+
+**영문 코드**를 씁니다. 화면에 보일 한글은 앱이 라벨로 바꿉니다
+([`README.md`](./README.md) 7장 규약).
+
+| 화면 표시 | 코드 |
+| --- | --- |
+| 계정 및 회원정보 | `account` |
+| 반려동물 정보 | `pet` |
+| 저장한 장소·코스 | `saved` |
+| 여행 일정 | `schedule` |
+| 오류·불편 | `bug` |
+| 기타 | `etc` |
+
+DB의 `inquiries.category`는 `String(50)` 자유 문자열이라 제약이 없습니다.
+**서버가 이 6개 값만 넣는다는 약속**입니다.
+
+운영자가 관리자 화면에서 읽는 값이라 한글을 그대로 두는 선택지도 있었지만,
+값은 영문 코드로 통일하는 규약을 따르기로 했습니다. 관리자 화면도 앱과 같은 라벨 맵을
+쓰면 됩니다.
+
+> **앱 수정 필요.** [`types/inquiry.ts`](../../apps/mobile/src/types/inquiry.ts)가
+> 지금 한글 6종을 값으로 쓰고 있습니다. 코드와 라벨을 분리해야 합니다.
 
 ---
 
@@ -319,7 +353,7 @@ DB에 `(user_id, status, created_at)` 인덱스가 있습니다.
 
 ```json
 {
-  "category": "반려동물 정보",
+  "category": "pet",
   "title": "반려동물 정보를 수정할 수 없어요",
   "content": "프로필 수정 화면에서 저장 버튼이 눌리지 않습니다.",
   "imageUrls": ["https://..."]
@@ -360,7 +394,7 @@ DB에 `(user_id, status, created_at)` 인덱스가 있습니다.
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
-  "category": "반려동물 정보",
+  "category": "pet",
   "status": "completed",
   "title": "반려동물 정보를 수정할 수 없어요",
   "content": "프로필 수정 화면에서 저장 버튼이 눌리지 않습니다.",
@@ -380,7 +414,8 @@ DB CHECK 제약이 이를 보장합니다.
 > **날짜 형식 주의** — 앱 타입은 `createdAt`·`answeredAt`을 `'YYYY-MM-DD'` 날짜 문자열로
 > 갖고 있는데 **DB는 시각**입니다. API는 시각으로 내려주고 앱이 화면에서 날짜만 표시합니다.
 
-답변이 등록되면 `notifications`에 알림이 생성됩니다.
+답변이 등록되면 `notifications`에 `type: "inquiry_answered"` 알림이 생성되고,
+`targetId`에 이 문의의 `id`가 들어갑니다.
 단, `users.inquiry_answer_notification_enabled`가 `false`인 사용자에게는 보내지 않습니다.
 
 ### 에러
@@ -399,3 +434,4 @@ DB CHECK 제약이 이를 보장합니다.
 | 2026-08-12 | 초안 작성 |
 | 2026-08-12 | PR #26 머지 반영 — `NotificationPreview` 타입 추가에 따른 대조표, `tone` 컬럼 부재 기록 |
 | 2026-08-12 | 문의 첨부 이미지 업로드 확인 필요 항목을 [`uploads.md`](./uploads.md) 참조로 교체 |
+| 2026-08-18 | 미정 4건 확정 — `tone`은 앱이 번갈아 결정(컬럼 추가 없음), 알림 **3종**(`travel_log_ready` `inquiry_answered` `notice`) 확정, `iconKey`·`actionPath`를 응답에서 빼고 `targetId`로 대체, 문의 `category` **영문 코드** 6종 |

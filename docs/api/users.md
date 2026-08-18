@@ -1,6 +1,6 @@
 # 사용자 · 반려동물 API
 
-작성일: 2026-08-12 · 갱신: 2026-08-12 · 상태: **확정 규약 반영** (2026-08-12 팀 회의)
+작성일: 2026-08-12 · 갱신: 2026-08-18 · 상태: **취향 태그 목록만 보류 — 그 외 구현 착수 가능**
 
 공통 규약은 [`README.md`](./README.md)를 따릅니다. 이 문서에 적용된 확정 사항은 다음과 같습니다.
 
@@ -17,31 +17,27 @@
 
 ---
 
-## 확인 필요 — DB 컬럼 추가
+## "기타" 종류 입력값 — `speciesDetail`
 
-**"기타" 종류를 선택했을 때 사용자가 입력한 텍스트를 저장할 컬럼이 `pets` 테이블에 없습니다.**
+"기타"를 선택했을 때 사용자가 직접 입력한 텍스트는 `pets.species_detail`에 저장합니다.
+API에서는 camelCase 규약에 따라 **`speciesDetail`** 로 주고받습니다.
 
-회의에서 반려동물 종류를 강아지 / 고양이 / **기타(사용자 직접 입력)** 로 정했는데,
-현재 `pets` 테이블에는 그 입력값을 담을 곳이 없습니다.
+마이그레이션 `8c71f4a2d9e0`에서 추가됐습니다 (`VARCHAR(50)`, nullable).
 
-```text
-현재 pets 컬럼
-id, user_id, name, species, breed, size, weight_kg,
-birth_date, image_url, health_notes, is_primary,
-deleted_at, created_at, updated_at
-```
+`breed`와 용도가 다릅니다. `breed`는 **품종**(말티즈·푸들), `speciesDetail`은 **종류**(햄스터·앵무새)입니다.
+품종 칸에 "햄스터"를 넣으면 나중에 품종 기반 기능을 만들 때 데이터가 섞입니다.
 
-`species`는 enum(`dog` `cat` `rabbit` `bird` `other`)이라 자유 텍스트를 담을 수 없고,
-`breed`는 **품종**(말티즈·푸들)을 담는 컬럼이라 종류와 용도가 다릅니다.
-품종에 "햄스터"를 넣으면 나중에 품종 기반 기능을 만들 때 데이터가 섞입니다.
+DB에 CHECK 제약(`species_detail_consistency`)이 걸려 있어 아래 두 경우만 저장됩니다.
 
-모델(`apps/api/app/db/models/users.py`)과 마이그레이션(`5eead3cb186c`) 양쪽을 확인했습니다.
+| `species` | `speciesDetail` |
+| --- | --- |
+| `other` | 필수. 공백만 있는 문자열도 거부 |
+| `other` 외 | 반드시 `null` |
 
-**이 문서에서는 컬럼을 임의로 추가하지 않았습니다.** 아래 요청·응답 예시에는
-`speciesOther` 필드를 표시해 두었으나, DB 컬럼과 마이그레이션이 추가되기 전까지는 동작하지 않습니다.
+`dog`인데 `speciesDetail`에 값을 보내면 DB 제약에 걸리므로, 서버가 422로 먼저 막아야 합니다.
 
 `rabbit` `bird`는 enum에 남아 있지만 앱 선택지에서 제공하지 않습니다.
-기존 데이터가 없으므로 enum 자체를 줄이는 선택지도 있습니다 — 이것도 별도 논의가 필요합니다.
+기존 데이터가 없으므로 enum 자체를 줄이는 선택지도 있습니다 — 이건 별도 논의가 필요합니다.
 
 ---
 
@@ -160,8 +156,28 @@ deleted_at, created_at, updated_at
 | --- | --- |
 | 401 | 비밀번호 불일치 또는 재인증 실패 |
 
-> **[확인 필요]** 탈퇴 계정 식별값을 얼마나 보관할지, 같은 이메일 재가입을 차단할지.
-> 앱은 차단 목록을 갖지 않고 서버가 판단합니다. 보관 기간은 개인정보 처리방침과 함께 정해야 합니다.
+**같은 이메일로 재가입 [확정]** — 차단합니다. (2026-08-15)
+
+탈퇴한 계정의 이메일로 `POST /auth/signup`을 호출하면 `409`이고,
+`GET /auth/check-email`은 `available: false`입니다.
+탈퇴가 soft delete라 행이 남고 `users.email`에 UNIQUE가 걸려 있어 이미 그렇게 동작합니다.
+근거와 나중에 여는 방법은 [`auth.md`](./auth.md) 참고.
+
+**보관 기간 [확정]** — **30일**입니다. (2026-08-18)
+
+```text
+탈퇴 ──── 30일 ────▶ 이메일 익명화 ────▶ 같은 이메일로 재가입 가능
+      재가입 차단                    차단 해제
+```
+
+탈퇴 후 30일이 지난 행은 배치가 `users.email`을 익명값으로 바꿉니다.
+UNIQUE 제약이 풀리는 시점이라 그때부터 같은 이메일로 재가입할 수 있습니다.
+
+30일로 정한 이유는 두 가지입니다. 실수로 탈퇴한 사용자가 문의할 시간이 되고,
+그 이상 개인정보를 들고 있을 이유가 없습니다.
+
+닉네임도 함께 익명화합니다. 리뷰는 남지만 작성자 표시가 "탈퇴한 사용자"로 바뀌므로
+([`reviews.md`](./reviews.md)) 화면에는 영향이 없습니다.
 
 탈퇴해도 `travel_log_pets`의 이름·사진 스냅샷은 남으므로 다른 사용자의 기록 화면은 영향받지 않습니다.
 
@@ -209,7 +225,7 @@ deleted_at, created_at, updated_at
   "departureLocation": "제주시",
   "preferredDurationDays": 2,
   "companionCount": 1,
-  "preferredTags": ["바다", "카페", "산책"],
+  "preferredTags": ["nature", "cafe", "walk"],
   "updatedAt": "2026-08-01T10:00:00+09:00"
 }
 ```
@@ -234,7 +250,7 @@ enum 값은 영문 코드 그대로입니다. `rental_car`의 값 자체에 있�
   "departureLocation": "서귀포시",
   "preferredDurationDays": 3,
   "companionCount": 2,
-  "preferredTags": ["포토스팟", "휴식"]
+  "preferredTags": ["photo", "quiet"]
 }
 ```
 
@@ -244,7 +260,7 @@ enum 값은 영문 코드 그대로입니다. `rental_car`의 값 자체에 있�
 | `defaultTransport` | enum | `rental_car` `own_car` `taxi` `public_transport` `walk` `ferry` `airplane` |
 | `preferredDurationDays` | int | 1 이상 |
 | `companionCount` | int | 1 이상 |
-| `preferredTags` | string[] | `place_tags.code` 목록 |
+| `preferredTags` | string[] | 아래 취향 태그 코드 |
 
 ### 에러
 
@@ -252,9 +268,33 @@ enum 값은 영문 코드 그대로입니다. `rental_car`의 값 자체에 있�
 | --- | --- |
 | 422 | `companionCount < 1`, `preferredDurationDays < 1` |
 
-> **[확인 필요]** `preferredTags`에 쓸 태그 목록.
-> 앱의 취향 선택지(`자연` `실내` `카페` `산책` `사진` `조용한` `활동적`)와
-> DB 설계 문서의 태그(`바다` `카페` `산책` `포토스팟` `체험` `휴식` `실내관광`)가 다릅니다.
+### 취향 태그 코드 **[확정]** (2026-08-18)
+
+`preferredTags`에는 **영문 코드**를 넣습니다. 화면에 보일 한글은 앱이 라벨로 바꿉니다
+([`README.md`](./README.md) 7장 규약).
+
+| 화면 표시 | 코드 |
+| --- | --- |
+| 자연 | `nature` |
+| 실내 | `indoor` |
+| 카페 | `cafe` |
+| 산책 | `walk` |
+| 사진 | `photo` |
+| 조용한 | `quiet` |
+| 활동적 | `active` |
+
+> **앱 수정 필요.** [`signupOptions.ts`](../../apps/mobile/src/features/auth/constants/signupOptions.ts)의
+> `vibeOptions`가 지금 `{ value: '자연' }`처럼 한글을 값으로 쓰고 있습니다.
+> 같은 파일의 `petTypeOptions`처럼 `{ value: 'nature', label: '자연' }` 형태로 바꿔야 합니다.
+
+> **[확인 필요] — 목록 자체는 아직 보류입니다.**
+> 위 7개는 **현재 앱 화면에 있는 선택지를 코드로 옮긴 것**입니다.
+> 이 목록이 장소 태그(`place_tags`)와 단어를 맞춰야 하는지는
+> **추천 방식(규칙 기반 / AI)이 정해져야** 답이 나옵니다.
+> 자세한 내용은 [`places.md`](./places.md)의 `GET /place-tags` 절에 있습니다.
+
+`preferredTags`는 `user_travel_preferences.preferred_tags`(문자열 배열)에 그대로 저장됩니다.
+`place_tags` 테이블의 외래키가 아니라서 목록이 바뀌어도 DB 제약에 걸리지 않습니다.
 
 ---
 
@@ -286,7 +326,7 @@ GET /api/v1/pets?includeDeleted=true
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "name": "몽이",
       "species": "dog",
-      "speciesOther": null,
+      "speciesDetail": null,
       "breed": "말티즈",
       "size": "small",
       "weightKg": 4.2,
@@ -308,8 +348,8 @@ GET /api/v1/pets?includeDeleted=true
 앱이 나이를 직접 계산하면 기기 시간대에 따라 값이 달라질 수 있어 서버가 담당합니다.
 `birthDate`가 `null`이면 `age`도 `null`입니다.
 
-`speciesOther`는 `species`가 `other`일 때만 값이 있습니다.
-**단, 저장할 DB 컬럼이 아직 없습니다** — 문서 상단 확인 필요 항목 참고.
+`speciesDetail`은 `species`가 `other`일 때만 값이 있고, 그 외에는 항상 `null`입니다
+(DB CHECK 제약 — 문서 상단 참고).
 
 ---
 
@@ -334,7 +374,7 @@ GET /api/v1/pets?includeDeleted=true
 | --- | --- | --- |
 | `name` | ✅ | 50자 |
 | `species` | ✅ | `dog` `cat` `other` |
-| `speciesOther` | 조건부 | `species`가 `other`일 때 필수 |
+| `speciesDetail` | 조건부 | `species`가 `other`일 때 필수, 그 외에는 보내면 안 됨. 50자 |
 | `size` | — | `small` `medium` `large` |
 | `weightKg` | — | 0 이상 |
 | `birthDate` | — | 날짜 (`2021-05-03`) |
@@ -345,7 +385,7 @@ GET /api/v1/pets?includeDeleted=true
 {
   "name": "햄찌",
   "species": "other",
-  "speciesOther": "햄스터"
+  "speciesDetail": "햄스터"
 }
 ```
 
@@ -362,7 +402,7 @@ GET /api/v1/pets?includeDeleted=true
 
 | 코드 | 상황 |
 | --- | --- |
-| 422 | 이름 누락·길이 초과, `weightKg < 0`, `species`가 `other`인데 `speciesOther` 없음 |
+| 422 | 이름 누락·길이 초과, `weightKg < 0`, `species`가 `other`인데 `speciesDetail` 없음(또는 공백만), `species`가 `other`가 아닌데 `speciesDetail`을 보냄 |
 
 ---
 
@@ -428,3 +468,6 @@ API는 **404로 통일**합니다. 삭제된 리소스는 조회되지 않는다
 | 2026-08-12 | 초안 작성 |
 | 2026-08-12 | 확정 규약 반영 — camelCase 응답, `status` 표현, 종류 3종, 목록 래핑. "기타" 종류 DB 컬럼 부재를 확인 필요로 기록 |
 | 2026-08-12 | `profileImageUrl`·반려동물 `imageUrl` 업로드 경로를 [`uploads.md`](./uploads.md) 참조로 명시 |
+| 2026-08-15 | PR #29 머지 반영 — "기타" 종류 컬럼 부재 해소. `pets.species_detail` 추가로 확인 필요 항목을 걷고, 필드명을 `speciesOther` → `speciesDetail`로 통일. CHECK 제약에 맞춰 422 조건 보완 |
+| 2026-08-15 | 탈퇴 후 같은 이메일 재가입을 **차단**으로 확정. 남은 확인 필요는 탈퇴 행 보관 기간뿐 |
+| 2026-08-18 | 탈퇴 계정 보관 **30일** 확정(이후 이메일·닉네임 익명화). `preferredTags`를 **영문 코드**로 확정하고 매핑표 추가. 태그 목록 자체는 추천 방식 확정 시 재검토로 보류 |

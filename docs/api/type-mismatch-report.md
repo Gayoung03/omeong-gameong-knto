@@ -1,6 +1,6 @@
 # 프론트 타입 · DB 모델 불일치 점검
 
-작성일: 2026-08-12 · 대상: `apps/mobile/src` 타입 14개 파일 ↔ `apps/api/app/db/models` 30개 테이블
+작성일: 2026-08-12 · 갱신: 2026-08-18 · 대상: `apps/mobile/src` 타입 14개 파일 ↔ `apps/api/app/db/models` 30개 테이블
 
 ---
 
@@ -67,7 +67,7 @@ DB에는 `transport_type` 하나뿐이고 7종입니다. 앱은 이를 둘로 �
 
 | 파일 | 내용 | DB와 |
 | --- | --- | --- |
-| `features/auth/data/signupOptions.ts` | `{ value: 'dog', label: '강아지', icon: '🐶' }` | **완전 일치** |
+| `features/auth/constants/signupOptions.ts` | `{ value: 'dog', label: '강아지', icon: '🐶' }` | **완전 일치** |
 | `features/auth/types/auth.ts` | `PetType` 5종, `PetSize` 3종 | **완전 일치** |
 | `src/types/logDraft.ts` | `WritingStyle` `MomentMood` `GenerationStatus` | **완전 일치** |
 
@@ -150,6 +150,11 @@ DB에는 `transport_type` 하나뿐이고 7종입니다. 앱은 이를 둘로 �
 `unknown`이 빠진 건 특히 문제입니다. 반려동물 정책은 출처가 불확실한 장소가 많아
 DB가 기본값을 `unknown`으로 두고 있는데, 앱에는 이를 표시할 방법이 없습니다.
 
+> **2026-08-18 확정 — `unknown`은 회색 "정보 없음" 뱃지로 표시합니다.**
+> [`PetPolicyBadge.tsx`](../../apps/mobile/src/features/trips/components/PetPolicyBadge.tsx)의
+> `BADGE_COLORS`가 4종만 갖고 있어 **서버가 `unknown`을 내려주면 화면이 죽습니다.**
+> 항목 추가가 필요합니다. [`places.md`](./places.md) 참고.
+
 ### 유형 D. 타입·의미가 다름 → rename으로 해결 안 됨
 
 | 프론트 | DB | 문제 |
@@ -157,7 +162,7 @@ DB가 기본값을 `unknown`으로 두고 있는데, 앱에는 이를 표시할 
 | `age: number` | `pets.birth_date: Date` | 나이는 생년월일에서 계산해야 나옴 |
 | `status: 'active'\|'deleted'` | `pets.deleted_at` | 표현 방식이 다름 |
 | `ChatMessage.id: number` | `chat_messages.id: UUID` | **숫자 vs 문자열. 런타임 오류 발생** |
-| `petFriendly: boolean` | `place_pet_policies.policy_type` 5종 | 5종을 참/거짓으로 뭉갬 |
+| `petFriendly: boolean` | `place_pet_policies.policy_type` 5종 | 5종을 참/거짓으로 뭉갬. **2026-08-18 확정 — 5종 유지, 앱이 `petPolicy`로 통일** |
 | `isReservable: boolean` | `places.reservation_required` | **의미가 반대일 수 있음** |
 | `Notice.createdAt: 'YYYY.MM.DD'` | `notices.published_at: DateTime` | 표시용 포맷을 데이터로 저장 |
 | `Inquiry.createdAt: 'YYYY-MM-DD'` | `inquiries.created_at: DateTime` | 시각 정보 손실 |
@@ -174,8 +179,7 @@ DB가 기본값을 `unknown`으로 두고 있는데, 앱에는 이를 표시할 
 ```text
 pets            size, health_notes, is_primary
 users           auth_provider, 알림 설정 2개
-places          amenities, average_stay_minutes, activity_level,
-                crowd_level, weather_sensitivity, business_hours
+places          amenities, average_stay_minutes, business_hours
 notices         is_pinned, is_active
 chat_messages   conversation_id, referenced_place_ids
 travel_logs     writing_style, mood, generation_status
@@ -203,9 +207,15 @@ WeatherSummary.tip           "산책하기 좋은 날씨예요"
 ```
 
 셋 다 **표현(presentation) 영역**이라 DB에 둘 성격이 아닙니다.
-서버가 만들어 내려줄지 앱이 정할지 결정이 필요하며, 앱이 정하는 쪽이면 문구·색상 변경에
-서버 배포가 필요 없습니다. 자세한 내용은 [`notifications.md`](./notifications.md),
-[`weather.md`](./weather.md) 참고.
+
+**2026-08-18 확정 — 셋 다 앱이 만듭니다.** API 응답에 포함하지 않고 DB 컬럼도 추가하지 않습니다.
+문구와 색상을 바꿀 때 서버 배포가 필요 없습니다.
+
+| 값 | 앱이 만드는 방법 |
+| --- | --- |
+| `tone` | 목록 인덱스의 짝수/홀수로 번갈아 ([`notifications.md`](./notifications.md)) |
+| `greeting` | 날씨와 무관. 시간대를 보거나 고정 문구 ([`weather.md`](./weather.md)) |
+| `tip` | 응답의 `condition`·`windSpeed`를 보고 선택 |
 
 ---
 
@@ -266,22 +276,28 @@ TypeScript라서 일괄 rename 후 `npm run typecheck`가 통과하면 누락이
 | 안건 | 이유 |
 | --- | --- |
 | 필드명 표기 규칙 확정 (4-3) | 프론트 200곳 가까이 영향 |
-| 여행 취향 태그 목록 | 추천 알고리즘 입력값. 장소 데이터에 태그를 다시 붙여야 해서 되돌리기 비쌈 |
-| `petFriendly` 를 5종 정책으로 확장할지 | 장소 카드·필터 UI가 바뀜 |
-| 탈퇴 후 재가입 허용 | 제품·정책 판단 |
+| 여행 취향 태그 **목록** | 추천 알고리즘 입력값. 장소 데이터에 태그를 다시 붙여야 해서 되돌리기 비쌈 |
+| ~~`petFriendly` 를 5종 정책으로 확장할지~~ | **2026-08-18 확정 — 5종 사용.** [`places.md`](./places.md) 참고 |
+| ~~탈퇴 후 재가입 허용~~ | **2026-08-15 확정 — 차단.** [`auth.md`](./auth.md) 참고 |
 
 **이미지 업로드 방식은 2026-08-12에 정해졌습니다.** 공통 엔드포인트 `POST /uploads`로 분리하고
 서버가 파일을 받아 URL을 돌려주는 방식입니다. [`uploads.md`](./uploads.md) 참고.
-단, 스토리지 제공처는 아직 미정입니다.
+**스토리지는 2026-08-18에 AWS S3로 확정**됐습니다(계정은 아직 미생성).
 
-여행 취향 태그 현황
+여행 취향 태그 현황 **(2026-08-18 갱신)**
 
 ```text
-앱     자연, 실내, 카페, 산책, 사진, 조용한, 활동적
-DB     바다, 카페, 산책, 포토스팟, 체험, 휴식, 실내관광
+앱 취향   자연, 실내, 카페, 산책, 사진, 조용한, 활동적
+장소 태그  바다, 카페, 산책, 포토스팟, 체험, 휴식, 실내관광
 ```
 
-겹치는 건 `카페`, `산책` 둘뿐입니다.
+**표기는 영문 코드로 확정**됐습니다. 앱 취향은 `nature` `indoor` `cafe` `walk` `photo`
+`quiet` `active`가 됩니다([`users.md`](./users.md)).
+
+**다만 두 목록을 하나로 합칠지는 여전히 미정입니다.** 둘은 역할이 다른 별개 목록이라
+(앱 취향은 사용자 입력, 장소 태그는 서버가 자동 부여) 단어가 달라도 되는 경우가 있습니다.
+**추천 방식이 규칙 기반이면 통일이 필수**이고, AI 기반이면 필요 없습니다.
+추천 방식이 정해질 때 다시 봐야 합니다.
 
 ---
 
@@ -319,7 +335,7 @@ distanceKm, age, accommodationSummary, travelStyle
 ```text
 src/types/          user.ts  pet.ts  profile.ts  travelLog.ts
                     logDraft.ts  inquiry.ts  notice.ts  notification.ts
-src/features/       auth/types/auth.ts        auth/data/signupOptions.ts
+src/features/       auth/types/auth.ts        auth/constants/signupOptions.ts
                     places/types/place.ts     trips/types/trip.ts
                     chatbot/types/chatbot.ts  home/types/home.ts
                     route-recommendation/types.ts
@@ -329,6 +345,11 @@ src/components/     layout/notificationPreview.mock.ts        (PR #26으로 추�
 > **이 문서는 시점 스냅샷입니다.** 프론트가 머지될 때마다 대조 결과가 달라질 수 있습니다.
 > 2026-08-12 PR #26 머지 시점까지 반영했으며, 그때 위 12개 타입 파일은 변경되지 않았고
 > `notificationPreview.mock.ts` 하나가 추가되었습니다.
+>
+> **2026-08-18 — PR #30이 파일을 대거 이동시켰습니다.** `features/*/data/` → `features/*/constants/`,
+> `~Mocks.ts` → `~.mock.ts`. 위 경로는 새 위치로 고쳤지만 **타입 내용은 다시 대조하지 않았습니다.**
+> `features/places/constants/placeCategories.ts`처럼 새로 생긴 파일도 있어, 다음 점검 때
+> 전체를 다시 훑어야 합니다.
 
 **DB 모델 (30개 테이블 / 12개 Enum)**
 
@@ -344,3 +365,5 @@ apps/api/app/db/models/  users.py  places.py  routes.py  community.py  enums.py
 | --- | --- |
 | 2026-08-12 | 최초 점검 |
 | 2026-08-12 | PR #26 머지 반영 — `notificationPreview.mock.ts` 대조 추가, 표현 영역 값(`tone` 등) 분류 신설 |
+| 2026-08-15 | PR #29 머지 반영 — `places`에서 drop된 `activity_level` `crowd_level` `weather_sensitivity`를 유형 E 목록에서 제거 |
+| 2026-08-18 | 도메인 미정 19건 확정 반영 — `petFriendly` 5종 유지, `unknown` 뱃지 처리, 표현 영역 값(`tone`·`greeting`·`tip`) 셋 다 앱이 생성, 스토리지 S3, 취향 태그 영문 코드. PR #30 파일 이동으로 깨진 `signupOptions.ts` 경로 수정 |

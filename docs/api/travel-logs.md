@@ -1,6 +1,6 @@
 # 여행 기록 API
 
-작성일: 2026-08-12 · 상태: **확정 규약 반영** (2026-08-12 팀 회의)
+작성일: 2026-08-12 · 갱신: 2026-08-18 · 상태: **미정 항목 없음 — 구현 착수 가능**
 
 공통 규약은 [`README.md`](./README.md)를 따릅니다.
 
@@ -31,7 +31,8 @@
 > DB 컬럼은 `travel_logs.route_id`입니다. **API는 `routeId`를 씁니다.**
 >
 > 같은 파일 48번 줄 주석에 `DB의 trip_pets` 라고 적혀 있으나 **그런 테이블은 없습니다.**
-> 여행 자체의 반려동물은 `route_request_pets`, 기록별 반려동물은 `travel_log_pets`입니다.
+> 여행 자체의 반려동물은 `route_request_pets`(추천) 또는 `route_pets`(수동),
+> 기록별 반려동물은 `travel_log_pets`입니다.
 
 ---
 
@@ -168,8 +169,12 @@ GET /api/v1/travel-logs?routeId=...&petIds=...&from=2026-08-01&to=2026-08-31
 `previewLogs`에는 `GET /travel-logs` 항목과 같은 구조의 기록이 최대 4건 들어갑니다.
 콜라주 미리보기용이며, 항상 실제 기록에서 가져옵니다.
 
-`route.companions`는 **여행 자체의 반려동물**(`route_request_pets`)이고,
+`route.companions`는 **여행 자체의 반려동물**이고,
 각 기록의 `companions`(`travel_log_pets`)와는 다른 데이터입니다. 어느 한쪽만 고치지 않습니다.
+
+여행 자체의 반려동물이 어느 테이블에서 오는지는 `creationType`에 따라 다릅니다
+— 추천 여행은 `route_request_pets`, 수동 여행은 `route_pets`입니다
+([`routes.md`](./routes.md) 참고). 응답 형태는 같습니다.
 
 `logCount`는 그 그룹에 속한 기록 수입니다.
 마이페이지의 `travelLogsCount`(내 전체 기록 수)와는 집계 범위가 다릅니다.
@@ -319,6 +324,12 @@ GET /api/v1/travel-logs?routeId=...&petIds=...&from=2026-08-01&to=2026-08-31
 `travel_logs`에 실패 사유 컬럼이 없어 사유는 내려주지 않습니다.
 앱은 재생성 버튼만 보여줍니다.
 
+**생성이 끝나면 알림이 갑니다.** `generationStatus`가 `completed`가 되는 시점에
+`notifications`에 `type: "travel_log_ready"` 알림이 생성되고, `targetId`에 이 기록의 `id`가
+들어갑니다([`notifications.md`](./notifications.md)).
+생성이 오래 걸려 사용자가 화면을 벗어나도 완료를 알 수 있습니다.
+`failed`일 때는 알림을 보내지 않습니다.
+
 ---
 
 ## POST /travel-logs/{logId}/regenerate
@@ -384,8 +395,24 @@ DB에 제약이 없으므로 서버가 처리해야 합니다.
 
 본문 없음.
 
-> **[확인 필요]** 스토리지에 올라간 원본·생성 이미지 파일도 함께 지울지.
-> DB 행만 지우면 파일이 남습니다.
+### S3 파일도 지웁니다 **[확정]** (2026-08-18)
+
+여행기록 하나에는 이미지가 두 개 붙습니다. 사용자가 올린 `originalImageUrl`과
+AI가 만든 `generatedImageUrl`입니다. **DB 행을 지우면 이 파일들도 지웁니다.**
+
+다만 **삭제 요청 처리 중에 S3를 부르지 않습니다.**
+
+```text
+DELETE 요청  →  DB 행 삭제  →  즉시 204 응답
+                                  ↓
+              배치가 나중에 주인 없는 파일을 S3에서 삭제
+```
+
+S3 호출을 응답 경로에 넣으면 삭제가 느려지고, S3가 일시적으로 실패했을 때
+DB는 지워졌는데 요청은 `500`이 되는 어긋난 상태가 생깁니다.
+
+같은 배치가 업로드만 되고 쓰이지 않은 파일도 함께 정리합니다.
+자세한 내용은 [`uploads.md`](./uploads.md)의 "파일 삭제" 절에 있습니다.
 
 ---
 
@@ -396,3 +423,5 @@ DB에 제약이 없으므로 서버가 처리해야 합니다.
 | 2026-08-12 | 초안 작성 |
 | 2026-08-12 | 이미지 업로드 확인 필요 항목을 [`uploads.md`](./uploads.md) 참조로 교체. `originalImageUrl`이 필수임을 명시 |
 | 2026-08-12 | 목록에만 있고 본문이 없던 `GET /travel-logs/{logId}` 명세 작성. 여행 모아보기 화면 구성 절 추가 (전용 엔드포인트 없이 `GET /routes/{routeId}` + `GET /travel-logs?routeId=` 조합) |
+| 2026-08-15 | PR #29 머지 반영 — `route.companions` 출처가 `route_request_pets` 하나뿐이라는 설명을 정정. 수동 여행은 `route_pets`에서 옴 |
+| 2026-08-18 | 삭제 시 S3 파일 처리 확정 — DB 행은 즉시 삭제, 파일은 **배치가 지연 삭제**. 생성 완료 알림이 `travel_log_ready`로 나간다는 점 명시 |

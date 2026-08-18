@@ -1,11 +1,11 @@
 # 루트 추천 · 내 여행 API
 
-작성일: 2026-08-12 · 상태: **확정 규약 반영** (2026-08-12 팀 회의)
+작성일: 2026-08-12 · 갱신: 2026-08-18 · 상태: **수동 여행 생성만 보류 — 그 외 구현 착수 가능**
 
 공통 규약은 [`README.md`](./README.md)를 따릅니다.
 
 관련 DB 테이블: `route_requests`, `route_request_pets`, `route_request_stays`,
-`routes`, `route_days`, `route_items`, `route_moves`,
+`routes`, `route_pets`, `route_days`, `route_items`, `route_moves`,
 `route_checklist_items`, `route_memos`, `route_calculation_cache`
 
 ---
@@ -32,6 +32,23 @@ generating → generated → saved → ongoing → completed
 **요청(`route_requests`)과 결과(`routes`)는 별개 테이블**입니다.
 같은 요청으로 여러 번 추천을 생성할 수 있고, 그때마다 `routes.version`이 올라갑니다.
 
+### 추천 여행과 수동 여행
+
+여행을 만드는 경로가 두 가지입니다. `routes.creation_type`으로 구분하며,
+API 응답에서는 `creationType`으로 내려갑니다.
+
+| `creationType` | 뜻 | `routeRequestId` | 펫 정보 |
+| --- | --- | --- | --- |
+| `recommended` | AI 추천으로 생성 | 있음 | `route_request_pets` |
+| `manual` | 사용자가 직접 작성 | `null` | `route_pets` |
+
+DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합니다.
+`recommended`인데 `routeRequestId`가 없거나, `manual`인데 있으면 저장되지 않습니다.
+
+수동 여행은 추천 요청 없이 만들어지므로 `route_requests`에 행이 생기지 않습니다.
+그래서 동반 반려동물을 `route_pets`(여행 ↔ 펫)에 직접 연결합니다.
+`pets`로의 외래키가 `ON DELETE RESTRICT`라, 여행에 묶인 반려동물은 물리 삭제되지 않습니다.
+
 프론트 타입과의 대응은 아래와 같습니다.
 
 | 프론트 (`features/trips/types/trip.ts`) | DB |
@@ -54,6 +71,42 @@ generating → generated → saved → ongoing → completed
 | POST | `/route-requests` | 추천 요청 생성 및 생성 시작 | 필요 |
 | GET | `/routes/{routeId}/status` | 생성 진행 상태 확인 | 필요 |
 | POST | `/routes/{routeId}/regenerate` | 같은 조건으로 재생성 | 필요 |
+
+### 수동 생성 **[보류 — 화면 기획 대기]** (2026-08-18 갱신)
+
+| Method | Path | 설명 | 인증 |
+| --- | --- | --- | --- |
+| POST | `/routes` (미정) | 사용자가 직접 여행 작성 | 필요 |
+
+**DB는 준비가 끝났습니다.** 마이그레이션 `8c71f4a2d9e0`이 아래를 추가했습니다.
+
+| 추가된 것 | 역할 |
+| --- | --- |
+| `routes.creation_type` | `recommended` / `manual` 구분 |
+| `routes.route_request_id` nullable | 수동 여행은 추천 요청서가 없음 |
+| CHECK `creation_type_request_consistency` | 추천이면 요청서 필수, 수동이면 요청서 금지 |
+| `route_pets` 테이블 | 수동 여행에 데려갈 반려동물을 직접 연결 |
+
+```python
+# routes.py:110-113 — 잘못된 조합은 DB가 거부합니다
+"(creation_type = 'recommended' AND route_request_id IS NOT NULL) "
+"OR (creation_type = 'manual' AND route_request_id IS NULL)"
+```
+
+**막고 있는 것은 "직접 만들기" 화면 기획 하나뿐입니다.** 저장할 곳도, 잘못된 데이터를
+막을 규칙도 이미 있고 API 통로만 없습니다.
+
+화면이 나오면 아래를 정합니다. 지금 시점의 유력안을 함께 적어 둡니다.
+
+| 정할 것 | 유력안 |
+| --- | --- |
+| 경로 | `POST /routes` |
+| 요청 범위 | **여행 껍데기(제목·기간·펫)만** 생성하고 일정은 기존 일정 편집 API로 채움 |
+| 초기 `status` | `saved` (추천 흐름의 `generating`은 맞지 않음) |
+| `version` | 재생성이 없으므로 항상 `1` |
+
+요청 범위를 껍데기로 미는 이유는 두 가지입니다. 작성 도중 앱이 꺼져도 만든 여행이 남고,
+일정 추가·수정 API가 어차피 필요해 재사용됩니다.
 
 ### 여행 조회·관리
 
@@ -192,9 +245,25 @@ generating → generated → saved → ongoing → completed
 }
 ```
 
-> **[확인 필요]** 폴링 간격과 타임아웃.
-> `failureReason`을 저장할 컬럼이 `routes`에 없어, 실패 사유는 응답에서만 내려주거나
-> 별도 컬럼 추가가 필요합니다. **컬럼을 임의로 추가하지 않았습니다.**
+### 폴링 규칙 **[확정]** (2026-08-18)
+
+```text
+호출 간격    2초
+타임아웃     3분  (앱이 폴링을 멈추고 실패 화면으로 전환)
+```
+
+2초보다 짧으면 서버 호출이 불필요하게 늘고, 길면 생성이 끝났는데도 로딩 화면이 남습니다.
+3분이 지나도 `generating`이면 앱은 폴링을 멈추고 "잠시 후 다시 확인해 주세요"를 보여줍니다.
+**서버가 생성을 중단하는 것은 아니므로**, 나중에 다시 들어오면 완료된 여행을 볼 수 있습니다.
+
+### `failureReason`은 응답에만 있습니다 **[확정]** (2026-08-18)
+
+`routes` 테이블에 실패 사유를 담을 컬럼이 없습니다. **컬럼을 추가하지 않고,
+응답에서만 내려줍니다.**
+
+실패하면 사용자는 다시 시도하지 “왜 실패했는지”를 나중에 다시 찾아보지 않습니다.
+기록으로 남길 가치가 적어 스키마를 늘리지 않았습니다.
+서버 로그에는 남으므로 원인 추적에는 문제가 없습니다.
 
 ---
 
@@ -223,6 +292,7 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "title": "몽이랑 제주 2박 3일",
       "status": "saved",
+      "creationType": "recommended",
       "version": 1,
       "startAt": "2026-09-10T09:00:00+09:00",
       "endAt": "2026-09-12T18:00:00+09:00",
@@ -258,6 +328,7 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "title": "몽이랑 제주 2박 3일",
   "status": "saved",
+  "creationType": "recommended",
   "version": 1,
   "startAt": "2026-09-10T09:00:00+09:00",
   "endAt": "2026-09-12T18:00:00+09:00",
@@ -275,7 +346,7 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
   "shareToken": null,
   "logCount": 5,
   "pets": [
-    { "id": "...", "name": "몽이", "species": "dog", "size": "small" }
+    { "id": "...", "name": "몽이", "species": "dog", "speciesDetail": null, "size": "small" }
   ],
   "stays": [
     {
@@ -344,6 +415,7 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
 
 | 필드 | 설명 |
 | --- | --- |
+| `creationType` | `recommended` \| `manual`. `manual`이면 `pets`가 `route_pets` 기준이고 재생성이 불가합니다 |
 | `place` | `place_id`가 있을 때. 직접 입력한 장소면 `null`이고 `customPlaceName`에 이름이 들어감 |
 | `moveToNext` | 마지막 항목이면 `null`. `route_moves` + TMAP 계산 결과 |
 | `distanceMeters` `durationMinutes` | **DB에 영구 저장하지 않습니다.** `route_calculation_cache`에 최대 24시간만 캐시하고 만료되면 다시 계산합니다 |
@@ -414,6 +486,20 @@ ongoing   → completed
 ```
 
 `(route_request_id, version)`에 UNIQUE 제약이 있습니다.
+
+이 엔드포인트는 `creationType`이 `recommended`인 여행에만 씁니다.
+수동 여행은 `routeRequestId`가 `null`이라 재생성할 원본 조건이 없습니다.
+
+**수동 여행에 호출하면 `422`입니다.** **[확정]** (2026-08-18)
+
+다른 엔드포인트들이 상태 위반에 이미 `422`를 쓰고 있어 맞췄습니다.
+
+```json
+{ "detail": "직접 만든 여행은 다시 추천받을 수 없어요" }
+```
+
+앱에서는 애초에 **수동 여행에 이 버튼을 보여주지 않는 것이 정상 동작**입니다.
+응답의 `creationType`으로 구분할 수 있습니다. 이 `422`는 만일을 대비한 방어입니다.
 
 ---
 
@@ -646,3 +732,5 @@ memo, shareToken, 체크리스트, 개인 메모
 | 2026-08-12 | 초안 작성 |
 | 2026-08-12 | `GET /routes/{routeId}` 응답에 `logCount` 추가 — 목록에는 있었으나 상세에 빠져 있어 여행 모아보기 헤더를 그릴 수 없었음 |
 | 2026-08-12 | 목록에만 있고 본문이 없던 `DELETE /checklist-items/{itemId}`, `PATCH`·`DELETE /memos/{memoId}` 명세 작성 |
+| 2026-08-15 | PR #29 머지 반영 — 수동 여행 스키마(`creation_type`, nullable `route_request_id`, `route_pets`) 설명 추가, 응답에 `creationType` 추가, `regenerate`의 수동 여행 처리 명시. 수동 생성 엔드포인트는 확인 필요로 기록 |
+| 2026-08-18 | 미정 2건 확정 — 폴링 **2초 간격 / 3분 타임아웃**, `failureReason`은 컬럼 추가 없이 응답에만, 수동 여행 재생성은 **`422`**. 수동 생성 엔드포인트는 **보류 유지**하되 DB 준비 완료 사실과 유력안을 정리 |

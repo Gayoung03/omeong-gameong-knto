@@ -1,6 +1,6 @@
 # AI 챗봇 API
 
-작성일: 2026-08-12 · 상태: **확정 규약 반영** (2026-08-12 팀 회의)
+작성일: 2026-08-12 · 갱신: 2026-08-18 · 상태: **RAG 검색 방식만 미정 — 그 외 구현 착수 가능**
 
 공통 규약은 [`README.md`](./README.md)를 따릅니다.
 
@@ -38,7 +38,9 @@
 | PATCH | `/chat/conversations/{conversationId}` | 제목 수정 | 필요 |
 | DELETE | `/chat/conversations/{conversationId}` | 대화 삭제 | 필요 |
 | GET | `/chat/conversations/{conversationId}/messages` | 메시지 목록 | 필요 |
-| POST | `/chat/conversations/{conversationId}/messages` | 질문 전송 | 필요 |
+| POST | `/chat/conversations/{conversationId}/messages` | 질문 전송 **(SSE 스트림)** | 필요 |
+
+마지막 하나만 응답이 JSON이 아니라 `text/event-stream`입니다. 나머지는 공통 규약대로입니다.
 
 ---
 
@@ -211,56 +213,98 @@ DB에는 `referenced_place_ids`(UUID 배열)만 저장하고, **응답에서는 
 
 질문을 보내고 답변을 받습니다. 사용자 메시지와 답변 메시지 **두 행**이 저장됩니다.
 
+**이 엔드포인트만 JSON을 돌려주지 않습니다.** 답변을 한 글자씩 흘려보내는
+SSE(Server-Sent Events) 스트림입니다. **[확정]** (2026-08-18)
+
 ### 요청
 
 ```json
 { "content": "함덕 말고 서귀포 쪽은 어때?" }
 ```
 
-### 응답 `201`
-
-```json
-{
-  "userMessage": {
-    "id": "...",
-    "conversationId": "...",
-    "role": "user",
-    "content": "함덕 말고 서귀포 쪽은 어때?",
-    "referencedPlaces": [],
-    "modelName": null,
-    "createdAt": "2026-08-10T14:05:00+09:00"
-  },
-  "assistantMessage": {
-    "id": "...",
-    "conversationId": "...",
-    "role": "assistant",
-    "content": "서귀포 쪽 카페 두 곳을 추천드릴게요.",
-    "referencedPlaces": [],
-    "modelName": "claude-sonnet-5",
-    "createdAt": "2026-08-10T14:05:09+09:00"
-  }
-}
+```text
+POST /api/v1/chat/conversations/{conversationId}/messages
+Content-Type: application/json
+Accept: text/event-stream
+Authorization: Bearer <accessToken>
 ```
 
-두 메시지를 함께 돌려주므로 앱이 목록을 다시 조회할 필요가 없습니다.
+### 응답 `200` — `text/event-stream`
+
+```text
+Content-Type: text/event-stream
+Cache-Control: no-cache
+```
+
+정상 흐름의 이벤트는 세 종류입니다. 순서대로 `start` → `delta`(여러 번) → `done`입니다.
+실패하면 `done` 대신 `error`가 옵니다(아래 에러 절).
+
+```text
+data: {"event":"start","userMessage":{"id":"7c9e...","role":"user","content":"함덕 말고 서귀포 쪽은 어때?","createdAt":"2026-08-10T14:05:00+09:00"}}
+
+data: {"event":"delta","text":"서귀포 쪽 "}
+
+data: {"event":"delta","text":"카페 두 곳을 "}
+
+data: {"event":"delta","text":"추천드릴게요."}
+
+data: {"event":"done","assistantMessage":{"id":"a3f1...","role":"assistant","content":"서귀포 쪽 카페 두 곳을 추천드릴게요.","referencedPlaces":[],"modelName":"claude-sonnet-5","createdAt":"2026-08-10T14:05:09+09:00"}}
+```
+
+| 이벤트 | 담는 것 | 앱이 할 일 |
+| --- | --- | --- |
+| `start` | 저장된 **사용자 메시지** 전체 | 사용자 말풍선을 확정 ID로 교체 |
+| `delta` | 답변 조각 `text` | 답변 말풍선에 이어 붙이기 |
+| `done` | 저장된 **답변 메시지** 전체 | 말풍선을 최종 값으로 교체 |
+
+`delta`를 이어 붙인 결과와 `done`의 `content`는 같습니다.
+`done`을 따로 내리는 이유는 **저장된 `id`와 `referencedPlaces`가 그때 확정되기 때문**입니다.
+`referencedPlaces`는 답변 생성이 끝나야 알 수 있어 조각으로 나눠 보내지 않습니다.
+
+### 중간에 끊기면 저장하지 않습니다 **[확정]** (2026-08-18)
+
+앱이 종료되거나 네트워크가 끊겨 `done`을 받지 못하면,
+**서버는 그때까지 만든 답변을 저장하지 않습니다.**
+
+```text
+사용자 메시지   → 저장됨 (start 시점에 이미 저장)
+잘린 답변       → 저장 안 함
+```
+
+잘린 답변이 대화 기록에 남으면 다음 질문의 맥락이 어긋나고, 사용자가 다시 열었을 때
+문장이 중간에 끊긴 말풍선을 보게 됩니다. 사용자 메시지만 남으므로 앱은 재시도 버튼을
+보여주면 됩니다.
+
+**답변 생성 중지 버튼은 이번 범위에 없습니다.** 넣으려면 중단 신호를 보낼 방법과
+"여기까지는 저장" 규칙이 함께 필요해서, 나중에 별도로 정합니다.
 
 ### 에러
+
+스트림이 **시작되기 전**에는 일반 JSON으로 내려갑니다.
 
 | 코드 | 상황 |
 | --- | --- |
 | 403 | 다른 사용자의 대화 |
 | 404 | 없는 `conversationId` |
 | 422 | 빈 `content` |
-| 502 | LLM 응답 실패 |
-| 504 | LLM 응답 시간 초과 |
 
-502·504일 때 **사용자 메시지는 이미 저장된 상태**입니다.
-앱은 사용자 말풍선을 남겨두고 재시도 버튼을 보여주면 됩니다.
+스트림이 **시작된 뒤**에 실패하면 HTTP 상태 코드를 바꿀 수 없으므로 이벤트로 내립니다.
 
-> **[확인 필요]** 답변 스트리밍 여부.
-> 이 문서는 답변이 완성된 뒤 한 번에 돌려주는 방식으로 작성했습니다.
-> 한 글자씩 보여주려면 SSE(`text/event-stream`)로 바꿔야 하고, 그러면 응답 형식이 완전히 달라집니다.
-> 저장소에 `app/rag/` 디렉터리가 준비돼 있으나 아직 비어 있어 검색 방식도 정해지지 않았습니다.
+```text
+data: {"event":"error","code":"llm_failed","detail":"답변 생성에 실패했어요. 다시 시도해 주세요."}
+```
+
+| `code` | 상황 |
+| --- | --- |
+| `llm_failed` | LLM 응답 실패 (기존 `502`에 해당) |
+| `llm_timeout` | LLM 응답 시간 초과 (기존 `504`에 해당) |
+
+`error` 이벤트를 받으면 앱은 스트림을 닫고 재시도 버튼을 보여줍니다.
+이때도 **사용자 메시지는 이미 저장된 상태**라 말풍선을 지우지 않아도 됩니다.
+
+> **[확인 필요]** 검색(RAG) 방식은 여전히 미정입니다.
+> `app/rag/{ingestion,prompts,retrieval}` 골격만 있고 비어 있습니다.
+> 이 절의 스트림 형식은 검색 방식과 무관하므로 구현을 막지는 않습니다.
 
 ---
 
@@ -287,4 +331,5 @@ DB에는 `referenced_place_ids`(UUID 배열)만 저장하고, **응답에서는 
 | 날짜 | 내용 |
 | --- | --- |
 | 2026-08-12 | 초안 작성. 확정 #6(`id`를 UUID 문자열로)과 앱 타입 정리 반영 |
+| 2026-08-18 | 답변을 **SSE 스트리밍**으로 확정. `POST /chat/conversations/{id}/messages` 전면 재작성 — `start`·`delta`·`done`·`error` 이벤트 정의, 중단 시 부분 답변 미저장, 중지 버튼은 범위 밖. 나머지 6개 엔드포인트는 변경 없음 |
 | 2026-08-12 | 목록에만 있고 본문이 없던 `GET /chat/conversations/{conversationId}` 명세 작성 |
