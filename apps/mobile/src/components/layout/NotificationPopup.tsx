@@ -1,9 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { appNotifications } from '@/src/features/notifications/mocks/notification.mock';
 import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 
-import { notificationPreviews } from './notificationPreview.mock';
+/** 팝업은 최신 알림 몇 건만 보여준다. 전체 목록은 `/notifications` 화면에 있다. */
+const PREVIEW_COUNT = 2;
 
 type Props = {
   visible: boolean;
@@ -31,7 +33,7 @@ export function NotificationPopup({ visible, onClose }: Props) {
           </View>
 
           <View style={styles.list}>
-            {notificationPreviews.map((item) => (
+            {appNotifications.slice(0, PREVIEW_COUNT).map((item) => (
               <View key={item.id} style={styles.item}>
                 <View style={[styles.icon, item.tone === 'sea' && styles.iconSea]}>
                   <Ionicons

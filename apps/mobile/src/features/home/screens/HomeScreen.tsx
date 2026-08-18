@@ -32,16 +32,23 @@ export function HomeScreen() {
       return;
     }
 
+    if (item.destination === 'travel-guides') {
+      router.push('/travel-guides');
+      return;
+    }
+
+    if (item.destination === 'travel-log-new') {
+      router.push('/travel-logs/new-moment');
+      return;
+    }
+
     router.push({ pathname: '/coming-soon', params: { title: item.title } });
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <AppHeader />
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <WeatherHero onPressChatbot={() => router.push('/chatbot')} weather={mockWeather} />
 
         <View style={styles.section}>

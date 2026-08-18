@@ -13,6 +13,10 @@ import {
   View,
 } from 'react-native';
 
+import {
+  useSavedPlaceIds,
+  useToggleSavedPlace,
+} from '@/src/features/saved/hooks/useSavedPlaces';
 import { colors, spacing } from '@/src/theme';
 
 import { InteractivePlaceMap } from '../components/InteractivePlaceMap';
@@ -32,9 +36,9 @@ export function PlaceExplorerScreen() {
   );
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(view === 'map' ? 'map' : 'list');
-  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(
-    () => new Set(mockPlaces.filter((place) => place.initiallyFavorite).map((place) => place.id)),
-  );
+  // 저장 목록은 기기에 남는다. 정본은 features/saved 의 저장소다.
+  const savedPlaceIds = useSavedPlaceIds();
+  const toggleSavedPlace = useToggleSavedPlace();
 
   useEffect(() => {
     const selectedIndex = placeRegions.indexOf(selectedRegion);
@@ -72,15 +76,13 @@ export function PlaceExplorerScreen() {
     router.replace('/');
   };
 
-  const toggleFavorite = (placeId: string) => {
-    setFavoriteIds((currentIds) => {
-      const nextIds = new Set(currentIds);
-      if (nextIds.has(placeId)) {
-        nextIds.delete(placeId);
-      } else {
-        nextIds.add(placeId);
-      }
-      return nextIds;
+  const toggleFavorite = (place: Place) => {
+    toggleSavedPlace.mutate({
+      address: place.address,
+      category: place.category,
+      id: place.id,
+      imageUrl: place.imageUrl,
+      name: place.name,
     });
   };
 
@@ -203,8 +205,8 @@ export function PlaceExplorerScreen() {
           ListEmptyComponent={<EmptyResult />}
           renderItem={({ item }) => (
             <PlaceRow
-              isFavorite={favoriteIds.has(item.id)}
-              onPressFavorite={() => toggleFavorite(item.id)}
+              isFavorite={savedPlaceIds.has(item.id)}
+              onPressFavorite={() => toggleFavorite(item)}
               place={item}
             />
           )}

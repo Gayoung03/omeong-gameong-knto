@@ -38,7 +38,8 @@ export function ScheduleTimeline({ schedule, onPressItem, onToggleSave }: Schedu
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: spacing.lg - 4,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   empty: {
     alignItems: 'center',

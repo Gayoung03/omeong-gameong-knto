@@ -1,7 +1,6 @@
-import {
-  getAuthSession,
-  updateSessionNickname,
-} from '@/src/features/auth/services/authStorage';
+import { Image } from 'react-native';
+
+import { getAuthSession, updateSessionNickname } from '@/src/features/auth/services/authStorage';
 import type { User } from '@/src/types/user';
 
 const UPLOAD_DELAY_MS = 400;
@@ -19,14 +18,20 @@ const wait = (ms: number) =>
  * 프로필 이미지처럼 세션에 없는 값은 목업으로 남긴다.
  * TODO: 사용자 API(GET /users/me) 연결 시 이 파일 전체를 실제 호출로 교체한다.
  */
+/** 사용자가 사진을 올리기 전에 보여주는 기본 프로필 일러스트. */
+const DEFAULT_USER_AVATAR = Image.resolveAssetSource(
+  require('@/assets/images/profile/default-user.jpg'),
+).uri;
+
 let currentMockUser: User = {
   userId: 'user-1',
   nickname: '여행자',
   email: '',
-  profileImage: 'https://placehold.co/200x200',
+  profileImage: DEFAULT_USER_AVATAR,
 };
 
-export const DEFAULT_PROFILE_IMAGE = '';
+/** 프로필 사진을 지웠을 때 되돌아가는 값. */
+export const DEFAULT_PROFILE_IMAGE = DEFAULT_USER_AVATAR;
 
 export type UpdateUserProfileInput = {
   nickname: string;
@@ -42,7 +47,9 @@ export async function uploadProfileImage(localUri: string): Promise<string> {
 export async function updateUserProfile(input: UpdateUserProfileInput): Promise<User> {
   await wait(UPDATE_DELAY_MS);
 
-  const profileImage = input.resetProfileImage ? DEFAULT_PROFILE_IMAGE : input.localProfileImageUri ?? currentMockUser.profileImage;
+  const profileImage = input.resetProfileImage
+    ? DEFAULT_PROFILE_IMAGE
+    : (input.localProfileImageUri ?? currentMockUser.profileImage);
 
   currentMockUser = {
     ...currentMockUser,

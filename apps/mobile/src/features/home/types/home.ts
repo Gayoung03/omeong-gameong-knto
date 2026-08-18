@@ -13,7 +13,8 @@ export type WeatherSummary = {
   tip: string;
 };
 
-export type QuickMenuDestination = 'chatbot' | 'place-explorer' | 'coming-soon';
+export type QuickMenuDestination =
+  'chatbot' | 'place-explorer' | 'travel-guides' | 'travel-log-new' | 'coming-soon';
 
 export type QuickMenuItem = {
   id: string;

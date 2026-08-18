@@ -85,14 +85,14 @@ const styles = StyleSheet.create({
   },
   orderBadge: {
     alignItems: 'center',
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.primary,
     borderRadius: radius.full,
     height: 24,
     justifyContent: 'center',
     width: 24,
   },
   orderText: {
-    color: colors.primary,
+    color: colors.surface,
     fontSize: typography.micro.fontSize,
     fontWeight: '700',
   },

@@ -46,14 +46,14 @@ export function NewMomentPhotoStepScreen() {
   const [errorMessage, setErrorMessage] = useState<string>();
   const hasDraftContent = Boolean(
     draft.localPhotoUri ||
-      draft.tripId ||
-      draft.recordedDate ||
-      draft.placeId ||
-      draft.placeName ||
-      draft.petIds.length > 0 ||
-      draft.writingStyle !== 'dog_diary' ||
-      draft.mood ||
-      draft.personalMessage.trim(),
+    draft.tripId ||
+    draft.recordedDate ||
+    draft.placeId ||
+    draft.placeName ||
+    draft.petIds.length > 0 ||
+    draft.writingStyle !== 'dog_diary' ||
+    draft.mood ||
+    draft.personalMessage.trim(),
   );
 
   useEffect(() => {
@@ -68,15 +68,30 @@ export function NewMomentPhotoStepScreen() {
     });
   }, [hasDraftContent, navigation]);
 
+  /**
+   * Log 만들기를 빠져나갈 때는 들어온 곳으로 되돌아간다.
+   *
+   * 홈 빠른 메뉴에서도 들어올 수 있게 되어 `/travel-logs` 로 고정하면
+   * 홈에서 들어온 사람이 여행 로그 목록으로 튕겨 나간다.
+   * 쌓인 화면이 없을 때(딥링크 등)만 목록으로 보낸다.
+   */
+  const leaveFlow = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/travel-logs');
+  };
+
   const requestExit = () => {
     if (!hasDraftContent) {
       allowExitRef.current = true;
-      router.replace('/travel-logs');
+      leaveFlow();
       return;
     }
     if (exitModalOpenRef.current) return;
     exitModalOpenRef.current = true;
-    pendingExitRef.current = () => router.replace('/travel-logs');
+    pendingExitRef.current = leaveFlow;
     setCancelModalVisible(true);
   };
 
@@ -127,7 +142,9 @@ export function NewMomentPhotoStepScreen() {
       });
       if (!result.canceled && result.assets[0]) saveAsset(result.assets[0]);
     } catch {
-      setErrorMessage('카메라를 열 수 없어요. 이 기기에서 카메라를 사용할 수 있는지 확인해 주세요.');
+      setErrorMessage(
+        '카메라를 열 수 없어요. 이 기기에서 카메라를 사용할 수 있는지 확인해 주세요.',
+      );
     }
   };
 
@@ -154,12 +171,12 @@ export function NewMomentPhotoStepScreen() {
     setErrorMessage(undefined);
     const hasLaterStepContent = Boolean(
       draft.tripId ||
-        draft.recordedDate ||
-        draft.placeId ||
-        draft.placeName ||
-        draft.writingStyle !== 'dog_diary' ||
-        draft.mood ||
-        draft.personalMessage.trim(),
+      draft.recordedDate ||
+      draft.placeId ||
+      draft.placeName ||
+      draft.writingStyle !== 'dog_diary' ||
+      draft.mood ||
+      draft.personalMessage.trim(),
     );
     updateDraft({
       localPhotoUri: null,
@@ -179,7 +196,11 @@ export function NewMomentPhotoStepScreen() {
         {draft.localPhotoUri ? (
           <View style={styles.selectedArea}>
             <View style={styles.photoFrame}>
-              <RemoteImage borderRadius={radius.lg} style={styles.preview} uri={draft.localPhotoUri} />
+              <RemoteImage
+                borderRadius={radius.lg}
+                style={styles.preview}
+                uri={draft.localPhotoUri}
+              />
               <Pressable
                 accessibilityLabel="사진 변경 메뉴 열기"
                 accessibilityRole="button"
@@ -226,7 +247,9 @@ export function NewMomentPhotoStepScreen() {
           onPress={() => router.push('/travel-logs/new-moment/details')}
           style={[styles.nextButton, !draft.localPhotoUri && styles.nextButtonDisabled]}
         >
-          <Text style={[styles.nextLabel, !draft.localPhotoUri && styles.nextLabelDisabled]}>다음</Text>
+          <Text style={[styles.nextLabel, !draft.localPhotoUri && styles.nextLabelDisabled]}>
+            다음
+          </Text>
         </Pressable>
       </View>
       <PhotoChangeBottomSheet
@@ -261,23 +284,72 @@ const styles = StyleSheet.create({
     right: spacing.md,
   },
   changeButtonLabel: { color: colors.textPrimary, fontSize: 14, fontWeight: '700' },
-  content: { alignSelf: 'center', flex: 1, gap: spacing.md, maxWidth: 680, paddingHorizontal: spacing.md, width: '100%' },
+  content: {
+    alignSelf: 'center',
+    flex: 1,
+    gap: spacing.md,
+    maxWidth: 680,
+    paddingHorizontal: spacing.md,
+    width: '100%',
+  },
   emptyState: { flex: 1, gap: spacing.md },
-  emptyPreview: { alignItems: 'center', backgroundColor: colors.neutralGray, borderColor: colors.border, borderRadius: radius.lg, borderWidth: 1, flex: 1, justifyContent: 'center', maxHeight: 430, minHeight: 280 },
-  emptyTitle: { color: colors.textSecondary, fontSize: typography.body.fontSize, marginTop: spacing.sm },
+  emptyPreview: {
+    alignItems: 'center',
+    backgroundColor: colors.neutralGray,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: 'center',
+    maxHeight: 430,
+    minHeight: 280,
+  },
+  emptyTitle: {
+    color: colors.textSecondary,
+    fontSize: typography.body.fontSize,
+    marginTop: spacing.sm,
+  },
   error: { color: colors.error, fontSize: 13, textAlign: 'center' },
   footer: { padding: spacing.md },
   helper: { color: colors.textSecondary, fontSize: 12 },
-  helperRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs, justifyContent: 'center' },
-  nextButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: radius.sm, paddingVertical: 14 },
+  helperRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+  },
+  nextButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingVertical: 14,
+  },
   nextButtonDisabled: { backgroundColor: colors.neutralGray },
   nextLabel: { color: colors.surface, fontSize: typography.body.fontSize, fontWeight: '700' },
   nextLabelDisabled: { color: colors.textSecondary },
-  photoFrame: { borderRadius: radius.lg, flex: 1, minHeight: 250, overflow: 'hidden', position: 'relative', width: '100%' },
+  photoFrame: {
+    borderRadius: radius.lg,
+    flex: 1,
+    minHeight: 250,
+    overflow: 'hidden',
+    position: 'relative',
+    width: '100%',
+  },
   preview: { height: '100%', width: '100%' },
   safeArea: { backgroundColor: colors.background, flex: 1 },
   selectedArea: { flex: 1, gap: spacing.md, minHeight: 0 },
   sourceActions: { flexDirection: 'row', gap: spacing.sm },
-  sourceButton: { alignItems: 'center', backgroundColor: colors.seaSoftLight, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flex: 1, gap: spacing.xs, justifyContent: 'center', minHeight: 78, padding: spacing.sm },
+  sourceButton: {
+    alignItems: 'center',
+    backgroundColor: colors.seaSoftLight,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flex: 1,
+    gap: spacing.xs,
+    justifyContent: 'center',
+    minHeight: 78,
+    padding: spacing.sm,
+  },
   sourceLabel: { color: colors.secondary, fontSize: 13, fontWeight: '600' },
 });
