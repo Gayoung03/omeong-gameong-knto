@@ -1,5 +1,9 @@
-import { ScreenPlaceholder } from '@/src/components/feedback/ScreenPlaceholder';
+import { useLocalSearchParams } from 'expo-router';
+
+import { PlaceDetailScreen } from '@/src/features/places/screens/PlaceDetailScreen';
 
 export default function PlaceDetailRoute() {
-  return <ScreenPlaceholder description="장소 상세 화면 작업 영역" title="장소 상세" />;
+  const { placeId } = useLocalSearchParams<{ placeId: string }>();
+
+  return <PlaceDetailScreen placeId={placeId ?? ''} />;
 }
