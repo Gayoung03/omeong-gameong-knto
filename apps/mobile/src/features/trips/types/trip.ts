@@ -1,5 +1,10 @@
-/** 반려동물 동반 가능 여부 */
-export type PetPolicy = 'outdoorOnly' | 'indoorAllowed' | 'partialAllowed' | 'notAllowed';
+import type { PetPolicy } from '@/src/types/place';
+
+/**
+ * 반려동물 동반 가능 여부.
+ * 장소 탐색에서도 쓰므로 정본은 `src/types/place.ts` 에 있고 여기서는 재export 한다.
+ */
+export type { PetPolicy };
 
 /** 장소 분류 */
 export type PlaceCategory = 'attraction' | 'restaurant' | 'cafe' | 'accommodation' | 'etc';
