@@ -1,4 +1,4 @@
-import { Image } from 'react-native';
+import { Asset } from 'expo-asset';
 
 import type { Pet } from '@/src/types/pet';
 import type { ActivitySummary, RecentVisit } from '@/src/types/profile';
@@ -8,13 +8,13 @@ export const mockUser: User = {
   userId: 'user-1',
   nickname: '혼디온님',
   email: 'hondion_jeju@gmail.com',
-  profileImage: Image.resolveAssetSource(require('@/assets/images/profile/default-user.jpg')).uri,
+  profileImage: Asset.fromModule(require('@/assets/images/profile/default-user.jpg')).uri,
 };
 
 /**
  * 앱 전체가 공유하는 반려동물 목업의 유일한 원본.
  *
- * 프로필 사진은 번들 이미지를 `Image.resolveAssetSource` 로 URI 문자열로 바꿔 쓴다.
+ * 프로필 사진은 번들 이미지를 `Asset.fromModule` 로 URI 문자열로 바꿔 쓴다.
  * `Pet.profileImage` 는 API 가 붙으면 서버 URL 이 들어올 자리라 타입을 string 으로 유지한다.
  * 실제 데이터 접근은 petService를 통해서만 하고, 화면이 이 배열을 직접 import하지 않는다.
  */
@@ -26,7 +26,7 @@ export const mockPets: Pet[] = [
     breed: '몰티즈',
     age: 3,
     weight: 4.2,
-    profileImage: Image.resolveAssetSource(require('@/assets/images/pets/mongi.jpg')).uri,
+    profileImage: Asset.fromModule(require('@/assets/images/pets/mongi.jpg')).uri,
     status: 'active',
   },
   {
@@ -36,7 +36,7 @@ export const mockPets: Pet[] = [
     breed: '코리안숏헤어',
     age: 2,
     weight: 3.5,
-    profileImage: Image.resolveAssetSource(require('@/assets/images/pets/coco.jpg')).uri,
+    profileImage: Asset.fromModule(require('@/assets/images/pets/coco.jpg')).uri,
     status: 'active',
   },
 ];
