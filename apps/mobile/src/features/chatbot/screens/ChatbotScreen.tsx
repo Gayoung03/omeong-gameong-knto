@@ -18,8 +18,8 @@ import { colors, spacing } from '@/src/theme';
 
 import { ChatMapResponse } from '../components/ChatMapResponse';
 import { chatbotAssets } from '../config/chatbotAssets';
-import { getMapPlacesForQuestion, needsMapResponse } from '../data/chatbotMapResponse';
-import { chatbotSuggestions } from '../data/chatbotSuggestions';
+import { getMapPlacesForQuestion, needsMapResponse } from '../utils/chatbotMapResponse';
+import { chatbotSuggestions } from '../constants/chatbotSuggestions';
 import type { ChatMessage } from '../types/chatbot';
 
 const API_PLACEHOLDER_RESPONSE =

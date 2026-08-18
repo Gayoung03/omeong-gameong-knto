@@ -28,46 +28,49 @@ export function PlaceCandidateCard({
   const ratingText = formatRating(place.rating, place.reviewCount);
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: isSelected }}
-      onPress={() => onPress(place.id)}
-      style={[styles.row, isSelected && styles.selectedRow]}
-    >
-      {place.imageUrl ? (
-        <Image source={{ uri: place.imageUrl }} style={styles.thumbnail} />
-      ) : (
-        <View style={[styles.thumbnail, styles.thumbnailPlaceholder]}>
-          <Ionicons color={colors.textTertiary} name="image-outline" size={20} />
+    <View style={[styles.row, isSelected && styles.selectedRow]}>
+      {/* 카드 본문만 누를 수 있게 한다. '선택' 버튼은 형제로 둔다 (button 중첩 방지) */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ selected: isSelected }}
+        onPress={() => onPress(place.id)}
+        style={styles.main}
+      >
+        {place.imageUrl ? (
+          <Image source={{ uri: place.imageUrl }} style={styles.thumbnail} />
+        ) : (
+          <View style={[styles.thumbnail, styles.thumbnailPlaceholder]}>
+            <Ionicons color={colors.textTertiary} name="image-outline" size={20} />
+          </View>
+        )}
+
+        <View style={styles.body}>
+          <Text numberOfLines={1} style={styles.name}>
+            {place.name}
+          </Text>
+
+          <Text numberOfLines={2} style={styles.description}>
+            {place.description}
+          </Text>
+
+          <View style={styles.statsRow}>
+            {ratingText && (
+              <>
+                <Ionicons color={colors.warning} name="star" size={12} />
+                <Text style={styles.statsText}>{ratingText}</Text>
+              </>
+            )}
+            {ratingText && place.savedCount > 0 && <Text style={styles.statsDot}>·</Text>}
+            {place.savedCount > 0 && (
+              <Text style={styles.statsText}>{formatSavedCount(place.savedCount)}</Text>
+            )}
+          </View>
+
+          <Text style={styles.meta}>{formatPlaceMeta(place.category, place.regionLabel)}</Text>
+
+          <PetPolicyBadge petPolicy={place.petPolicy} />
         </View>
-      )}
-
-      <View style={styles.body}>
-        <Text numberOfLines={1} style={styles.name}>
-          {place.name}
-        </Text>
-
-        <Text numberOfLines={2} style={styles.description}>
-          {place.description}
-        </Text>
-
-        <View style={styles.statsRow}>
-          {ratingText && (
-            <>
-              <Ionicons color={colors.warning} name="star" size={12} />
-              <Text style={styles.statsText}>{ratingText}</Text>
-            </>
-          )}
-          {ratingText && place.savedCount > 0 && <Text style={styles.statsDot}>·</Text>}
-          {place.savedCount > 0 && (
-            <Text style={styles.statsText}>{formatSavedCount(place.savedCount)}</Text>
-          )}
-        </View>
-
-        <Text style={styles.meta}>{formatPlaceMeta(place.category, place.regionLabel)}</Text>
-
-        <PetPolicyBadge petPolicy={place.petPolicy} />
-      </View>
+      </Pressable>
 
       <Pressable
         accessibilityLabel={`${place.name} 일정에 담기`}
@@ -80,7 +83,7 @@ export function PlaceCandidateCard({
           {isAdded ? '담김' : '선택'}
         </Text>
       </Pressable>
-    </Pressable>
+    </View>
   );
 }
 
@@ -92,6 +95,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm + 4,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md - 2,
+  },
+  main: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm + 4,
   },
   selectedRow: {
     backgroundColor: colors.primarySoft,

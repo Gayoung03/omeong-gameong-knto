@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import type { TravelLog } from '@/src/types/travelLog';
 
-import { updatePersonalMessage } from '../mocks/travelLogMocks';
+import { updatePersonalMessage } from '../mocks/travelLog.mock';
 import { tripLogsQueryKey } from './useTripMemoryLogs';
 
 type UpdatePersonalMessageInput = {

@@ -17,7 +17,7 @@ import { colors } from '@/src/theme';
 
 import { AuthHeader } from '../components/AuthHeader';
 import { ChoiceChip } from '../components/ChoiceChip';
-import { FormField } from '../components/FormField';
+import { IconTextField } from '../components/IconTextField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SignupProgress } from '../components/SignupProgress';
 import {
@@ -26,7 +26,7 @@ import {
   petTypeOptions,
   transportOptions,
   vibeOptions,
-} from '../data/signupOptions';
+} from '../constants/signupOptions';
 import { completeSignup } from '../services/authStorage';
 import type { SignupData } from '../types/auth';
 
@@ -151,7 +151,7 @@ export function SignupScreen() {
                   title="계정 정보를 입력해주세요"
                 />
                 <View style={styles.fieldList}>
-                  <FormField
+                  <IconTextField
                     autoComplete="email"
                     error={accountErrors.email}
                     icon="mail-outline"
@@ -160,7 +160,7 @@ export function SignupScreen() {
                     placeholder="이메일 주소"
                     value={data.account.email}
                   />
-                  <FormField
+                  <IconTextField
                     autoComplete="new-password"
                     error={accountErrors.password}
                     icon="lock-closed-outline"
@@ -169,7 +169,7 @@ export function SignupScreen() {
                     placeholder="비밀번호 (8자 이상)"
                     value={data.account.password}
                   />
-                  <FormField
+                  <IconTextField
                     autoComplete="new-password"
                     error={accountErrors.passwordConfirm}
                     icon="lock-closed-outline"
@@ -178,7 +178,7 @@ export function SignupScreen() {
                     placeholder="비밀번호 확인"
                     value={data.account.passwordConfirm}
                   />
-                  <FormField
+                  <IconTextField
                     autoCapitalize="words"
                     error={accountErrors.nickname}
                     icon="person-outline"

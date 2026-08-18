@@ -48,18 +48,8 @@ export function ScheduleTimelineItem({
             <Text numberOfLines={1} style={styles.placeName}>
               {item.place.name}
             </Text>
-            <Pressable
-              accessibilityLabel={item.isSaved ? '저장 해제' : '저장'}
-              accessibilityRole="button"
-              hitSlop={spacing.sm}
-              onPress={() => onToggleSave(item.id)}
-            >
-              <Ionicons
-                color={item.isSaved ? colors.primary : colors.textTertiary}
-                name={item.isSaved ? 'star' : 'star-outline'}
-                size={16}
-              />
-            </Pressable>
+            {/* 저장 버튼이 앉을 자리. 실제 버튼은 카드 Pressable 바깥에 있다 */}
+            <View style={styles.saveSlot} />
           </View>
 
           <PetPolicyBadge petPolicy={item.place.petPolicy} />
@@ -76,6 +66,23 @@ export function ScheduleTimelineItem({
               </Text>
             </View>
           )}
+        </Pressable>
+
+        {/*
+          웹에서 <button> 안에 <button> 이 들어가면 안 되므로 카드 Pressable 의
+          자식이 아니라 형제로 두고, 원래 자리에 겹쳐 놓는다.
+        */}
+        <Pressable
+          accessibilityLabel={item.isSaved ? '저장 해제' : '저장'}
+          accessibilityRole="button"
+          onPress={() => onToggleSave(item.id)}
+          style={styles.saveButton}
+        >
+          <Ionicons
+            color={item.isSaved ? colors.primary : colors.textTertiary}
+            name={item.isSaved ? 'star' : 'star-outline'}
+            size={16}
+          />
         </Pressable>
 
         {item.moveToNext && (
@@ -130,6 +137,16 @@ const styles = StyleSheet.create({
     gap: spacing.xs + 1,
     paddingHorizontal: spacing.sm + 4,
     paddingVertical: spacing.sm + 2,
+  },
+  saveSlot: {
+    height: 16,
+    width: 16,
+  },
+  saveButton: {
+    padding: spacing.sm,
+    position: 'absolute',
+    right: spacing.xs,
+    top: spacing.xs,
   },
   cardHeader: {
     alignItems: 'center',

@@ -6,7 +6,7 @@ import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
 import { colors, spacing } from '@/src/theme';
 
 import { NoticeAccordionItem } from './components/NoticeAccordionItem';
-import { mockNotices } from './mocks/noticeMocks';
+import { mockNotices } from './mocks/notice.mock';
 
 export function NoticeScreen() {
   // 한 번에 하나만 열린다. null이면 전부 접힌 상태.

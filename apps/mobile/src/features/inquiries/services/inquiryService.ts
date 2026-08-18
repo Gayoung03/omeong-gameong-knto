@@ -2,7 +2,7 @@ import { toIsoDate } from '@/src/features/travel-logs/utils/dateFormat';
 import type { InquiryCategory, InquiryItem } from '@/src/types/inquiry';
 import { createId } from '@/src/utils/createId';
 
-import { mockInquiries } from '../mocks/inquiryMocks';
+import { mockInquiries } from '../mocks/inquiry.mock';
 
 const FETCH_DELAY_MS = 300;
 const UPLOAD_DELAY_MS = 400;

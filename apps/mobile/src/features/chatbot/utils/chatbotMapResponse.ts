@@ -1,4 +1,4 @@
-import { mockPlaces } from '@/src/features/places/data/placeMockData';
+import { mockPlaces } from '@/src/features/places/mocks/place.mock';
 import type { Place } from '@/src/features/places/types/place';
 
 const mapIntentKeywords = [
