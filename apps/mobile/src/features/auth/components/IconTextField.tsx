@@ -1,23 +1,23 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  type TextInputProps,
-  View,
-} from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, type TextInputProps, View } from 'react-native';
 
 import { colors } from '@/src/theme';
 
-type FormFieldProps = TextInputProps & {
+type IconTextFieldProps = TextInputProps & {
   icon: keyof typeof Ionicons.glyphMap;
   error?: string;
   password?: boolean;
 };
 
-export function FormField({ icon, error, password = false, style, ...props }: FormFieldProps) {
+/** 아이콘 + 입력창 한 덩어리. 비밀번호 토글과 오류 문구를 포함한다. */
+export function IconTextField({
+  icon,
+  error,
+  password = false,
+  style,
+  ...props
+}: IconTextFieldProps) {
   const [passwordVisible, setPasswordVisible] = useState(false);
 
   return (

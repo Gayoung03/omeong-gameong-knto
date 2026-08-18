@@ -8,7 +8,7 @@ import { useLogout } from '@/src/features/auth/hooks/useLogout';
 import { colors, spacing } from '@/src/theme';
 
 import { SettingsHeader } from './components/SettingsHeader';
-import { settingsMenuItems, type SettingsMenuItem } from './data/settingsMenuItems';
+import { settingsMenuItems, type SettingsMenuItem } from './constants/settingsMenuItems';
 
 export function SettingsScreen() {
   const router = useRouter();

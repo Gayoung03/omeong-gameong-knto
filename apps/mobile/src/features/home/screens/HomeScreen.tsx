@@ -8,7 +8,8 @@ import { ContentRecommendation } from '../components/ContentRecommendation';
 import { QuickMenu } from '../components/QuickMenu';
 import { RegionalRecommendation } from '../components/RegionalRecommendation';
 import { WeatherHero } from '../components/WeatherHero';
-import { mockEditorialCards, mockWeather, quickMenuItems } from '../data/homeMockData';
+import { quickMenuItems } from '../constants/quickMenu';
+import { mockEditorialCards, mockWeather } from '../mocks/home.mock';
 import type { QuickMenuItem } from '../types/home';
 import type { PlaceRegion } from '@/src/features/places/types/place';
 

@@ -102,6 +102,9 @@
 | `app/routes/result.tsx`              | `app/(tabs)/routes/result.tsx` 로 이동 (경로 `/routes/result` 는 그대로)                                                                 | 예정    |
 | `app/_layout.tsx`                    | `routes/result` 라우트 등록 제거 (탭 스택으로 옮겨감)                                                                                    | 예정    |
 | `src/components/layout/NotificationPopup.tsx` (신규) | 상단 바 알림 간이 팝업. `notificationPreview.mock.ts` 의 임시 목록을 보여준다                                            | 예정    |
+| `src/components/ui/SectionHeader.tsx` | 중복이던 home 전용 버전과 통합. `style` prop 추가, 제목·링크를 토큰으로                                                    | 예정    |
+| 기능별 `data/` 폴더                  | 목데이터는 `mocks/`, 정적 상수는 `constants/` 로 분리 (auth·chatbot·home·places·settings)                                | 예정    |
+| 목 파일 이름                         | `<이름>Mocks.ts` → `<이름>.mock.ts` 로 통일 (inquiries·notices·profile·travel-logs)                                       | 예정    |
 
 > **`app/_layout.tsx`는 충돌 위험이 큰 파일이다.** 다른 팀원도 라우트를 추가하면서 건드리게 된다.
 > 변경 내용 자체는 기존 트리를 `GestureHandlerRootView`로 한 겹 감싼 것뿐이라
@@ -177,6 +180,83 @@
 - 상세 화면(여행 정보, 장소 상세 등)은 뒤로가기 헤더를 그대로 쓴다. 이번 통일 대상이 아니다.
 
 `app/notifications.tsx` 는 `ComingSoonScreen` 을 띄운다. 알림 화면이 생기면 이 파일만 바꾸면 된다.
+
+### 기능 폴더 구조 정리 — 팀원이 알아야 할 것
+
+같은 성격의 파일이 기능마다 다른 폴더에 있었다. **파일 위치와 이름만 바뀌었고 내용은 그대로다.**
+
+| | 이전 | 이후 |
+| --- | --- | --- |
+| 목데이터 | `data/` 5개 기능 · `mocks/` 6개 기능 | **`mocks/`** 로 통일 |
+| 목 파일명 | `inquiryMocks.ts` · `routes.mock.ts` 혼재 | **`<이름>.mock.ts`** 로 통일 |
+| 정적 상수 | `data/` 안에 목데이터와 섞여 있음 | **`constants/`** 로 분리 |
+
+`data/` 를 통째로 `mocks/` 로 바꾸지 않은 이유는, 그 안에 목데이터가 아닌 것이 섞여 있었기 때문이다.
+`quickMenuItems`(홈 빠른 메뉴), `placeCategories`(장소 카테고리), `settingsMenuItems` 같은 값은
+백엔드가 붙어도 계속 쓰는 **화면 설정값**이다. `mocks/` 에 두면 나중에 목데이터를 지울 때 같이 지워진다.
+
+- **목데이터** = 백엔드 응답을 흉내 낸 것 → `mocks/<이름>.mock.ts`. API 연동 시 지운다
+- **정적 상수** = 코드에 계속 남는 값 → `constants/<이름>.ts`
+- **함수·로직** = `utils/`. `chatbotMapResponse.ts` 가 목이 아니라 판별 함수라 여기로 옮겼다
+
+### 중복 컴포넌트 정리
+
+**`SectionHeader` 2개는 통합했다.** `components/ui` 와 `features/home/components` 에 거의 같은 것이
+따로 있었다. 공통 쪽으로 합치면서 화면이 조금 바뀐다.
+
+| | 홈 | 마이페이지 |
+| --- | --- | --- |
+| 제목 | 18pt `800` → 18pt `700` | 16pt → **18pt** (`typography.sectionTitle`) |
+| 링크 | 회색 → **주황**(`colors.primary`) | 16pt → **13pt** (`typography.label`) |
+
+바깥 여백은 화면마다 달라서 컴포넌트에서 빼고 `style` prop 으로 넘기도록 했다.
+
+**`FormField` 2개는 이름만 같고 다른 컴포넌트였다.** 통합하지 않고 이름을 나눴다.
+
+- `auth/components/FormField` → **`IconTextField`** (아이콘 + 입력창 + 비밀번호 토글)
+- `inquiries/components/FormField` → **`LabeledField`** (라벨 + children 래퍼)
+
+### 웹에서 버튼 중첩 오류 — 팀원도 알아야 할 규칙
+
+`react-native-web` 은 `accessibilityRole="button"` 이 붙은 `Pressable` 을 진짜 HTML `<button>`
+으로 렌더한다. HTML 은 **버튼 안에 버튼을 넣는 것을 금지**하므로(`no interactive content
+descendant`), 이런 구조는 웹에서 오류 오버레이를 띄운다.
+
+```tsx
+// ❌ 웹에서 깨진다
+<Pressable accessibilityRole="button">   {/* 카드 전체 */}
+  ...
+  <Pressable accessibilityRole="button">별</Pressable>
+</Pressable>
+
+// ✅ 형제로 두고 겹친다
+<View style={styles.body}>
+  <Pressable accessibilityRole="button" style={styles.card}>
+    ...
+    <View style={styles.saveSlot} />       {/* 자리만 확보 */}
+  </Pressable>
+  <Pressable accessibilityRole="button" style={styles.saveButton}>별</Pressable>
+</View>
+```
+
+`saveButton` 은 `position: 'absolute'` 로 원래 자리에 얹으므로 **화면은 그대로다.**
+
+- 네이티브(iOS·Android)에는 `<button>` 개념이 없어 중첩해도 동작한다. **웹에서만 드러난다**
+- 네이티브에서도 좋은 구조는 아니다. 안쪽 버튼의 `hitSlop` 이 바깥 버튼 영역을 침범해
+  가장자리를 누르면 엉뚱한 동작이 일어난다 (이번에 `hitSlop` 을 `padding` 으로 바꿔 해결)
+- **바텀시트의 배경 `Pressable` 은 문제가 없다.** 자체 종료 태그(`/>`)로 두고 시트를
+  형제로 놓는 구조라 중첩이 아니다. `WeatherSheet`·`TripShareSheet` 등이 이 방식이다
+
+저장소 전체를 훑어 두 곳을 고쳤다. `ScheduleTimelineItem`(일정 카드 + 저장 별),
+`PlaceCandidateCard`(장소 카드 + 선택 버튼). 둘 다 trips 담당 파일이다.
+
+### 아직 남은 것
+
+- **Screen 파일 17개가 `screens/` 밖에 있다** (travel-logs 7 · inquiries 3 · profile 3 · settings 2 · auth 1 · notices 1).
+  다른 팀원이 작업 중인 파일이라 충돌 위험이 커서 이번엔 미뤘다. 회의에서 공지하고 다 같이 푸시한 뒤 옮기는 게 안전하다
+- **API 계층 폴더가 `services/`(5개)와 `api/`(trips) 두 가지다.** 담당자가 작업 중이라 건드리지 않았다
+- **바텀시트 구현이 두 가지다.** RN `Modal` 직접 구현 9곳, `@gorhom/bottom-sheet` 6곳. 팀 결정 필요
+- **빈 기능 폴더 4개** — `pet-profile`, `reviews`, `travel-guides`, `weather`
 
 ### 루트 추천의 하단 바
 
@@ -312,3 +392,5 @@ git add package-lock.json
 | 2026-08-12 | 상단 바 후속 — 심볼·브랜드 영역을 홈 이동 버튼으로. 루트 추천 탭의 기본 탭바 숨김을 풀고 자체 `RouteBottomNavigation` 제거(결과 화면은 유지), '루트 추천 정보 입력' 제목을 27pt → `typography.title`(21pt)로 통일 |
 | 2026-08-12 | 루트 추천 결과 화면을 탭 안으로 이동(`app/(tabs)/routes/` 폴더 라우트로 재구성). 경로는 `/routes`·`/routes/result` 그대로. 자체 하단 바 `RouteBottomNavigation` 삭제 — 하단 바가 다섯 화면 모두 동일해졌다 |
 | 2026-08-12 | 상단 바 동작 정리 — 프로필은 화면 불문 마이페이지로 통일(루트 추천의 반려동물 모달 제거, 편집은 선호 정보 섹션으로 계속 가능). 알림은 `notifications` prop 으로 화면 이동(홈·마이) / 팝업(루트·챗봇·내 여행) 선택. `NotificationPopup` 신설 |
+| 2026-08-12 | 기능 폴더 구조 정리 — `data/` 를 `mocks/`(목) 와 `constants/`(상수) 로 분리, 목 파일명을 `<이름>.mock.ts` 로 통일, `chatbotMapResponse` 를 `utils/` 로 이동. 중복 `SectionHeader` 통합, 이름만 같던 `FormField` 2개를 `IconTextField`·`LabeledField` 로 분리 |
+| 2026-08-12 | 웹 `<button>` 중첩 오류 수정 — `ScheduleTimelineItem`·`PlaceCandidateCard` 에서 카드 Pressable 안에 있던 버튼을 형제로 분리. 저장소 전체 스캔 결과 이 2곳뿐이었고 바텀시트 배경 패턴은 정상 |

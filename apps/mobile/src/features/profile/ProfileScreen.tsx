@@ -14,7 +14,7 @@ import { TravelSummarySection } from './components/TravelSummarySection';
 import { UserProfileSection } from './components/UserProfileSection';
 import { usePets } from './hooks/usePets';
 import { useUserProfile } from './hooks/useUserProfile';
-import { mockActivitySummary } from './mocks/profileMocks';
+import { mockActivitySummary } from './mocks/profile.mock';
 
 export function ProfileScreen() {
   const router = useRouter();

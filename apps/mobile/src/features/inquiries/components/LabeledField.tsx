@@ -8,7 +8,7 @@ type Props = PropsWithChildren<{
 }>;
 
 /** 작성 화면의 `라벨 + 입력 요소` 한 묶음 */
-export function FormField({ label, children }: Props) {
+export function LabeledField({ label, children }: Props) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>

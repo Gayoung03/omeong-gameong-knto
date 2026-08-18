@@ -2,7 +2,7 @@ import { fetchPets, toPetSnapshot } from '@/src/features/profile/services/petSer
 import type { GenerationStatus, LogDraft } from '@/src/types/logDraft';
 import type { TravelLog, TravelLogPetSnapshot } from '@/src/types/travelLog';
 
-import { mockLogs } from '../mocks/travelLogMocks';
+import { mockLogs } from '../mocks/travelLog.mock';
 
 const wait = (milliseconds: number) =>
   new Promise<void>((resolve) => {

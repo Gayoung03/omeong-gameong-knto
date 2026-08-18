@@ -25,7 +25,7 @@ import {
   type MomentPetSelectionSheetHandle,
 } from './components/MomentPetSelectionSheet';
 import { MomentStepHeader } from './components/MomentStepHeader';
-import { mockLogs, mockTrips } from './mocks/travelLogMocks';
+import { mockLogs, mockTrips } from './mocks/travelLog.mock';
 import { useLogDraftStore } from './stores/useLogDraftStore';
 import { resolveCompanions, toPetsById } from './utils/resolveCompanionDisplay';
 
