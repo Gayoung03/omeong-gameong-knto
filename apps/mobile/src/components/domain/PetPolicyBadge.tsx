@@ -12,6 +12,8 @@ const BADGE_COLORS: Record<PetPolicy, { background: string; text: string }> = {
   notAllowed: { background: colors.basaltSoft, text: colors.textSecondary },
   outdoorOnly: { background: colors.leafSoft, text: colors.leaf },
   partialAllowed: { background: colors.primarySoft, text: colors.primary },
+  // 정책 정보가 없는 장소. 회색으로 두어 '동반 불가'와 헷갈리지 않게 한다.
+  unknown: { background: colors.neutralGray, text: colors.textSecondary },
 };
 
 /** 반려동물 동반 정책 배지. 내 여행과 장소 탐색이 함께 쓴다. */
@@ -21,7 +23,8 @@ export function PetPolicyBadge({ petPolicy }: PetPolicyBadgeProps) {
   return (
     <View style={[styles.badge, { backgroundColor: badgeColor.background }]}>
       <Text style={[styles.label, { color: badgeColor.text }]}>
-        🐾 {getPetPolicyLabel(petPolicy)}
+        {petPolicy === 'unknown' ? '' : '🐾 '}
+        {getPetPolicyLabel(petPolicy)}
       </Text>
     </View>
   );

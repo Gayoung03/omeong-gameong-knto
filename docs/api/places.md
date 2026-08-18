@@ -137,10 +137,10 @@ WHERE created_by_user_id IS NULL
 `unknown`은 **회색 "정보 없음" 뱃지**로 표시합니다. 뱃지를 아예 안 그리면 카드 높이가
 들쭉날쭉해지고, 정보가 없다는 사실을 사용자가 알 수 없습니다.
 
-> **앱 수정 필요.** [`PetPolicyBadge.tsx`](../../apps/mobile/src/features/trips/components/PetPolicyBadge.tsx)의
-> `BADGE_COLORS`에 `unknown` 키가 없습니다. 서버가 `unknown`을 내려주면
-> `BADGE_COLORS[petPolicy]`가 `undefined`가 되어 화면이 죽습니다.
-> 회색 계열(`basaltSoft` / `textSecondary`) 항목을 추가해야 합니다.
+> **앱 반영 완료 (2026-08-18, PR #37).** [`PetPolicyBadge.tsx`](../../apps/mobile/src/components/domain/PetPolicyBadge.tsx)의
+> `BADGE_COLORS`에 `unknown`(회색)을 추가했고, `PetPolicy` 타입도 5종으로 맞췄습니다.
+> 정본은 [`src/types/place.ts`](../../apps/mobile/src/types/place.ts)로 옮겨졌습니다 —
+> 장소 탐색에서도 같은 배지를 쓰게 되어 `src/components/domain/`으로 승격했습니다.
 
 ---
 
