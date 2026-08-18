@@ -338,58 +338,71 @@ git add package-lock.json
 
 ## 5. main PR 본문에 옮길 내용
 
+> **이 블록은 "아직 main 에 안 올라간 것"만 담는다.** main PR 을 낼 때마다 비우고 다시 쓴다.
+> 이전 내용(라이브러리 8개 설치, theme 토큰, app.config.ts, .gitignore, .env.example 등)은
+> #21·#26 으로 이미 main 에 반영되었다.
+>
+> 현재 대상: **PR #32 · #36 · #37**
+
 ```markdown
 ## 신규 설치 라이브러리
 
-- @react-native-community/datetimepicker@9.1.0 — 여행 기간 날짜 선택
-  (웹 미지원이라 *.web.tsx 대체 구현 분리)
-- react-native-draggable-flatlist@^4.0.3 — 일정 편집 화면의 드래그 순서 변경
-- react-native-reanimated@4.5.1 — 위 라이브러리의 peer dependency
-  (원래 expo-router를 통해 들어와 있던 것을 package.json에 명시적으로 고정)
-- expo-clipboard@~57.0.1 — 공유 링크 복사
-- expo-sharing@~57.0.8 — 만든 일정 이미지를 다른 앱으로 공유
-- react-native-view-shot@5.1.0 — 일정 카드를 이미지로 캡처
-- expo-media-library@~57.0.3 — 캡처한 이미지를 사진첩에 저장
-- react-native-webview@13.16.1 — 지도 탭에서 카카오 지도 JavaScript API 사용
+- 없음
 
 ## 공통 파일 변경
 
-- src/theme/ : colors·typography·radius 토큰 확장, 기본 배경색 화이트로 변경
-- app/_layout.tsx : 최상단을 GestureHandlerRootView로 감쌈 (드래그 제스처 인식용),
-  Stack.Screen 에 trips/[tripId]/add-schedule 라우트 추가
-- app.config.ts plugins :
-  - @react-native-community/datetimepicker
-  - expo-sharing
-  - expo-media-library (사진 접근 / 사진첩 저장 권한 문구 포함)
-- app.config.ts web.output : static → single
-  static 은 모든 라우트를 Node 에서 프리렌더하는데, 그 과정에서 네이티브 전제 모듈이
-  깨져 웹이 아예 뜨지 않았습니다. single 은 브라우저에서만 그리는 SPA 방식이라
-  모바일 앱을 웹으로 미리 볼 때는 이쪽이 맞습니다.
-  (웹을 정적 사이트로 내보낼 계획이 있다면 팀 논의가 필요합니다)
-- apps/mobile/.gitignore : /ios, /android 추가
-  (expo prebuild 가 만드는 217MB 네이티브 폴더가 커밋되지 않도록)
-- apps/mobile/.env.example 신규 추가 (EXPO_PUBLIC_API_URL, EXPO_PUBLIC_KAKAO_JS_KEY)
-  Expo 는 expo start 를 실행하는 폴더에서 .env 를 읽으므로 모바일 환경변수는
-  저장소 루트가 아니라 apps/mobile/.env 에 넣어야 합니다. 루트 .env.example 에도 안내를 넣었습니다.
+- app/_layout.tsx
+  Stack.Screen 4개 추가 (travel-guides/index, travel-guides/preparation, saved/places, saved/routes)
+
+- src/types/place.ts (신규)
+  PetPolicy 정본을 features 밖으로 승격했습니다. 내 여행과 장소 탐색이 함께 씁니다.
+  trips/types/trip.ts 가 재export 하므로 기존 import 경로는 그대로 동작합니다.
+  **값이 5종입니다** — outdoorOnly / indoorAllowed / partialAllowed / notAllowed / unknown.
+  서버 petPolicy.policyType 과 1:1 대응이며, 서버 표기는 snake_case 라 연동 시 변환이 필요합니다.
+
+- src/components/domain/PetPolicyBadge.tsx (신규)
+  동반정책 배지를 공용으로 승격했습니다. unknown 은 회색 '정보 없음' 배지입니다.
+
+- src/components/feedback/EmptyState.tsx (신규)
+  목록이 비었을 때 쓰는 공통 안내. 아이콘·제목·설명 + 선택형 액션 버튼.
+
+- src/components/ui/Card.tsx
+  카드에 테두리를 추가했습니다 (borderWidth 1 + colors.border).
+  흰 배경 위 흰 카드라 경계가 보이지 않던 문제입니다.
+  **이 컴포넌트를 쓰는 여행기록·문의·회원탈퇴 화면도 함께 바뀝니다.**
+
+- src/components/ui/StatTile.tsx
+  variant 를 2색에서 4색으로 바꿨습니다 (categoryColors 참조). 마이페이지 전용입니다.
+
+- src/components/layout/NotificationPopup.tsx
+  알림 목데이터 정본이 features/notifications/mocks/ 로 옮겨져 import 경로가 바뀌었습니다.
 
 ## 팀원 확인 사항
 
-- pull 후 `cd apps/mobile && npm ci` 실행 필요
-- 네이티브 권한이 추가되어 시뮬레이터에서 처음 실행할 때 사진 접근 권한을 물어봅니다
-- 지도 탭을 보려면 apps/mobile/.env 에 EXPO_PUBLIC_KAKAO_JS_KEY 가 필요합니다.
-  카카오 개발자 콘솔에 팀 앱 '오멍가멍'(ID 1533456)을 등록해두었고,
-  제품 설정 > 카카오맵 > 사용 설정이 ON 이어야 합니다. 무료 쿼터도 이 앱에 배정돼 있습니다.
-  개발 중에는 사이트 도메인 등록 없이 동작하며, 배포 도메인이 정해지면
-  constants/map.ts 의 KAKAO_MAP_BASE_URL 에 넣고 콘솔에도 같은 주소를 등록하면 됩니다.
+- **npm ci 는 필요 없습니다.** 신규 라이브러리도, 환경변수·네이티브 권한 추가도 없습니다.
+- **PetPolicy 가 5종이 되었습니다.** Record<PetPolicy, ...> 로 받는 코드가 있다면 unknown 키를
+  추가해야 컴파일됩니다. 현재 앱 안에서는 배지 두 곳뿐이라 이미 처리했습니다.
+- **삭제해도 되는 파일 2개** — 재export 만 남아 참조가 없습니다.
+  - src/components/layout/notificationPreview.mock.ts
+  - src/features/trips/components/PetPolicyBadge.tsx
+- **저장 기능이 AsyncStorage 를 씁니다.** 키는 아래 형태이고, 로그아웃해도 지우지 않되
+  계정별로 분리됩니다.
+  - omeong-gameong.saved-places.<이메일>
+  - omeong-gameong.saved-routes.<이메일>
+- **API 명세 문서 3개를 고쳤습니다** (lucky 님 확인 후). places.md / type-mismatch-report.md /
+  README.md 에서 PetPolicyBadge 경로와 unknown 반영 상태만 갱신했고 분석·판단은 건드리지 않았습니다.
 
-## places 담당자와 협의가 필요한 사항
+## 협의가 필요한 사항
 
-- 일정 추가(목업 10)의 장소 검색은 원래 places 영역입니다.
-  다만 'Day N 추천'·'내 숙소 근처'처럼 여행 정보를 알아야 하는 목록이 섞여 있어
-  우선 trips 안에 임시 검색 UI를 만들었습니다 (features/trips/api/placeSearchApi.ts).
-- 나중에 places 검색 화면을 재사용하기로 정해지면, 그 화면이 '선택 모드'를 지원하고
-  결과로 장소 ID만(types/trip.ts 의 PlaceSelectionResult) 돌려주면 됩니다.
-  trips 쪽은 searchPlaces 구현만 바꾸면 되고 화면은 그대로 둡니다.
+- **PlaceCategory 이름 충돌.** places 는 필터 칩 정의 객체 { id, label, icon },
+  trips 는 장소 분류 union 'attraction' | 'restaurant' | ... 로 같은 이름을 다르게 씁니다.
+  type-mismatch-report.md 의 1-4 와 같은 사안이며 회의 안건입니다.
+- **"저장한 코스" 의 내부 용어.** 가이드 11장에 따라 route 를 쓰고 화면 문구만 '코스' 로 두었습니다.
+  경로는 /saved/routes 입니다.
+- **공유 이미지 카드(TripShareCard)의 순번 배지.** 다른 화면은 주황 단색으로 통일했는데
+  여기만 연한 주황입니다. 흰 배경에 인쇄되듯 나가는 화면이라 의도적으로 남겨두었습니다.
+- **여행 준비 가이드의 성격.** 특정 여행과 무관한 일반 지식 콘텐츠로 잡았습니다.
+  여행별 준비물은 내 여행의 체크리스트 탭이 담당합니다.
 ```
 
 > 위 블록은 작업이 진행되는 대로 1~3번 표의 내용을 반영해 갱신한다.
@@ -433,3 +446,4 @@ git add package-lock.json
 | 2026-08-17 | **오늘 작업을 `dev/yulim-main` 에 모두 반영.** PR #30(폴더 구조 정리·웹 버튼 중첩 수정), #32(신규 화면 5개·저장 기능·장소 상세·디자인 통일·프로필 이미지), #36(루트 추천 입력 크기 통일·단계별 노출·입력 초기화). 3번 표의 '예정' 을 실제 PR 번호로 갱신했다. lucky 님의 API 명세(#34·#35, `docs/api/` 13개)가 main 에 올라와 `dev/yulim-main` 에도 머지했다                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | 2026-08-18 | 동반 정책에 `unknown` 추가 — lucky 님 API 명세(`docs/api/places.md`, `type-mismatch-report.md`)를 오늘 작업과 대조했다. **정책이 5종으로 확정(2026-08-18)됐는데 우리 타입은 4종**이었고, 명세가 `PetPolicyBadge` 를 콕 집어 '서버가 `unknown` 을 내려주면 `BADGE_COLORS[petPolicy]` 가 undefined 가 되어 화면이 죽는다' 고 경고하고 있었다. 타입·라벨·배지 색을 5종으로 맞췄다. `unknown` 은 회색 '정보 없음' 배지이고 발바닥 이모지를 빼 다른 정책과 구분한다. **대조에서 확인한 나머지 차이는 이번에 고치지 않았다** — 표기법(snake_case), 필드명(`primaryImageUrl`·`reservationRequired`), `petPolicy` 가 객체라는 점 등은 `places/api/placesApi.ts` 어댑터 안에서 흡수할 것들이고, 필드명 규칙은 팀 회의 안건(문서 4-3)이라 합의 후에 손대야 한다. **참고** — 명세서는 PR #30 시점까지만 반영돼 있어 오늘 만든 타입 4개(`types/place.ts`, `places/types/placeDetail.ts`, `saved/types/saved.ts`, `notifications/types/notification.ts`)는 대조 대상이 아니고, 문서가 가리키는 `PetPolicyBadge` 경로도 옛 위치(`features/trips/components/`)다 |
 | 2026-08-18 | API 명세 문서 3개 갱신(lucky 님 확인 후) — **사실 관계가 바뀐 부분만** 고쳤다. ① `PetPolicyBadge` 경로를 `features/trips/components/` → `src/components/domain/` 으로 (3개 문서에 걸쳐 있었다), ② `unknown` 미반영 경고를 '반영 완료' 로 바꾸고 README 의 '앱 코드 수정이 필요한 것' 목록에서 제거, ③ `type-mismatch-report.md` 부록에 PR #32·#36 신규 타입 4개를 '대조 안 함' 으로 추가. **분석·판단·회의 안건은 건드리지 않았다** — 문서 소유는 lucky 님이다. 변경 이력에 작성자를 남겼다                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 2026-08-18 | 5번 항목(main PR 본문) 재작성 — #21·#26 으로 이미 main 에 올라간 내용이 그대로 남아 있어 **아직 main 에 없는 것(PR #32·#36·#37)만** 담도록 비우고 다시 썼다. 이 블록은 main PR 을 낼 때마다 비우고 다시 쓰는 것이라는 안내도 함께 넣었다                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
