@@ -1,4 +1,4 @@
-import { Image } from 'react-native';
+import { Asset } from 'expo-asset';
 
 import { getAuthSession, updateSessionNickname } from '@/src/features/auth/services/authStorage';
 import type { User } from '@/src/types/user';
@@ -19,7 +19,7 @@ const wait = (ms: number) =>
  * TODO: 사용자 API(GET /users/me) 연결 시 이 파일 전체를 실제 호출로 교체한다.
  */
 /** 사용자가 사진을 올리기 전에 보여주는 기본 프로필 일러스트. */
-const DEFAULT_USER_AVATAR = Image.resolveAssetSource(
+const DEFAULT_USER_AVATAR = Asset.fromModule(
   require('@/assets/images/profile/default-user.jpg'),
 ).uri;
 

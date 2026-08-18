@@ -1257,8 +1257,10 @@ function FormInput({
 }
 
 const styles = StyleSheet.create({
-  safeArea: { alignItems: 'center', backgroundColor: colors.white, flex: 1 },
-  mobileFrame: { backgroundColor: colors.white, flex: 1, maxWidth: 430, width: '100%' },
+  // 다른 화면과 같이 화면 폭을 그대로 쓴다.
+  // 여기만 maxWidth 430 으로 묶여 있어 웹에서 혼자 좁게 보였다.
+  safeArea: { backgroundColor: colors.white, flex: 1 },
+  mobileFrame: { backgroundColor: colors.white, flex: 1 },
   content: {
     backgroundColor: colors.white,
     paddingBottom: spacing.xl,
