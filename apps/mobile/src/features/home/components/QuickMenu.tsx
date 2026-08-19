@@ -1,10 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors } from '@/src/theme';
+import { colors, radius, spacing } from '@/src/theme';
 
 import type { QuickMenuItem } from '../types/home';
-import { SectionHeader } from './SectionHeader';
+import { SectionHeader } from '@/src/components/ui/SectionHeader';
 
 type QuickMenuProps = {
   items: QuickMenuItem[];
@@ -14,7 +14,7 @@ type QuickMenuProps = {
 export function QuickMenu({ items, onPressItem }: QuickMenuProps) {
   return (
     <View>
-      <SectionHeader title="빠른 메뉴" />
+      <SectionHeader title="빠른 메뉴" style={styles.sectionHeader} />
       <View style={styles.grid}>
         {items.map((item) => (
           <Pressable
@@ -42,22 +42,25 @@ export function QuickMenu({ items, onPressItem }: QuickMenuProps) {
 }
 
 const styles = StyleSheet.create({
+  sectionHeader: {
+    marginBottom: spacing.sm + spacing.xs,
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: spacing.sm,
   },
   menuItem: {
-    width: '48.5%',
+    width: '48.8%',
     minHeight: 74,
-    paddingHorizontal: 8,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + spacing.xs,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 16,
+    borderRadius: radius.lg,
     backgroundColor: colors.surface,
   },
   pressed: {
@@ -77,7 +80,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.textPrimary,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     letterSpacing: -0.5,
   },

@@ -1,9 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, shadow, spacing, typography } from '@/src/theme';
+import { categoryColors, colors, radius, shadow, spacing, typography } from '@/src/theme';
 
-type StatTileVariant = 'mint' | 'orange';
+type StatTileVariant = 'blue' | 'green' | 'orange' | 'yellow';
 
 type StatTileProps = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -15,9 +15,15 @@ type StatTileProps = {
   onPress?: () => void;
 };
 
+/**
+ * 홈 빠른 메뉴와 같은 `categoryColors` 를 쓴다.
+ * 같은 성격의 메뉴가 앱 어디에 있든 같은 색을 갖도록 맞춘 것이다.
+ */
 const variantColors: Record<StatTileVariant, { background: string; icon: string }> = {
-  mint: { background: colors.seaSoftLight, icon: colors.sea },
-  orange: { background: colors.primarySoft, icon: colors.primary },
+  blue: { background: categoryColors.blue.bg, icon: categoryColors.blue.fg },
+  green: { background: categoryColors.green.bg, icon: categoryColors.green.fg },
+  orange: { background: categoryColors.orange.bg, icon: categoryColors.orange.fg },
+  yellow: { background: categoryColors.yellow.bg, icon: categoryColors.yellow.fg },
 };
 
 export function StatTile({ icon, label, value, unit = '개', variant, onPress }: StatTileProps) {
@@ -65,7 +71,9 @@ const styles = StyleSheet.create({
   tile: {
     alignItems: 'center',
     backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderRadius: radius.lg,
+    borderWidth: 1,
     flexBasis: '48%',
     flexDirection: 'row',
     padding: spacing.md,

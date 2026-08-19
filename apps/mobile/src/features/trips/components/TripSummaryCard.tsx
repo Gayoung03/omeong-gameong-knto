@@ -79,7 +79,9 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
   },
   tags: {
-    color: colors.leaf,
+    // 루트 추천이 작은 초록 글자에 쓰는 seaDeep 과 맞춘다.
+    // colors.sea 는 이 크기에서 흰 배경 대비가 부족하다.
+    color: colors.seaDeep,
     fontSize: typography.micro.fontSize,
     fontWeight: typography.micro.fontWeight,
   },

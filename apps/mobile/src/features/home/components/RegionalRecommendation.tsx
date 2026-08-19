@@ -1,11 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, overlayColors } from '@/src/theme';
+import { colors, overlayColors, radius, spacing } from '@/src/theme';
 
-import { homeRegions } from '../data/homeRegions';
+import { homeRegions } from '../constants/homeRegions';
 import type { PlaceRegion } from '@/src/features/places/types/place';
-import { SectionHeader } from './SectionHeader';
+import { SectionHeader } from '@/src/components/ui/SectionHeader';
 
 const JEJU_MAP = require('@/assets/illustrations/jeju-region-map.png');
 
@@ -20,7 +20,12 @@ export function RegionalRecommendation({
 }: RegionalRecommendationProps) {
   return (
     <View>
-      <SectionHeader actionLabel="전체보기" onPressAction={onPressViewAll} title="제주 권역별 추천 장소" />
+      <SectionHeader
+        actionLabel="전체보기"
+        onActionPress={onPressViewAll}
+        style={styles.sectionHeader}
+        title="제주 권역별 추천 장소"
+      />
       <View style={styles.mapCard}>
         <View style={styles.mapVisual}>
           <Image resizeMode="contain" source={JEJU_MAP} style={styles.mapImage} />
@@ -43,7 +48,7 @@ export function RegionalRecommendation({
             >
               <Ionicons color={colors.primary} name="paw" size={10} />
               <Text numberOfLines={2} style={styles.regionLabel}>
-                {region.label}
+                {region.displayLabel ?? region.label}
               </Text>
             </Pressable>
           ))}
@@ -58,11 +63,14 @@ export function RegionalRecommendation({
 }
 
 const styles = StyleSheet.create({
+  sectionHeader: {
+    marginBottom: spacing.sm + spacing.xs,
+  },
   mapCard: {
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.seaSoft,
-    borderRadius: 18,
+    borderRadius: radius.lg,
     backgroundColor: colors.seaSoftLight,
   },
   mapVisual: {
@@ -116,7 +124,7 @@ const styles = StyleSheet.create({
   },
   mapCaption: {
     minHeight: 49,
-    paddingHorizontal: 14,
+    paddingHorizontal: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

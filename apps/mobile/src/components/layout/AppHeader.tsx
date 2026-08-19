@@ -8,8 +8,8 @@ import { colors, spacing } from '@/src/theme';
 
 import { NotificationPopup } from './NotificationPopup';
 
-/** 헤더 높이. 화면마다 54/48 로 달랐던 것을 이 값으로 통일한다. */
-export const APP_HEADER_HEIGHT = 54;
+/** 탭 화면의 상단 바 높이. 하위 화면의 공통 헤더와 같은 56px을 사용한다. */
+export const APP_HEADER_HEIGHT = 56;
 
 const SYMBOL_WIDTH = 27;
 const SYMBOL_HEIGHT = 31;
@@ -111,12 +111,15 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 19,
     fontWeight: '900',
+    includeFontPadding: false,
     letterSpacing: -0.8,
+    lineHeight: 24,
   },
   header: {
     alignItems: 'center',
     backgroundColor: colors.surface,
     flexDirection: 'row',
+    flexShrink: 0,
     height: APP_HEADER_HEIGHT,
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,

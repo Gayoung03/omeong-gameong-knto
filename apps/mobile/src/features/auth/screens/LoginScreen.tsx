@@ -17,7 +17,7 @@ import { brandColors, colors } from '@/src/theme';
 
 import { AuthBrand } from '../components/AuthBrand';
 import { AuthHeader } from '../components/AuthHeader';
-import { FormField } from '../components/FormField';
+import { IconTextField } from '../components/IconTextField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { getAuthSession, signIn } from '../services/authStorage';
 
@@ -75,7 +75,7 @@ export function LoginScreen() {
             <AuthBrand />
 
             <View style={styles.form}>
-              <FormField
+              <IconTextField
                 autoComplete="email"
                 error={errors.email}
                 icon="mail-outline"
@@ -87,7 +87,7 @@ export function LoginScreen() {
                 placeholder="이메일을 입력해주세요"
                 value={email}
               />
-              <FormField
+              <IconTextField
                 autoComplete="current-password"
                 error={errors.password}
                 icon="lock-closed-outline"

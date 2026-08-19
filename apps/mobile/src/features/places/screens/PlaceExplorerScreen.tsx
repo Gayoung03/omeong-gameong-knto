@@ -13,11 +13,17 @@ import {
   View,
 } from 'react-native';
 
+import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
+import {
+  useSavedPlaceIds,
+  useToggleSavedPlace,
+} from '@/src/features/saved/hooks/useSavedPlaces';
 import { colors, spacing } from '@/src/theme';
 
 import { InteractivePlaceMap } from '../components/InteractivePlaceMap';
-import { mockPlaces, placeCategories } from '../data/placeMockData';
-import { isPlaceRegion, placeRegions, type PlaceRegionFilter } from '../data/placeRegions';
+import { placeCategories } from '../constants/placeCategories';
+import { mockPlaces } from '../mocks/place.mock';
+import { isPlaceRegion, placeRegions, type PlaceRegionFilter } from '../constants/placeRegions';
 import type { Place } from '../types/place';
 
 type ViewMode = 'list' | 'map';
@@ -31,9 +37,9 @@ export function PlaceExplorerScreen() {
   );
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(view === 'map' ? 'map' : 'list');
-  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(
-    () => new Set(mockPlaces.filter((place) => place.initiallyFavorite).map((place) => place.id)),
-  );
+  // 저장 목록은 기기에 남는다. 정본은 features/saved 의 저장소다.
+  const savedPlaceIds = useSavedPlaceIds();
+  const toggleSavedPlace = useToggleSavedPlace();
 
   useEffect(() => {
     const selectedIndex = placeRegions.indexOf(selectedRegion);
@@ -62,41 +68,19 @@ export function PlaceExplorerScreen() {
     });
   }, [query, selectedCategory, selectedRegion]);
 
-  const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-
-    router.replace('/');
-  };
-
-  const toggleFavorite = (placeId: string) => {
-    setFavoriteIds((currentIds) => {
-      const nextIds = new Set(currentIds);
-      if (nextIds.has(placeId)) {
-        nextIds.delete(placeId);
-      } else {
-        nextIds.add(placeId);
-      }
-      return nextIds;
+  const toggleFavorite = (place: Place) => {
+    toggleSavedPlace.mutate({
+      address: place.address,
+      category: place.category,
+      id: place.id,
+      imageUrl: place.imageUrl,
+      name: place.name,
     });
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <Pressable
-          accessibilityLabel="홈으로 돌아가기"
-          hitSlop={12}
-          onPress={handleBack}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-        >
-          <Ionicons color={colors.textPrimary} name="chevron-back" size={26} />
-        </Pressable>
-        <Text style={styles.headerTitle}>장소 탐색</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+      <ScreenHeader title="장소 탐색" />
 
       <View style={styles.searchBar}>
         <Ionicons color={colors.iconGray} name="search-outline" size={20} />
@@ -202,8 +186,8 @@ export function PlaceExplorerScreen() {
           ListEmptyComponent={<EmptyResult />}
           renderItem={({ item }) => (
             <PlaceRow
-              isFavorite={favoriteIds.has(item.id)}
-              onPressFavorite={() => toggleFavorite(item.id)}
+              isFavorite={savedPlaceIds.has(item.id)}
+              onPressFavorite={() => toggleFavorite(item)}
               place={item}
             />
           )}
@@ -314,33 +298,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.surface,
   },
-  header: {
-    height: 52,
-    flexShrink: 0,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  backButton: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   pressed: {
     opacity: 0.58,
-  },
-  headerTitle: {
-    flex: 1,
-    color: colors.textPrimary,
-    fontSize: 17,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  headerSpacer: {
-    width: 42,
   },
   searchBar: {
     height: 40,

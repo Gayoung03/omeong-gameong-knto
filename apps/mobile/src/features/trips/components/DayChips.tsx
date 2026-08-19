@@ -63,8 +63,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs + 2,
   },
   selectedChip: {
-    backgroundColor: colors.leaf,
-    borderColor: colors.leaf,
+    // 루트 추천 결과 화면의 Day 탭과 같은 에메랄드로 맞춘다.
+    backgroundColor: colors.sea,
+    borderColor: colors.sea,
   },
   dayLabel: {
     color: colors.textPrimary,

@@ -2,7 +2,7 @@ import type { Pet, PetSpecies } from '@/src/types/pet';
 import type { TravelLogPetSnapshot } from '@/src/types/travelLog';
 import { createId } from '@/src/utils/createId';
 
-import { mockPets } from '../mocks/profileMocks';
+import { mockPets } from '../mocks/profile.mock';
 
 const FETCH_DELAY_MS = 300;
 const UPLOAD_DELAY_MS = 400;

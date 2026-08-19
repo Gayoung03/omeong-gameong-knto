@@ -24,7 +24,7 @@ import { SaveCompleteModal } from '@/src/features/profile/components/SaveComplet
 import { colors, radius, spacing, typography } from '@/src/theme';
 import type { InquiryCategory } from '@/src/types/inquiry';
 
-import { FormField } from './components/FormField';
+import { LabeledField } from './components/LabeledField';
 import {
   InquiryCategorySheet,
   type InquiryCategorySheetHandle,
@@ -160,7 +160,7 @@ export function InquiryCreateScreen() {
         style={styles.flex}
       >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <FormField label="문의 유형">
+          <LabeledField label="문의 유형">
             <Pressable
               accessibilityRole="button"
               disabled={isSaving}
@@ -172,9 +172,9 @@ export function InquiryCreateScreen() {
               </Text>
               <Ionicons color={colors.textSecondary} name="chevron-down" size={18} />
             </Pressable>
-          </FormField>
+          </LabeledField>
 
-          <FormField label="제목">
+          <LabeledField label="제목">
             <TextInput
               editable={!isSaving}
               maxLength={MAX_TITLE_LENGTH}
@@ -184,9 +184,9 @@ export function InquiryCreateScreen() {
               style={styles.input}
               value={title}
             />
-          </FormField>
+          </LabeledField>
 
-          <FormField label="문의 내용">
+          <LabeledField label="문의 내용">
             <View style={styles.textAreaBox}>
               <TextInput
                 editable={!isSaving}
@@ -203,16 +203,16 @@ export function InquiryCreateScreen() {
                 {content.length}/{MAX_CONTENT_LENGTH}
               </Text>
             </View>
-          </FormField>
+          </LabeledField>
 
-          <FormField label="사진 첨부">
+          <LabeledField label="사진 첨부">
             <InquiryPhotoPicker
               disabled={isSaving}
               imageUris={imageUris}
               onAdd={() => void addPhotos()}
               onRemove={removePhoto}
             />
-          </FormField>
+          </LabeledField>
 
           <View style={styles.infoRow}>
             <Ionicons color={colors.sea} name="information-circle-outline" size={16} />

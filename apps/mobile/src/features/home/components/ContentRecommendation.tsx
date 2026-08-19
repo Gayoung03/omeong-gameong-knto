@@ -1,34 +1,36 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import type { EditorialCard } from '../types/home';
-import { SectionHeader } from './SectionHeader';
+import type { EditorialStory } from '../types/home';
+import { SectionHeader } from '@/src/components/ui/SectionHeader';
 
-import { colors, overlayColors } from '@/src/theme';
+import { colors, overlayColors, radius, spacing } from '@/src/theme';
 
 type ContentRecommendationProps = {
-  cards: EditorialCard[];
+  stories: EditorialStory[];
+  onPressStory: (story: EditorialStory) => void;
 };
 
-export function ContentRecommendation({ cards }: ContentRecommendationProps) {
+export function ContentRecommendation({ stories, onPressStory }: ContentRecommendationProps) {
   return (
     <View>
-      <SectionHeader title="제주 여행 이야기" />
+      <SectionHeader title="제주 여행 이야기" style={styles.sectionHeader} />
       <View style={styles.grid}>
-        {cards.map((card) => (
+        {stories.map((story) => (
           <Pressable
             accessibilityRole="button"
-            key={card.id}
+            key={story.id}
+            onPress={() => onPressStory(story)}
             style={({ pressed }) => [styles.card, pressed && styles.pressed]}
           >
             <ImageBackground
               imageStyle={styles.image}
               resizeMode="cover"
-              source={{ uri: card.imageUrl }}
+              source={{ uri: story.heroImageUrl }}
               style={styles.background}
             >
               <View style={styles.scrim} />
-              <Text style={styles.title}>{card.title}</Text>
+              <Text style={styles.title}>{story.cardTitle}</Text>
               <View style={styles.arrowCircle}>
                 <Ionicons color={colors.textPrimary} name="chevron-forward" size={16} />
               </View>
@@ -41,16 +43,19 @@ export function ContentRecommendation({ cards }: ContentRecommendationProps) {
 }
 
 const styles = StyleSheet.create({
+  sectionHeader: {
+    marginBottom: spacing.sm + spacing.xs,
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: spacing.sm,
   },
   card: {
     width: '48.8%',
     aspectRatio: 1.45,
     overflow: 'hidden',
-    borderRadius: 15,
+    borderRadius: radius.lg,
     backgroundColor: colors.divider,
   },
   pressed: {
@@ -58,13 +63,13 @@ const styles = StyleSheet.create({
   },
   background: {
     flex: 1,
-    padding: 11,
+    padding: spacing.md,
     justifyContent: 'space-between',
   },
   image: {
     width: '100%',
     height: '100%',
-    borderRadius: 15,
+    borderRadius: radius.lg,
   },
   scrim: {
     ...StyleSheet.absoluteFill,
