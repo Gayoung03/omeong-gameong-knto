@@ -9,8 +9,8 @@ import { QuickMenu } from '../components/QuickMenu';
 import { RegionalRecommendation } from '../components/RegionalRecommendation';
 import { WeatherHero } from '../components/WeatherHero';
 import { quickMenuItems } from '../constants/quickMenu';
-import { mockEditorialCards, mockWeather } from '../mocks/home.mock';
-import type { QuickMenuItem } from '../types/home';
+import { mockEditorialStories, mockWeather } from '../mocks/home.mock';
+import type { EditorialStory, QuickMenuItem } from '../types/home';
 import type { PlaceRegion } from '@/src/features/places/types/place';
 
 export function HomeScreen() {
@@ -45,6 +45,10 @@ export function HomeScreen() {
     router.push({ pathname: '/coming-soon', params: { title: item.title } });
   };
 
+  const openStory = (story: EditorialStory) => {
+    router.push(`/stories/${story.id}`);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <AppHeader />
@@ -63,7 +67,7 @@ export function HomeScreen() {
         </View>
 
         <View style={styles.section}>
-          <ContentRecommendation cards={mockEditorialCards} />
+          <ContentRecommendation onPressStory={openStory} stories={mockEditorialStories} />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -77,9 +81,10 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: spacing.md,
-    paddingBottom: 96,
+    paddingBottom: spacing.xl,
+    paddingTop: spacing.md,
   },
   section: {
-    marginTop: 25,
+    marginTop: spacing.lg,
   },
 });

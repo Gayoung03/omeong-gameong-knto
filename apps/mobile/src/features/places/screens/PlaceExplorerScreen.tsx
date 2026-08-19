@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 
+import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
 import {
   useSavedPlaceIds,
   useToggleSavedPlace,
@@ -67,15 +68,6 @@ export function PlaceExplorerScreen() {
     });
   }, [query, selectedCategory, selectedRegion]);
 
-  const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-
-    router.replace('/');
-  };
-
   const toggleFavorite = (place: Place) => {
     toggleSavedPlace.mutate({
       address: place.address,
@@ -88,18 +80,7 @@ export function PlaceExplorerScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <Pressable
-          accessibilityLabel="홈으로 돌아가기"
-          hitSlop={12}
-          onPress={handleBack}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-        >
-          <Ionicons color={colors.textPrimary} name="chevron-back" size={26} />
-        </Pressable>
-        <Text style={styles.headerTitle}>장소 탐색</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+      <ScreenHeader title="장소 탐색" />
 
       <View style={styles.searchBar}>
         <Ionicons color={colors.iconGray} name="search-outline" size={20} />
@@ -317,33 +298,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.surface,
   },
-  header: {
-    height: 52,
-    flexShrink: 0,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  backButton: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   pressed: {
     opacity: 0.58,
-  },
-  headerTitle: {
-    flex: 1,
-    color: colors.textPrimary,
-    fontSize: 17,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  headerSpacer: {
-    width: 42,
   },
   searchBar: {
     height: 40,
