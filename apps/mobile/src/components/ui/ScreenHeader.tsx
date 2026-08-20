@@ -6,6 +6,7 @@ import { colors, spacing, typography } from '@/src/theme';
 
 const ICON_SIZE = 24;
 const ICON_BUTTON_TOUCH_SIZE = 44;
+export const SCREEN_HEADER_HEIGHT = 56;
 
 type Props = {
   title: string;
@@ -15,12 +16,21 @@ type Props = {
 export function ScreenHeader({ title }: Props) {
   const router = useRouter();
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace('/');
+  };
+
   return (
     <View style={styles.header}>
       <IconButton
         accessibilityLabel="뒤로 가기"
         icon="chevron-back"
-        onPress={() => router.back()}
+        onPress={handleBack}
         size={ICON_SIZE}
       />
       <Text style={styles.title}>{title}</Text>
@@ -36,9 +46,10 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     borderBottomWidth: 1,
     flexDirection: 'row',
+    flexShrink: 0,
+    height: SCREEN_HEADER_HEIGHT,
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   spacer: {
     height: ICON_BUTTON_TOUCH_SIZE,
@@ -46,7 +57,9 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.textPrimary,
-    fontSize: typography.title.fontSize - 2,
-    fontWeight: '700',
+    fontSize: typography.sectionTitle.fontSize,
+    fontWeight: typography.sectionTitle.fontWeight,
+    includeFontPadding: false,
+    lineHeight: 24,
   },
 });

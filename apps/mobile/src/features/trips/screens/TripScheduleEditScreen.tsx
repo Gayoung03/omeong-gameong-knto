@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     flexDirection: 'row',
-    height: 48,
+    height: 56,
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
   },
@@ -231,8 +231,10 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: colors.basalt,
-    fontSize: typography.body.fontSize,
-    fontWeight: '700',
+    fontSize: typography.sectionTitle.fontSize,
+    fontWeight: typography.sectionTitle.fontWeight,
+    includeFontPadding: false,
+    lineHeight: 24,
   },
   cancelText: {
     color: colors.textSecondary,

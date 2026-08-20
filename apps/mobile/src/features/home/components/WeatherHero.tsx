@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { brandAssets } from '@/src/config/brandAssets';
-import { colors, overlayColors } from '@/src/theme';
+import { colors, overlayColors, radius, spacing } from '@/src/theme';
 
 import type { WeatherSummary } from '../types/home';
 
@@ -63,7 +63,7 @@ export function WeatherHero({ weather, onPressChatbot }: WeatherHeroProps) {
 const styles = StyleSheet.create({
   card: {
     overflow: 'hidden',
-    borderRadius: 20,
+    borderRadius: radius.lg,
     backgroundColor: colors.surface,
     shadowColor: colors.primaryInk,
     shadowOffset: { width: 0, height: 5 },
@@ -73,15 +73,15 @@ const styles = StyleSheet.create({
   },
   imageArea: {
     height: 174,
-    padding: 16,
+    padding: spacing.md,
     justifyContent: 'space-between',
     overflow: 'hidden',
   },
   image: {
     width: '100%',
     height: '100%',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
   },
   scrim: {
     ...StyleSheet.absoluteFill,

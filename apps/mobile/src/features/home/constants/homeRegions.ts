@@ -5,6 +5,7 @@ type PercentagePosition = `${number}%`;
 export type HomeRegion = {
   id: string;
   label: PlaceRegion;
+  displayLabel?: string;
   left: PercentagePosition;
   top: PercentagePosition;
 };
@@ -19,6 +20,7 @@ export const homeRegions: HomeRegion[] = [
   {
     id: 'jeju-airport',
     label: '제주시/제주국제공항',
+    displayLabel: '제주시/\n제주국제공항',
     left: '49%',
     top: '27%',
   },
