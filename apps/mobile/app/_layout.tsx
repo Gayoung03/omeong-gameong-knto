@@ -47,6 +47,9 @@ export default function RootLayout() {
             <Stack.Screen name="inquiries/new" />
             <Stack.Screen name="inquiries/[inquiryId]" />
 
+            <Stack.Screen name="legal/terms" />
+            <Stack.Screen name="legal/privacy" />
+
             <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
             <Stack.Screen name="profile-edit" options={{ presentation: 'modal' }} />
             <Stack.Screen name="pets/new" options={{ presentation: 'modal' }} />
