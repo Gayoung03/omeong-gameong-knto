@@ -35,6 +35,7 @@ EXPECTED_TABLES = {
     "routes",
     "travel_log_pets",
     "travel_logs",
+    "user_consents",
     "user_travel_preferences",
     "users",
     "weather_snapshots",
@@ -43,6 +44,23 @@ EXPECTED_TABLES = {
 
 def test_all_documented_tables_are_registered() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
+
+
+def test_user_consent_schema() -> None:
+    consents = Base.metadata.tables["user_consents"]
+
+    # 동의 이력은 쌓기만 하므로 갱신 시각 컬럼을 두지 않는다.
+    assert set(consents.c.keys()) == {
+        "id",
+        "user_id",
+        "consent_type",
+        "is_agreed",
+        "document_version",
+        "created_at",
+    }
+    # 문서가 없는 age_14_or_over 동의는 버전을 비워 둔다.
+    assert consents.c.document_version.nullable is True
+    assert consents.c.is_agreed.nullable is False
 
 
 def test_pet_species_detail_schema() -> None:
