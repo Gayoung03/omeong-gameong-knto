@@ -34,7 +34,7 @@ from app.db.models.routes import (
     RouteRequestStay,
     WeatherSnapshot,
 )
-from app.db.models.users import Pet, User, UserTravelPreference
+from app.db.models.users import Pet, User, UserConsent, UserTravelPreference
 
 __all__ = [
     "ChatConversation",
@@ -66,6 +66,7 @@ __all__ = [
     "TravelLog",
     "TravelLogPet",
     "User",
+    "UserConsent",
     "UserTravelPreference",
     "WeatherSnapshot",
 ]
