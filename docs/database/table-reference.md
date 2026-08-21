@@ -76,6 +76,24 @@
 
 이번 여행에서 선택한 조건은 이 테이블을 수정하지 않고 `route_requests`에 저장합니다.
 
+### `user_consents`
+
+약관 동의 이력을 저장합니다. 회원가입과 설정 화면에서 받은 동의·철회를 모두 남깁니다.
+
+| 컬럼 | 설명 |
+| --- | --- |
+| `id` | 이력 PK |
+| `user_id` | 회원 FK |
+| `consent_type` | 동의 항목 (`terms_of_service` / `privacy_policy` / `age_14_or_over` / `marketing`) |
+| `is_agreed` | 동의 `true`, 철회 `false` |
+| `document_version` | 동의한 약관 문서의 버전. 문서가 없는 `age_14_or_over`는 비어 있음 |
+| `created_at` | 동의하거나 철회한 시각 |
+
+행을 고쳐 쓰지 않고 동의·철회가 있을 때마다 새 행을 쌓습니다. 마케팅 동의는 켜고 끌 수 있고
+약관은 개정될 수 있어서, 덮어쓰면 그 시점에 어떤 버전에 동의했는지가 사라져 분쟁 시 증빙이
+되지 않기 때문입니다. 현재 동의 상태는 `(user_id, consent_type)`별로 `created_at`이 가장 큰
+행입니다.
+
 ## 2. 장소
 
 ### `places`

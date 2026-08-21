@@ -1,9 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { SignupData } from '../types/auth';
+import { LEGAL_DOCUMENT_VERSION } from '@/src/features/legal/constants/legalDocuments';
+
+import type { SignupAgreements, SignupData } from '../types/auth';
 
 const AUTH_SESSION_KEY = 'omeong-gameong.auth-session';
 const USER_PROFILE_KEY = 'omeong-gameong.user-profile';
+const CONSENT_KEY = 'omeong-gameong.consent-record';
 
 export type AuthSession = {
   email: string;
@@ -14,6 +17,35 @@ export type AuthSession = {
 type SavedUserProfile = Omit<SignupData, 'account'> & {
   account: Pick<SignupData['account'], 'email' | 'nickname'>;
 };
+
+/**
+ * 동의 이력. 어떤 항목에 언제 어느 버전으로 동의했는지 남긴다.
+ * 나중에 동의 여부로 다툼이 생기면 이 기록이 근거가 된다.
+ *
+ * TODO: 회원가입 API 연결 시 이 값을 서버로 보내고 동의 이력 테이블에 저장한다.
+ *       기기에만 있는 기록은 앱을 지우면 사라지므로 증빙이 되지 못한다.
+ */
+export type ConsentRecord = {
+  agreements: SignupAgreements;
+  documentVersion: string;
+  agreedAt: string;
+};
+
+export async function getConsentRecord() {
+  const value = await AsyncStorage.getItem(CONSENT_KEY);
+  return value ? (JSON.parse(value) as ConsentRecord) : null;
+}
+
+async function saveConsentRecord(agreements: SignupAgreements) {
+  const record: ConsentRecord = {
+    agreements,
+    documentVersion: LEGAL_DOCUMENT_VERSION,
+    agreedAt: new Date().toISOString(),
+  };
+
+  await AsyncStorage.setItem(CONSENT_KEY, JSON.stringify(record));
+  return record;
+}
 
 async function saveSession(email: string, nickname: string) {
   const session: AuthSession = {
@@ -42,6 +74,7 @@ export async function signIn(email: string) {
  */
 export async function completeSignup(data: SignupData) {
   const profile: SavedUserProfile = {
+    agreements: data.agreements,
     account: {
       email: data.account.email,
       nickname: data.account.nickname,
@@ -51,6 +84,7 @@ export async function completeSignup(data: SignupData) {
   };
 
   await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
+  await saveConsentRecord(data.agreements);
   return saveSession(data.account.email, data.account.nickname);
 }
 
@@ -72,5 +106,10 @@ export async function updateSessionNickname(nickname: string) {
 
 export async function signOut() {
   await AsyncStorage.removeItem(AUTH_SESSION_KEY);
+}
+
+/** 회원 탈퇴 시 기기에 남은 계정 관련 기록을 모두 지운다. */
+export async function clearAccountStorage() {
+  await AsyncStorage.multiRemove([AUTH_SESSION_KEY, USER_PROFILE_KEY, CONSENT_KEY]);
 }
 
