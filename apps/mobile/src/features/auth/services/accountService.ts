@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { clearAccountStorage } from './authStorage';
+
 const WITHDRAW_DELAY_MS = 600;
 
 /**
@@ -36,6 +38,7 @@ export async function clearLocalUserData(): Promise<void> {
   if (IS_WITHDRAW_MOCKED) return;
 
   try {
+    await clearAccountStorage();
     await AsyncStorage.removeItem('notification-preferences');
   } catch {
     // 로컬 정리에 실패해도 탈퇴 자체는 완료된 상태이므로 흐름을 막지 않는다.

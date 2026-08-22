@@ -16,10 +16,8 @@ export const settingsMenuItems: SettingsMenuItem[] = [
   { label: '공지사항', route: '/notices' },
   { label: '알림설정', route: '/notification-settings' },
   { label: '버전정보', trailingText: '현재 1.82.0' },
-  // TODO: 이용약관 화면 연결
-  { label: '이용약관' },
-  // TODO: 개인정보 취급방침 화면 연결
-  { label: '개인정보 취급방침' },
+  { label: '이용약관', route: '/legal/terms' },
+  { label: '개인정보처리방침', route: '/legal/privacy' },
   { label: '탈퇴하기', route: '/account-withdraw' },
   { label: '로그아웃', action: 'logout' },
 ];
