@@ -31,10 +31,10 @@ class ConsentType(StrEnum):
 
 
 class PetSpecies(StrEnum):
+    """강아지·고양이 외에는 종 이름을 species_detail 에 직접 받는다."""
+
     DOG = "dog"
     CAT = "cat"
-    RABBIT = "rabbit"
-    BIRD = "bird"
     OTHER = "other"
 
 

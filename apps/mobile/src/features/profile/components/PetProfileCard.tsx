@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Avatar } from '@/src/components/ui/Avatar';
 import { Card } from '@/src/components/ui/Card';
 import { colors, spacing, typography } from '@/src/theme';
-import type { Pet } from '@/src/types/pet';
+import { formatSpecies, type Pet } from '@/src/types/pet';
 
 type PetProfileCardProps = {
   pet: Pet;
@@ -36,7 +36,7 @@ export function PetProfileCard({ pet }: PetProfileCardProps) {
         <View style={styles.info}>
           <Text style={styles.name}>{pet.name}</Text>
           <Text style={styles.detail}>
-            {pet.species} · {pet.breed}
+            {formatSpecies(pet)} · {pet.breed}
           </Text>
           <Text style={styles.detail}>
             {pet.age}세 · {pet.weight}kg
