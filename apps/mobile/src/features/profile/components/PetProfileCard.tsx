@@ -17,18 +17,21 @@ export function PetProfileCard({ pet }: PetProfileCardProps) {
   const openEditScreen = () => router.push({ pathname: '/pets/[petId]', params: { petId: pet.petId } });
 
   return (
-    // TODO: 반려동물 상세 화면 연결
-    <Pressable>
+    /*
+     * 카드 어디를 눌러도 수정 화면으로 간다.
+     * 연필은 그 사실을 알려주는 표시라 따로 Pressable 로 감싸지 않는다.
+     * (버튼을 중첩하면 웹에서 오류가 난다)
+     */
+    <Pressable
+      accessibilityLabel={`${pet.name} 프로필 수정`}
+      accessibilityRole="button"
+      onPress={openEditScreen}
+      style={({ pressed }) => pressed && styles.pressed}
+    >
       <Card style={styles.card}>
-        <Pressable
-          accessibilityLabel={`${pet.name} 프로필 수정`}
-          accessibilityRole="button"
-          hitSlop={spacing.sm}
-          onPress={openEditScreen}
-          style={styles.editButton}
-        >
+        <View style={styles.editIcon}>
           <Ionicons color={colors.textSecondary} name="create-outline" size={18} />
-        </Pressable>
+        </View>
         <Avatar size={56} uri={pet.profileImage} />
         <View style={styles.info}>
           <Text style={styles.name}>{pet.name}</Text>
@@ -54,7 +57,7 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize - 2,
     marginTop: spacing.xs / 2,
   },
-  editButton: {
+  editIcon: {
     position: 'absolute',
     right: spacing.sm,
     top: spacing.sm,
@@ -68,5 +71,8 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: typography.body.fontSize,
     fontWeight: '700',
+  },
+  pressed: {
+    opacity: 0.7,
   },
 });
