@@ -3,6 +3,7 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     ARRAY,
@@ -22,7 +23,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.db.models.enums import (
@@ -34,6 +35,10 @@ from app.db.models.enums import (
     WeatherCondition,
     db_enum,
 )
+
+if TYPE_CHECKING:
+    from app.db.models.places import Place
+    from app.db.models.users import Pet
 
 
 class RouteRequest(Base):
@@ -153,6 +158,16 @@ class Route(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
+    # --- 파이썬 쪽 연결 -------------------------------------------------
+    # ForeignKey(DB 제약)는 이미 있고, 여기서는 파이썬이 그 외래키를 따라가는
+    # 통로만 연다. DB 스키마 변경이 아니라서 마이그레이션이 필요 없다.
+    route_days: Mapped[list["RouteDay"]] = relationship(
+        "RouteDay",
+        order_by="RouteDay.day_number",
+        cascade="all, delete-orphan",
+    )
+    pets: Mapped[list["Pet"]] = relationship("Pet", secondary="route_pets", viewonly=True)
+
 
 class RoutePet(Base):
     __tablename__ = "route_pets"
@@ -215,6 +230,12 @@ class RouteDay(Base):
     )
     title: Mapped[str | None] = mapped_column(String(150))
 
+    items: Mapped[list["RouteItem"]] = relationship(
+        "RouteItem",
+        order_by="RouteItem.sort_order",
+        cascade="all, delete-orphan",
+    )
+
 
 class RouteItem(Base):
     __tablename__ = "route_items"
@@ -246,6 +267,8 @@ class RouteItem(Base):
     recommendation_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     recommendation_reason: Mapped[str | None] = mapped_column(Text)
     is_selected: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+
+    place: Mapped["Place | None"] = relationship("Place")
 
 
 class RouteMove(Base):
