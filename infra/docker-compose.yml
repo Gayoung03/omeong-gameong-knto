@@ -1,21 +1,46 @@
 services:
-  postgres:
-    image: pgvector/pgvector:pg16
-    container_name: omeong-gameong-postgres
+  migrate:
+    build: ../apps/api
+    container_name: omeong-gameong-migrate
+    environment:
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        test -n "$${DATABASE_URL}" || { echo "MIGRATION_DATABASE_URL을 .env에 설정하세요."; exit 1; }
+        .venv/bin/alembic upgrade head
+        .venv/bin/alembic current --check-heads
+        .venv/bin/alembic check
+
+  api:
+    build: ../apps/api
+    container_name: omeong-gameong-api
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-omeong}
-      POSTGRES_USER: ${POSTGRES_USER:-omeong}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-omeong}
+      APP_NAME: ${APP_NAME:-Omeong Gameong API}
+      ENVIRONMENT: ${ENVIRONMENT:-local}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL을 .env에 설정하세요.}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "8000:8000"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - ../apps/api/app:/app/app
+    command:
+      - .venv/bin/fastapi
+      - dev
+      - app/main.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-omeong} -d ${POSTGRES_DB:-omeong}"]
-      interval: 5s
-      timeout: 5s
+      test:
+        - CMD
+        - .venv/bin/python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://localhost:8000/api/v1/health", timeout=2)
+      interval: 30s
+      timeout: 3s
       retries: 10
-
-volumes:
-  postgres-data:
+      start_period: 10s
+      start_interval: 1s
