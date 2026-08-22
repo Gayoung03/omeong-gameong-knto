@@ -11,4 +11,4 @@ COPY migrations ./migrations
 
 EXPOSE 8000
 
-CMD ["uv", "run", "fastapi", "run", "app/main.py", "--port", "8000"]
+CMD [".venv/bin/fastapi", "run", "app/main.py", "--port", "8000"]
