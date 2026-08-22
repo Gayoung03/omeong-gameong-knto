@@ -96,7 +96,12 @@ export function SignupScreen() {
       setStep((current) => current - 1);
       return;
     }
-    router.back();
+    // 새로고침이나 딥링크로 바로 들어오면 돌아갈 화면이 없어 back 이 실패한다.
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/login');
   };
 
   const skipCurrentStep = () => {
