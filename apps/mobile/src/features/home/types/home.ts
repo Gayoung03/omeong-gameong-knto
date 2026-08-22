@@ -26,8 +26,26 @@ export type QuickMenuItem = {
   destination: QuickMenuDestination;
 };
 
-export type EditorialCard = {
+export type EditorialStorySection = {
   id: string;
+  heading: string;
+  paragraphs: string[];
+  imageUrl?: string;
+  imageCaption?: string;
+};
+
+/** 추후 관리자 작성 API 응답으로 교체할 제주 여행 이야기 모델. */
+export type EditorialStory = {
+  id: string;
+  category: string;
+  cardTitle: string;
   title: string;
-  imageUrl: string;
+  summary: string;
+  heroImageUrl: string;
+  publishedAt: string;
+  readingMinutes: number;
+  author: string;
+  sections: EditorialStorySection[];
+  tips: string[];
+  tags: string[];
 };

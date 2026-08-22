@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, overlayColors } from '@/src/theme';
+import { colors, overlayColors, radius, spacing } from '@/src/theme';
 
 import { homeRegions } from '../constants/homeRegions';
 import type { PlaceRegion } from '@/src/features/places/types/place';
@@ -48,7 +48,7 @@ export function RegionalRecommendation({
             >
               <Ionicons color={colors.primary} name="paw" size={10} />
               <Text numberOfLines={2} style={styles.regionLabel}>
-                {region.label}
+                {region.displayLabel ?? region.label}
               </Text>
             </Pressable>
           ))}
@@ -64,13 +64,13 @@ export function RegionalRecommendation({
 
 const styles = StyleSheet.create({
   sectionHeader: {
-    marginBottom: 12,
+    marginBottom: spacing.sm + spacing.xs,
   },
   mapCard: {
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.seaSoft,
-    borderRadius: 18,
+    borderRadius: radius.lg,
     backgroundColor: colors.seaSoftLight,
   },
   mapVisual: {
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
   },
   mapCaption: {
     minHeight: 49,
-    paddingHorizontal: 14,
+    paddingHorizontal: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

@@ -1,5 +1,5 @@
 .PHONY: setup dev mobile-install api-install mobile-dev api-dev db-up db-down db-logs db-migrate \
-	db-migrate-check db-migration-smoke lint typecheck test check
+	db-migrate-check db-migration-smoke db-seed lint typecheck test check
 
 setup: mobile-install api-install
 
@@ -33,6 +33,9 @@ db-migrate:
 db-migrate-check: db-migrate
 	cd apps/api && uv run alembic current --check-heads
 	cd apps/api && uv run alembic check
+
+db-seed:
+	cd apps/api && uv run python -m scripts.seed_dev
 
 db-migration-smoke:
 	@status=0; \

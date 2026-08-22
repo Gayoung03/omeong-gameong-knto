@@ -9,7 +9,6 @@ import {
   Share,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -155,8 +154,7 @@ export function RouteRecommendationScreen() {
     tripDays.flatMap((day) => day.places.map((place) => place.id)),
   );
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [openModal, setOpenModal] = useState<'map' | 'saved' | 'request' | null>(null);
-  const [requestText, setRequestText] = useState('');
+  const [openModal, setOpenModal] = useState<'map' | 'saved' | null>(null);
 
   const duration =
     params.startAt && params.endAt
@@ -255,14 +253,6 @@ export function RouteRecommendationScreen() {
     } catch {
       setFeedback('코스를 저장하지 못했어요. 다시 시도해주세요.');
     }
-  };
-
-  const submitChangeRequest = () => {
-    const request = requestText.trim();
-    if (!request) return;
-    setOpenModal(null);
-    setRequestText('');
-    setFeedback(`혼디가 “${request}” 요청을 반영해 새 코스를 준비할게요.`);
   };
 
   return (
@@ -440,21 +430,6 @@ export function RouteRecommendationScreen() {
           </Pressable>
         </View>
 
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setOpenModal('request')}
-          style={({ pressed }) => [styles.aiRequestCard, pressed && styles.pressed]}
-          testID="request-change-button"
-        >
-          <View style={styles.aiIcon}>
-            <Text style={styles.aiIconEmoji}>🐶</Text>
-          </View>
-          <View style={styles.aiRequestCopy}>
-            <Text style={styles.aiRequestTitle}>일정이 마음에 들지 않나요?</Text>
-            <Text style={styles.aiRequestText}>혼디에게 원하는 방식으로 수정을 요청해보세요.</Text>
-          </View>
-          <Ionicons color={palette.orange} name="chevron-forward" size={20} />
-        </Pressable>
       </ScrollView>
 
       <Modal
@@ -468,11 +443,7 @@ export function RouteRecommendationScreen() {
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {openModal === 'map'
-                  ? `${selectedDay}일차 경로`
-                  : openModal === 'saved'
-                    ? '코스 저장 완료'
-                    : '혼디에게 수정 요청'}
+                {openModal === 'map' ? `${selectedDay}일차 경로` : '코스 저장 완료'}
               </Text>
               <Pressable accessibilityLabel="닫기" onPress={() => setOpenModal(null)}>
                 <Ionicons color={palette.gray} name="close" size={23} />
@@ -536,43 +507,6 @@ export function RouteRecommendationScreen() {
               </View>
             ) : null}
 
-            {openModal === 'request' ? (
-              <View>
-                <Text style={styles.requestGuide}>
-                  바꾸고 싶은 장소나 일정 조건을 자연스럽게 적어주세요.
-                </Text>
-                <View style={styles.requestExamples}>
-                  {[
-                    '카페를 한 곳 더 넣어줘',
-                    '비 오는 날 실내 위주로 바꿔줘',
-                    '이동 시간을 줄여줘',
-                  ].map((example) => (
-                    <Pressable
-                      key={example}
-                      onPress={() => setRequestText(example)}
-                      style={styles.requestChip}
-                    >
-                      <Text style={styles.requestChipText}>{example}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <TextInput
-                  multiline
-                  onChangeText={setRequestText}
-                  placeholder="예: 둘째 날 카페 대신 바다 산책 코스를 넣어줘"
-                  placeholderTextColor={colors.textTertiary}
-                  style={styles.requestInput}
-                  value={requestText}
-                />
-                <Pressable
-                  disabled={!requestText.trim()}
-                  onPress={submitChangeRequest}
-                  style={[styles.modalPrimaryButton, !requestText.trim() && styles.buttonDisabled]}
-                >
-                  <Text style={styles.modalPrimaryText}>수정 요청 보내기</Text>
-                </Pressable>
-              </View>
-            ) : null}
           </View>
         </View>
       </Modal>
@@ -824,28 +758,6 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: { color: palette.white, fontSize: 13, fontWeight: '800' },
   buttonDisabled: { backgroundColor: colors.divider },
-  aiRequestCard: {
-    alignItems: 'center',
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primarySoftStrong,
-    borderRadius: 15,
-    borderWidth: 1,
-    flexDirection: 'row',
-    marginTop: 12,
-    padding: 13,
-  },
-  aiIcon: {
-    alignItems: 'center',
-    backgroundColor: colors.primarySoftStrong,
-    borderRadius: 20,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  aiIconEmoji: { fontSize: 22 },
-  aiRequestCopy: { flex: 1, paddingHorizontal: 10 },
-  aiRequestTitle: { color: palette.ink, fontSize: 12, fontWeight: '800' },
-  aiRequestText: { color: palette.gray, fontSize: 10, lineHeight: 15, marginTop: 3 },
   modalBackdrop: {
     alignItems: 'center',
     backgroundColor: overlayColors.scrim,
@@ -953,28 +865,6 @@ const styles = StyleSheet.create({
     marginTop: 5,
     textAlign: 'center',
   },
-  requestGuide: { color: palette.gray, fontSize: 11, lineHeight: 17 },
-  requestExamples: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 11 },
-  requestChip: {
-    backgroundColor: colors.primarySoft,
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-  },
-  requestChipText: { color: palette.orange, fontSize: 9, fontWeight: '700' },
-  requestInput: {
-    borderColor: palette.line,
-    borderRadius: 12,
-    borderWidth: 1,
-    color: palette.ink,
-    fontSize: 11,
-    marginBottom: 11,
-    marginTop: 12,
-    minHeight: 100,
-    outlineStyle: 'none',
-    padding: 11,
-    textAlignVertical: 'top',
-  } as never,
   modalPrimaryButton: {
     alignItems: 'center',
     alignSelf: 'stretch',
