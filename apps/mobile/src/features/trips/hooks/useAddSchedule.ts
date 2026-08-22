@@ -122,7 +122,6 @@ export function useAddSchedule({ tripId, schedules, initialScheduleId }: UseAddS
         };
       };
 
-      queryClient.setQueryData<Trip | null>(tripQueryKeys.latest(), applyToTrip);
       queryClient.setQueryData<Trip>(
         tripQueryKeys.detail(tripId),
         (trip) => applyToTrip(trip) ?? trip,

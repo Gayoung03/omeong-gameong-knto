@@ -1,5 +1,9 @@
-import { ScreenPlaceholder } from '@/src/components/feedback/ScreenPlaceholder';
+import { useLocalSearchParams } from 'expo-router';
+
+import { TripDetailScreen } from '@/src/features/trips/screens/TripDetailScreen';
 
 export default function TripDetailRoute() {
-  return <ScreenPlaceholder description="여행 일정 상세 화면 작업 영역" title="여행 일정" />;
+  const { tripId } = useLocalSearchParams<{ tripId: string }>();
+
+  return <TripDetailScreen tripId={tripId ?? ''} />;
 }

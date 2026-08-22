@@ -333,4 +333,93 @@ export const MOCK_TRIP: Trip = {
   schedules,
 };
 
-export const MOCK_TRIPS: Trip[] = [MOCK_TRIP];
+/**
+ * 목록 화면 확인용 여행들. 상세 화면은 MOCK_TRIP 만큼 촘촘하지 않다.
+ * TODO: 실제 여행 API 연동 시 이 배열 전체를 서버 응답으로 교체한다.
+ */
+const sideTrips: Trip[] = [
+  {
+    id: 'trip-jeju-coco',
+    title: '코코와 가을 서귀포',
+    startDate: '2026-10-09',
+    endDate: '2026-10-11',
+    nights: 2,
+    days: 3,
+    transport: 'publicTransport',
+    pets: [{ id: 'pet-coco', name: '코코', sizeType: 'small', count: 1 }],
+    accommodationSummary: '중문 숙소 1곳',
+    travelStyle: '느긋한 산책 여행',
+    styleKeywords: ['폭포', '산책로', '카페'],
+    memo: '고양이 동반이라 실내 위주로 짜기',
+    coverEmoji: '🐱',
+    distanceSummary: { totalDistanceKm: 41.2, carMinutes: 95, walkMinutes: 60 },
+    schedules: [
+      {
+        id: 'schedule-coco-day-1',
+        dayNumber: 1,
+        date: '2026-10-09',
+        weather: createWeather('partlyCloudy', [
+          ['cloudy', 17, 20],
+          ['partlyCloudy', 20, 10],
+          ['partlyCloudy', 23, 10],
+          ['sunny', 24, 0],
+          ['partlyCloudy', 21, 0],
+          ['cloudy', 18, 10],
+        ]),
+        items: createItems([
+          {
+            place: places.cheonjiyeon,
+            moveToNext: { transport: 'car', distanceMeters: 4200, durationMinutes: 11 },
+          },
+          { place: places.jungmun },
+        ]),
+      },
+    ],
+  },
+  {
+    id: 'trip-jeju-family',
+    title: '가족 다같이 제주',
+    startDate: '2026-12-24',
+    endDate: '2026-12-26',
+    nights: 2,
+    days: 3,
+    transport: 'rentalCar',
+    pets: [
+      { id: 'pet-mong', name: '몽이', sizeType: 'small', count: 1 },
+      { id: 'pet-coco', name: '코코', sizeType: 'small', count: 1 },
+    ],
+    accommodationSummary: '성산 숙소 1곳',
+    travelStyle: '알찬 관광 여행',
+    styleKeywords: ['바다', '자연', '사진'],
+    memo: '겨울이라 실내 일정 비중 늘리기',
+    coverEmoji: '🎄',
+    distanceSummary: { totalDistanceKm: 62.5, carMinutes: 150, walkMinutes: 45 },
+    schedules: [
+      {
+        id: 'schedule-family-day-1',
+        dayNumber: 1,
+        date: '2026-12-24',
+        weather: createWeather('cloudy', [
+          ['cloudy', 5, 30],
+          ['cloudy', 7, 30],
+          ['cloudy', 9, 20],
+          ['partlyCloudy', 10, 10],
+          ['cloudy', 8, 20],
+          ['cloudy', 6, 30],
+        ]),
+        items: createItems([
+          {
+            place: places.seongsan,
+            moveToNext: { transport: 'car', distanceMeters: 7800, durationMinutes: 18 },
+          },
+          { place: places.seongsanStay },
+        ]),
+      },
+    ],
+  },
+];
+
+/** 최근 여행이 앞에 오도록 시작일 내림차순으로 정렬해 둔다. */
+export const MOCK_TRIPS: Trip[] = [...sideTrips, MOCK_TRIP].sort((a, b) =>
+  b.startDate.localeCompare(a.startDate),
+);
