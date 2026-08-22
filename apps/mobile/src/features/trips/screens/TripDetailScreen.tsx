@@ -12,8 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AppHeader } from '@/src/components/layout/AppHeader';
-import { ScreenTitleBar } from '@/src/components/layout/ScreenTitleBar';
+import { IconButton } from '@/src/components/ui/IconButton';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
 import { ChecklistTab } from '../components/ChecklistTab';
@@ -28,7 +27,7 @@ import { TripSummaryCard } from '../components/TripSummaryCard';
 import { TripTabBar } from '../components/TripTabBar';
 import { WeatherSheet } from '../components/WeatherSheet';
 import { useTripShare } from '../hooks/useTripShare';
-import { useLatestTrip } from '../hooks/useTrips';
+import { useTrip } from '../hooks/useTrips';
 import type { TripDetailTab } from '../types/trip';
 import { formatFullDate, getWeatherIcon } from '../utils/tripFormat';
 
@@ -45,9 +44,9 @@ function runAfterSheetClose(action: () => void) {
   setTimeout(action, SHEET_CLOSE_DELAY_MS);
 }
 
-export function MyTripsScreen() {
+export function TripDetailScreen({ tripId }: { tripId: string }) {
   const router = useRouter();
-  const { data: trip, isLoading, isError, refetch } = useLatestTrip();
+  const { data: trip, isLoading, isError, refetch } = useTrip(tripId);
 
   const [activeTab, setActiveTab] = useState<TripDetailTab>('schedule');
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
@@ -67,6 +66,14 @@ export function MyTripsScreen() {
       null
     );
   }, [trip, selectedScheduleId]);
+
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/trips');
+  };
 
   const handlePressTripInfo = () => {
     if (!trip) {
@@ -150,10 +157,10 @@ export function MyTripsScreen() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centered}>
-          <Text style={styles.stateTitle}>저장한 여행이 없어요</Text>
-          <Text style={styles.stateDescription}>
-            루트 추천에서 마음에 드는 코스를 저장해보세요.
-          </Text>
+          <Text style={styles.stateTitle}>여행을 찾을 수 없어요</Text>
+          <Pressable onPress={handleBack} style={styles.retryButton}>
+            <Text style={styles.retryText}>목록으로</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );
@@ -161,20 +168,21 @@ export function MyTripsScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <AppHeader notifications="popup" />
-      <ScreenTitleBar
-        right={
-          <Pressable
-            accessibilityLabel="공유하기"
-            accessibilityRole="button"
-            hitSlop={spacing.sm}
-            onPress={handlePressShare}
-          >
-            <Ionicons color={colors.basalt} name="share-outline" size={20} />
-          </Pressable>
-        }
-        title="내 여행"
-      />
+      <View style={styles.header}>
+        <IconButton accessibilityLabel="뒤로 가기" icon="chevron-back" onPress={handleBack} />
+        <Text numberOfLines={1} style={styles.headerTitle}>
+          {trip.title}
+        </Text>
+        <Pressable
+          accessibilityLabel="공유하기"
+          accessibilityRole="button"
+          hitSlop={spacing.sm}
+          onPress={handlePressShare}
+          style={styles.headerAction}
+        >
+          <Ionicons color={colors.basalt} name="share-outline" size={20} />
+        </Pressable>
+      </View>
 
       <TripSummaryCard onPressInfo={handlePressTripInfo} trip={trip} />
       <TripTabBar activeTab={activeTab} onChangeTab={setActiveTab} />
@@ -281,7 +289,27 @@ export function MyTripsScreen() {
   );
 }
 
+const HEADER_ACTION_SIZE = 44;
+
 const styles = StyleSheet.create({
+  header: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    paddingHorizontal: spacing.sm,
+  },
+  headerTitle: {
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: typography.subtitle.fontSize,
+    fontWeight: typography.subtitle.fontWeight,
+    textAlign: 'center',
+  },
+  headerAction: {
+    alignItems: 'center',
+    height: HEADER_ACTION_SIZE,
+    justifyContent: 'center',
+    width: HEADER_ACTION_SIZE,
+  },
   safeArea: {
     backgroundColor: colors.background,
     flex: 1,

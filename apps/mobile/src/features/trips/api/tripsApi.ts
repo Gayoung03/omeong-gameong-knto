@@ -40,8 +40,3 @@ export async function getTrip(tripId: string): Promise<Trip> {
 
   return delay(trip);
 }
-
-/** 가장 최근 여행 조회. 목록이 비어 있으면 null */
-export async function getLatestTrip(): Promise<Trip | null> {
-  return delay(MOCK_TRIPS[0] ?? null);
-}
