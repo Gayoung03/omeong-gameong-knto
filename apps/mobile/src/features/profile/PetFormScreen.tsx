@@ -19,7 +19,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/src/components/ui/Button';
 import { Chip, ChipRow } from '@/src/components/ui/Chip';
 import { colors, radius, spacing, typography } from '@/src/theme';
-import { PET_SPECIES_OPTIONS, type Pet, type PetSpecies } from '@/src/types/pet';
+import {
+  OTHER_SPECIES,
+  PET_SIZE_OPTIONS,
+  PET_SPECIES_OPTIONS,
+  suggestPetSize,
+  type Pet,
+  type PetSize,
+  type PetSpecies,
+} from '@/src/types/pet';
 
 import { DiscardChangesModal } from './components/DiscardChangesModal';
 import { PetDeleteConfirmModal } from './components/PetDeleteConfirmModal';
@@ -70,9 +78,13 @@ export function PetFormScreen({ petId }: Props) {
 
   const [name, setName] = useState('');
   const [species, setSpecies] = useState<PetSpecies>(PET_SPECIES_OPTIONS[0]);
+  const [speciesDetail, setSpeciesDetail] = useState('');
   const [breed, setBreed] = useState('');
   const [age, setAge] = useState('');
   const [weight, setWeight] = useState('');
+  const [size, setSize] = useState<PetSize>(PET_SIZE_OPTIONS[0]);
+  /** 사용자가 크기를 직접 고른 뒤에는 몸무게가 바뀌어도 자동 추천이 덮어쓰지 않는다. */
+  const [isSizeChosen, setIsSizeChosen] = useState(false);
   const [localImageUri, setLocalImageUri] = useState<string | undefined>();
   const [imageReset, setImageReset] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
@@ -92,9 +104,13 @@ export function PetFormScreen({ petId }: Props) {
       loadedPetIdRef.current = editingPet.petId;
       setName(editingPet.name);
       setSpecies(editingPet.species);
+      setSpeciesDetail(editingPet.speciesDetail ?? '');
       setBreed(editingPet.breed);
       setAge(String(editingPet.age));
       setWeight(String(editingPet.weight));
+      setSize(editingPet.size);
+      // 저장된 값이 있으니 자동 추천이 끼어들지 않게 한다.
+      setIsSizeChosen(true);
     }
   }, [editingPet]);
 
@@ -108,7 +124,33 @@ export function PetFormScreen({ petId }: Props) {
     ]);
   }, [isMissingPet, router]);
 
-  const errors = validatePetForm({ name, breed, age, weight });
+  const isOtherSpecies = species === OTHER_SPECIES;
+
+  const handleChangeWeight = (text: string) => {
+    setWeight(text);
+    if (isSizeChosen) return;
+
+    const suggested = suggestPetSize(Number(text.trim()));
+    if (suggested) setSize(suggested);
+  };
+
+  const handleChangeSize = (next: PetSize) => {
+    setSize(next);
+    setIsSizeChosen(true);
+  };
+
+  const handleChangeSpecies = (next: PetSpecies) => {
+    setSpecies(next);
+    if (next !== OTHER_SPECIES) setSpeciesDetail('');
+  };
+
+  const errors = validatePetForm({
+    name,
+    speciesDetail: isOtherSpecies ? speciesDetail : undefined,
+    breed,
+    age,
+    weight,
+  });
   const displayImageUri = localImageUri ?? (imageReset ? undefined : editingPet?.profileImage);
 
   const isDirty = isEditMode
@@ -116,13 +158,15 @@ export function PetFormScreen({ petId }: Props) {
         editingPet &&
           (name.trim() !== editingPet.name ||
             species !== editingPet.species ||
+            speciesDetail.trim() !== (editingPet.speciesDetail ?? '') ||
+            size !== editingPet.size ||
             breed.trim() !== editingPet.breed ||
             age.trim() !== String(editingPet.age) ||
             weight.trim() !== String(editingPet.weight) ||
             localImageUri !== undefined ||
             imageReset),
       )
-    : Boolean(name || breed || age || weight || localImageUri);
+    : Boolean(name || speciesDetail || breed || age || weight || localImageUri);
 
   const isSaveDisabled = !isDirty || hasPetFormError(errors) || isSaving;
 
@@ -175,9 +219,11 @@ export function PetFormScreen({ petId }: Props) {
     const input = {
       name,
       species,
+      speciesDetail: isOtherSpecies ? speciesDetail.trim() : undefined,
       breed,
       age: Number(age.trim()),
       weight: Number(weight.trim()),
+      size,
       localProfileImageUri: localImageUri,
       removeProfileImage: imageReset,
     };
@@ -277,11 +323,31 @@ export function PetFormScreen({ petId }: Props) {
                 <Chip
                   key={option}
                   label={option}
-                  onPress={() => setSpecies(option)}
+                  onPress={() => handleChangeSpecies(option)}
                   selected={species === option}
                 />
               ))}
             </ChipRow>
+            {isOtherSpecies && (
+              <>
+                <TextInput
+                  editable={!isSaving}
+                  maxLength={20}
+                  onChangeText={(text) => setSpeciesDetail(text.replace(/\n/g, ''))}
+                  placeholder="종 이름을 입력해 주세요"
+                  placeholderTextColor={colors.textSecondary}
+                  style={[
+                    styles.input,
+                    styles.speciesDetailInput,
+                    errors.speciesDetail && styles.inputError,
+                  ]}
+                  value={speciesDetail}
+                />
+                {errors.speciesDetail && (
+                  <Text style={styles.errorText}>{errors.speciesDetail}</Text>
+                )}
+              </>
+            )}
           </View>
 
           <View style={styles.section}>
@@ -320,7 +386,7 @@ export function PetFormScreen({ petId }: Props) {
                 editable={!isSaving}
                 keyboardType="decimal-pad"
                 maxLength={5}
-                onChangeText={setWeight}
+                onChangeText={handleChangeWeight}
                 placeholder="0.0"
                 placeholderTextColor={colors.textSecondary}
                 style={[styles.input, errors.weight && styles.inputError]}
@@ -328,6 +394,21 @@ export function PetFormScreen({ petId }: Props) {
               />
               {errors.weight && <Text style={styles.errorText}>{errors.weight}</Text>}
             </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.label}>크기</Text>
+            <ChipRow>
+              {PET_SIZE_OPTIONS.map((option) => (
+                <Chip
+                  key={option}
+                  label={option}
+                  onPress={() => handleChangeSize(option)}
+                  selected={size === option}
+                />
+              ))}
+            </ChipRow>
+            <Text style={styles.sizeHint}>몸무게를 입력하면 자동으로 골라드려요. 직접 바꿔도 됩니다.</Text>
           </View>
 
           {errorMessage && <Text style={styles.mutationError}>{errorMessage}</Text>}
@@ -414,6 +495,14 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+  },
+  speciesDetailInput: {
+    marginTop: spacing.sm,
+  },
+  sizeHint: {
+    color: colors.textSecondary,
+    fontSize: typography.caption.fontSize,
+    marginTop: spacing.xs,
   },
   input: {
     borderColor: colors.border,
