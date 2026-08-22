@@ -1,47 +1,41 @@
-import { MOCK_TRIPS } from '../mocks/trips.mock';
+import { apiClient } from '@/src/services/apiClient';
+
+import type { RouteDetailResponse, RouteListResponse } from '../types/routeApi';
 import type { Trip, TripListItem } from '../types/trip';
+import { toTrip, toTripListItem } from './routeAdapter';
 
 /**
- * 백엔드 /api/v1/trips 가 준비되기 전까지 Mock 데이터를 반환한다.
- * API 연동 시 이 파일의 구현만 apiClient 호출로 교체하고, Hook·화면은 수정하지 않는다.
+ * 내 여행 서버 호출.
+ *
+ * 서버와 앱의 타입 차이는 `./routeAdapter.ts` 가 흡수한다.
+ * 이 파일은 "어디를 부르는가"만 담고, Hook·화면은 수정하지 않는다.
+ *
+ * 주소가 `/trips` 가 아니라 **`/routes`** 다 — 서버의 `trips.py` 는 여행기록(travel_logs) 담당이다.
  */
-const MOCK_DELAY_MS = 300;
-
-function delay<T>(value: T): Promise<T> {
-  return new Promise((resolve) => {
-    setTimeout(() => resolve(value), MOCK_DELAY_MS);
-  });
-}
-
-function toListItem(trip: Trip): TripListItem {
-  return {
-    id: trip.id,
-    title: trip.title,
-    startDate: trip.startDate,
-    endDate: trip.endDate,
-    nights: trip.nights,
-    days: trip.days,
-    coverEmoji: trip.coverEmoji,
-  };
-}
 
 /** 내 여행 목록 조회 */
 export async function getTrips(): Promise<TripListItem[]> {
-  return delay(MOCK_TRIPS.map(toListItem));
+  const { data } = await apiClient.get<RouteListResponse>('/routes');
+  return data.items.map(toTripListItem);
 }
 
 /** 여행 상세 조회 */
 export async function getTrip(tripId: string): Promise<Trip> {
-  const trip = MOCK_TRIPS.find((item) => item.id === tripId);
-
-  if (!trip) {
-    throw new Error(`여행을 찾을 수 없습니다. tripId: ${tripId}`);
-  }
-
-  return delay(trip);
+  const { data } = await apiClient.get<RouteDetailResponse>(`/routes/${tripId}`);
+  return toTrip(data);
 }
 
-/** 가장 최근 여행 조회. 목록이 비어 있으면 null */
+/**
+ * 가장 최근 여행 조회. 목록이 비어 있으면 null.
+ *
+ * 서버가 `startAt` 내림차순으로 주므로 첫 줄이 가장 최근이다.
+ * 목록에는 일정이 없어서 그 id 로 상세를 한 번 더 부른다.
+ */
 export async function getLatestTrip(): Promise<Trip | null> {
-  return delay(MOCK_TRIPS[0] ?? null);
+  const { data } = await apiClient.get<RouteListResponse>('/routes', {
+    params: { limit: 1 },
+  });
+
+  const latest = data.items[0];
+  return latest ? getTrip(latest.id) : null;
 }
