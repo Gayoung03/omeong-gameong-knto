@@ -346,7 +346,7 @@ git add package-lock.json
 > 이전 내용(라이브러리 8개 설치, theme 토큰, app.config.ts, .gitignore, .env.example 등)은
 > #21·#26 으로 이미 main 에 반영되었다.
 >
-> 현재 대상: **PR #32 · #36 · #37**
+> 현재 대상: **PR #32 · #36 · #37 · #51 + 내 여행 API 연동**
 
 ```markdown
 ## 신규 설치 라이브러리
@@ -395,6 +395,16 @@ git add package-lock.json
   - omeong-gameong.saved-routes.<이메일>
 - **API 명세 문서 3개를 고쳤습니다** (lucky 님 확인 후). places.md / type-mismatch-report.md /
   README.md 에서 PetPolicyBadge 경로와 unknown 반영 상태만 갱신했고 분석·판단은 건드리지 않았습니다.
+- **내 여행 화면이 목데이터를 버리고 실제 API 를 부릅니다.** `GET /api/v1/routes` 입니다.
+  이 화면을 보려면 **백엔드가 떠 있어야 합니다.**
+  - `make dev` 로 앱과 서버를 함께 띄웁니다.
+  - `make db-seed` 로 씨앗 데이터를 심습니다. **자동 실행되지 않습니다** — 안 심으면 목록이 비어 보입니다.
+  - 서버 없이 UI 만 볼 때(`npx expo start`) 내 여행 탭이 비는 것은 **고장이 아닙니다.**
+  - 실기기로 볼 때는 `apps/mobile/.env` 의 `EXPO_PUBLIC_API_URL` 을 `localhost` 대신 PC 내부 IP 로 바꿔야 합니다.
+  - 주소가 `/trips` 가 아니라 **`/routes`** 입니다. 서버의 `trips.py` 는 여행기록(travel_logs) 담당입니다.
+- **서버·앱 타입 변환은 `features/trips/api/routeAdapter.ts` 한 곳에만 있습니다.**
+  서버에 아직 없는 값(날씨·이동거리·동반정책·평점)은 빈 값으로 채워 화면이 그리지 않게 했습니다.
+  서버가 값을 내려주기 시작하면 **이 파일만** 고치면 됩니다. 훅·화면은 손대지 않았습니다.
 
 ## 협의가 필요한 사항
 
@@ -407,6 +417,11 @@ git add package-lock.json
   여기만 연한 주황입니다. 흰 배경에 인쇄되듯 나가는 화면이라 의도적으로 남겨두었습니다.
 - **여행 준비 가이드의 성격.** 특정 여행과 무관한 일반 지식 콘텐츠로 잡았습니다.
   여행별 준비물은 내 여행의 체크리스트 탭이 담당합니다.
+- **여행 이동수단(transport)의 값 개수가 서버와 앱이 다릅니다.** 서버는 7종
+  (rental_car / own_car / taxi / public_transport / walk / ferry / airplane),
+  앱 `TripTransport` 는 4종(rentalCar / ownCar / publicTransport / walk)입니다.
+  지금은 어댑터가 taxi·ferry·airplane 을 publicTransport 로 접고 있어 **정보가 줄어듭니다.**
+  제주도는 배·비행기가 실제 이동수단이라 앱 union 을 넓히는 쪽이 맞아 보입니다. 회의 안건입니다.
 ```
 
 > 위 블록은 작업이 진행되는 대로 1~3번 표의 내용을 반영해 갱신한다.
@@ -452,3 +467,4 @@ git add package-lock.json
 | 2026-08-18 | API 명세 문서 3개 갱신(lucky 님 확인 후) — **사실 관계가 바뀐 부분만** 고쳤다. ① `PetPolicyBadge` 경로를 `features/trips/components/` → `src/components/domain/` 으로 (3개 문서에 걸쳐 있었다), ② `unknown` 미반영 경고를 '반영 완료' 로 바꾸고 README 의 '앱 코드 수정이 필요한 것' 목록에서 제거, ③ `type-mismatch-report.md` 부록에 PR #32·#36 신규 타입 4개를 '대조 안 함' 으로 추가. **분석·판단·회의 안건은 건드리지 않았다** — 문서 소유는 lucky 님이다. 변경 이력에 작성자를 남겼다                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 2026-08-18 | 5번 항목(main PR 본문) 재작성 — #21·#26 으로 이미 main 에 올라간 내용이 그대로 남아 있어 **아직 main 에 없는 것(PR #32·#36·#37)만** 담도록 비우고 다시 썼다. 이 블록은 main PR 을 낼 때마다 비우고 다시 쓰는 것이라는 안내도 함께 넣었다                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | 2026-08-21 | **백엔드 B 파트(장소·리뷰·여행) 착수.** 씨앗 데이터 스크립트(`apps/api/scripts/seed_dev.py`) 신설 — 사용자·반려동물·장소 4곳·여행 1개(3일 / 일정 6개)를 심는다. 프론트 목데이터(`trips.mock.ts`)와 같은 이름·좌표를 써서 API 연동 시 화면을 눈으로 대조할 수 있게 했다. **시간대** — `timestamptz` 는 절대 시각을 담으므로 저장은 처음부터 정확했고 psql 이 UTC 로 보여주던 것뿐이었다. 저장 방식은 그대로 두고 엔진 `connect_args` 로 **세션 시간대만** `Asia/Seoul` 로 맞췄다. 명세(`docs/api/README.md` 6장)가 `+09:00` 표기를 쓰고, UTC 로 내리면 이른 아침 일정에서 날짜가 하루 밀린다. **테스트 계정** — id `00000000-0000-0000-0000-000000000001` / `seed@omeong.local` 을 A 와 공유해 회원가입 API 와 충돌하지 않게 했다. **에러 메시지는 한국어로 확정** (`README.md` 8장의 '첫 도메인 구현 시 정한다' 항목) — 단 `422` 는 FastAPI 자동 생성이라 영문이고, 앱이 `detail` 이 배열이면 자기 문구를 쓴다. **5번 항목은 아직 비우지 않았다** — 오늘 작업을 마치고 main PR 을 낼 때 다시 쓴다 |
+| 2026-08-22 | **내 여행 화면을 여행 조회 API 에 연결.** `tripsApi.ts` 의 목데이터 호출을 `GET /routes` · `GET /routes/{routeId}` 로 교체하고, 서버·앱 타입 차이를 흡수하는 `api/routeAdapter.ts` 와 서버 응답 타입 `types/routeApi.ts` 를 신설했다. **훅·화면은 한 줄도 고치지 않았다** — 장소 상세(`placesApi.ts`)에서 쓴 어댑터 방식과 같다. 흡수한 차이: `startAt`(시각) → `startDate`(날짜), `sortOrder` 0부터 → `order` 1부터, `itemType` → `PlaceCategory`, 숙소 요약을 일정에서 추출, `pace` → 여행 성향 문구. 서버에 없는 값(날씨·이동거리·동반정책·평점·이동시간)은 빈 값으로 두어 화면이 그리지 않는다. **신규 라이브러리·공통 파일 변경 없음.** 다만 팀원이 pull 후 백엔드를 띄우지 않으면 내 여행 탭이 비므로 5번 항목에 안내를 넣었다. `trips.mock.ts` 는 **지우면 안 된다** — `features/places/api/placesApi.ts` 가 장소 상세 어댑터에서 아직 쓴다 |
