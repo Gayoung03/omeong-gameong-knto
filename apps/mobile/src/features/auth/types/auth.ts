@@ -1,4 +1,4 @@
-export type PetType = 'dog' | 'cat' | 'rabbit' | 'bird' | 'other';
+export type PetType = 'dog' | 'cat' | 'other';
 
 export type PetSize = 'small' | 'medium' | 'large';
 
@@ -23,6 +23,8 @@ export type SignupData = {
   };
   pet: {
     type: PetType | null;
+    /** type이 'other'일 때만 채워진다. 사용자가 직접 적은 종 이름 */
+    typeDetail: string;
     size: PetSize | null;
   };
   travel: {
