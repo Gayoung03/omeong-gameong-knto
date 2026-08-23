@@ -11,6 +11,8 @@
  * 앱 쪽 union 은 camelCase(`rentalCar`) 이므로 그대로 쓰면 안 된다.
  */
 
+import type { ServerPetPolicy } from '@/src/types/place';
+
 /** 여행 상태 */
 export type ServerRouteStatus =
   'generating' | 'generated' | 'saved' | 'ongoing' | 'completed' | 'failed';
@@ -54,6 +56,8 @@ export type RouteListItemResponse = {
   /** 서버가 start/end 로 계산해 내려준다 (DB 에 없는 값) */
   days: number;
   nights: number;
+  /** 이 여행에 속한 여행기록 개수. 계산값이다 */
+  logCount: number;
 };
 
 /**
@@ -78,6 +82,10 @@ export type PlaceSummaryResponse = {
   latitude: number;
   longitude: number;
   reservationRequired: boolean;
+  /** 리뷰 집계. 2026-08-23 부터 서버가 내려준다 */
+  rating: number | null;
+  reviewCount: number;
+  petPolicyType: ServerPetPolicy;
 };
 
 /** 하루 안의 방문 한 건 */
@@ -122,9 +130,10 @@ export type RoutePetResponse = {
  * GET /routes/{routeId}.
  *
  * 명세에 있지만 아직 서버가 안 내려주는 것 —
- * `weather` · `moveToNext` · `distanceSummary` · `stays` · `logCount` ·
- * place 의 `rating`·`reviewCount`·`petPolicyType`.
- * 데이터 소스(기상청·TMAP·리뷰 집계)가 아직 없어서다.
+ * `weather`(기상청) · `moveToNext`·`distanceSummary`(TMAP) · `stays`(추천 요청서).
+ *
+ * `logCount` 와 place 의 `rating`·`reviewCount`·`petPolicyType` 은
+ * 2026-08-23 에 채워졌다.
  */
 export type RouteDetailResponse = RouteListItemResponse & {
   explanation: string | null;
@@ -133,4 +142,21 @@ export type RouteDetailResponse = RouteListItemResponse & {
   shareToken: string | null;
   pets: RoutePetResponse[];
   routeDays: RouteDayResponse[];
+};
+
+/**
+ * POST /route-days/{routeDayId}/items 요청.
+ *
+ * `sortOrder` 는 0 부터다. 이미 있는 값이면 뒤 항목들이 밀린다.
+ * `placeId` 가 없으면 `customPlaceName` 이 필수다.
+ */
+export type RouteItemCreateRequest = {
+  itemType: ServerScheduleItemType;
+  sortOrder: number;
+  placeId?: string;
+  customPlaceName?: string;
+  startsAt?: string;
+  endsAt?: string;
+  stayMinutes?: number;
+  note?: string;
 };

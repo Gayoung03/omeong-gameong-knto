@@ -20,6 +20,8 @@ import type {
   ServerTransportType,
   ServerTripPace,
 } from '../types/routeApi';
+import { toPetPolicy } from '@/src/types/place';
+
 import type {
   PlaceCategory,
   Schedule,
@@ -116,12 +118,12 @@ function toSchedulePlace(item: RouteItemResponse, place: PlaceSummaryResponse): 
     // 값이 정해진 item_type 을 쓴다.
     category: CATEGORY_MAP[item.itemType] ?? 'etc',
     description: place.description ?? '',
-    // 동반 정책은 place_pet_policies 연동 전까지 없다. 회색 '정보 없음' 배지가 뜬다.
-    petPolicy: 'unknown',
+    // 정책이 없는 장소는 서버가 'unknown' 으로 내려준다. 회색 '정보 없음' 배지가 뜬다.
+    petPolicy: toPetPolicy(place.petPolicyType),
     address: place.address ?? '',
-    // 리뷰 집계가 아직 없다.
-    rating: null,
-    reviewCount: 0,
+    rating: place.rating,
+    reviewCount: place.reviewCount,
+    // 저장 수는 상세 응답에 없다. 장소 상세(GET /places/{id})에만 있다.
     savedCount: 0,
     imageUrl: place.primaryImageUrl,
     latitude: place.latitude,
