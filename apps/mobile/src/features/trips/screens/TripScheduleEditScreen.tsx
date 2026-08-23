@@ -11,6 +11,7 @@ import { colors, spacing, typography } from '@/src/theme';
 import { DayChips } from '../components/DayChips';
 import { ScheduleEditRow } from '../components/ScheduleEditRow';
 import { ScheduleItemActionSheet } from '../components/ScheduleItemActionSheet';
+import { useSaveSchedule } from '../hooks/useSaveSchedule';
 import { useScheduleEdit } from '../hooks/useScheduleEdit';
 import { useTrip } from '../hooks/useTrips';
 import type { ScheduleItem, Trip } from '../types/trip';
@@ -104,6 +105,7 @@ function TripScheduleEditContent({ trip }: TripScheduleEditContentProps) {
     removeItem,
     moveItemToSchedule,
   } = useScheduleEdit(trip.schedules);
+  const saveSchedule = useSaveSchedule(trip.id);
 
   const [actionItemId, setActionItemId] = useState<string | null>(null);
 
@@ -122,10 +124,16 @@ function TripScheduleEditContent({ trip }: TripScheduleEditContentProps) {
   };
 
   const handlePressSave = () => {
-    // TODO: 백엔드 준비 후 일정 저장 Mutation 연결
-    Alert.alert('저장', '변경한 일정은 API 연동 후 실제로 저장돼요.', [
-      { text: '확인', onPress: () => router.back() },
-    ]);
+    saveSchedule.mutate(
+      { draft: draftSchedules, original: trip.schedules },
+      {
+        onError: () => {
+          // 실패했을 때 화면을 닫으면 사용자는 저장된 줄 안다. 편집 상태로 남긴다.
+          Alert.alert('저장하지 못했어요', '잠시 후 다시 시도해 주세요.');
+        },
+        onSuccess: () => router.back(),
+      },
+    );
   };
 
   const handleRemove = () => {
@@ -156,7 +164,7 @@ function TripScheduleEditContent({ trip }: TripScheduleEditContentProps) {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <EditHeader
-        canSave={isDirty}
+        canSave={isDirty && !saveSchedule.isPending}
         onPressCancel={handlePressCancel}
         onPressSave={handlePressSave}
       />

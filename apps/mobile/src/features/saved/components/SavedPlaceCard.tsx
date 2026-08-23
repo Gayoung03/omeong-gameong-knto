@@ -14,7 +14,7 @@ type SavedPlaceCardProps = {
 export function SavedPlaceCard({ onPressRemove, place }: SavedPlaceCardProps) {
   return (
     <View style={styles.card}>
-      <RemoteImage style={styles.thumbnail} uri={place.imageUrl} />
+      <RemoteImage style={styles.thumbnail} uri={place.imageUrl ?? undefined} />
 
       <View style={styles.info}>
         <Text numberOfLines={1} style={styles.name}>

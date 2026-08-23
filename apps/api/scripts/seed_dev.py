@@ -11,10 +11,21 @@ import uuid
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import DEV_USER_ID
-from app.db.models import Pet, Place, Route, RouteDay, RouteItem, RoutePet, User
+from app.db.models import (
+    Pet,
+    Place,
+    Route,
+    RouteChecklistItem,
+    RouteDay,
+    RouteItem,
+    RouteMemo,
+    RoutePet,
+    User,
+)
 from app.db.models.enums import (
     PetSize,
     PetSpecies,
@@ -253,6 +264,77 @@ def seed_places(db: Session) -> dict[str, Place]:
     return places
 
 
+# 체크리스트·메모는 화면이 서버를 보게 되면서 필요해졌다.
+# 없으면 탭이 통째로 비어서 "연결이 안 된 것"과 "데이터가 없는 것"이 구분되지 않는다.
+SEED_CHECKLIST = [
+    ("pet", "목줄 · 가슴줄 · 리드줄", True),
+    ("pet", "이동가방 (켄넬)", True),
+    ("pet", "배변패드 · 비닐봉투", True),
+    ("pet", "휴대용 식기세트", False),
+    ("pet", "간식 · 사료", True),
+    ("pet", "예방접종 수첩", False),
+    ("travel", "여권 · 신분증", True),
+    ("travel", "보조배터리", False),
+    ("travel", "상비약", False),
+    ("etc", "숙소 예약 확인", False),
+]
+
+SEED_MEMOS = [
+    (
+        0,
+        "협재 → 애월 서쪽 코스",
+        "협재는 오전이 한산해요. 몽이 산책은 9시 전에!\n애월 카페는 소형견 동반 가능 (예약 필수)",
+    ),
+    (1, "둘째 날 준비", "물그릇을 차에 두고 내리지 말 것"),
+]
+
+
+def seed_checklist_and_memos(db: Session, route: Route) -> None:
+    """이 여행의 체크리스트와 Day 메모. 이미 있으면 건너뛴다."""
+    existing = db.scalar(
+        select(func.count(RouteChecklistItem.id)).where(RouteChecklistItem.route_id == route.id)
+    )
+    if existing:
+        print(f"  체크리스트 건너뜀 ({existing}개)")
+    else:
+        for sort_order, (category, label, is_checked) in enumerate(SEED_CHECKLIST):
+            db.add(
+                RouteChecklistItem(
+                    route_id=route.id,
+                    category=category,
+                    label=label,
+                    is_checked=is_checked,
+                    # 앱이 기본 제공한 항목이라는 표시. 사용자가 추가한 것과 구분된다.
+                    is_recommended=True,
+                    sort_order=sort_order,
+                )
+            )
+        db.flush()
+        print(f"  체크리스트 생성 ({len(SEED_CHECKLIST)}개)")
+
+    memo_count = db.scalar(select(func.count(RouteMemo.id)).where(RouteMemo.route_id == route.id))
+    if memo_count:
+        print(f"  메모     건너뜀 ({memo_count}개)")
+        return
+
+    days = db.scalars(
+        select(RouteDay).where(RouteDay.route_id == route.id).order_by(RouteDay.day_number)
+    ).all()
+    for day_index, title, content in SEED_MEMOS:
+        if day_index >= len(days):
+            continue
+        db.add(
+            RouteMemo(
+                route_id=route.id,
+                route_day_id=days[day_index].id,
+                title=title,
+                content=content,
+            )
+        )
+    db.flush()
+    print(f"  메모     생성 ({len(SEED_MEMOS)}개)")
+
+
 def seed_route(db: Session, user: User, pet: Pet, places: dict[str, Place]) -> Route:
     """여행 하나 + 날짜 + 일정. 여행이 이미 있으면 통째로 건너뛴다."""
     route = db.get(Route, SEED_ROUTE_ID)
@@ -323,7 +405,8 @@ def main() -> None:
         user = seed_user(db)
         pet = seed_pet(db, user)
         places = seed_places(db)
-        seed_route(db, user, pet, places)
+        route = seed_route(db, user, pet, places)
+        seed_checklist_and_memos(db, route)
         db.commit()
     print("완료")
 

@@ -1,55 +1,74 @@
-import { useCallback, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
 
-import { MOCK_MEMOS } from '../mocks/memos.mock';
-import type { TripMemo } from '../types/trip';
+import {
+  createTripMemo,
+  getTripMemos,
+  removeTripMemo,
+  updateTripMemo,
+} from '../api/memosApi';
+
+import { tripQueryKeys } from './useTrips';
 
 export type MemoDraft = {
   title: string;
   content: string;
 };
 
+export const memosQueryKey = (tripId: string) =>
+  [...tripQueryKeys.detail(tripId), 'memos'] as const;
+
 /**
- * Day별 여행 메모 상태를 화면 단위로 관리한다.
- * TODO: 백엔드 준비 후 TanStack Query mutation 으로 교체
+ * Day 별 여행 메모.
+ *
+ * 화면은 "이 Day 의 메모"를 하나만 다룬다. 서버는 한 Day 에 여러 개를 허용하지만
+ * 화면이 하나만 보여주므로 **가장 먼저 쓴 메모를 그 Day 의 메모로 삼는다.**
+ *
+ * 저장은 세 갈래다 — 없으면 만들고, 있으면 고치고, **내용을 비우면 지운다.**
+ * 서버는 `content` 를 필수로 받는다(제목만 있는 메모는 만들 수 없다).
+ * 빈 메모를 남겨두면 목록에 빈 카드가 생기기도 한다.
  */
-export function useTripMemos() {
-  const [memos, setMemos] = useState<TripMemo[]>(MOCK_MEMOS);
+export function useTripMemos(tripId: string) {
+  const queryClient = useQueryClient();
+  const queryKey = memosQueryKey(tripId);
+
+  const { data: memos = [] } = useQuery({
+    queryFn: () => getTripMemos(tripId),
+    queryKey,
+  });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey });
 
   const findMemoByScheduleId = useCallback(
     (scheduleId: string) => memos.find((memo) => memo.scheduleId === scheduleId) ?? null,
     [memos],
   );
 
-  const saveMemo = useCallback((scheduleId: string, draft: MemoDraft) => {
-    const trimmedTitle = draft.title.trim();
-    const trimmedContent = draft.content.trim();
+  const saveMutation = useMutation({
+    mutationFn: async ({ draft, scheduleId }: { scheduleId: string; draft: MemoDraft }) => {
+      const title = draft.title.trim();
+      const content = draft.content.trim();
+      const existing = memos.find((memo) => memo.scheduleId === scheduleId) ?? null;
 
-    setMemos((previous) => {
-      const existing = previous.find((memo) => memo.scheduleId === scheduleId);
-
-      if (trimmedTitle.length === 0 && trimmedContent.length === 0) {
-        return previous.filter((memo) => memo.scheduleId !== scheduleId);
+      if (content.length === 0) {
+        if (existing) await removeTripMemo(existing.id);
+        return;
       }
 
       if (existing) {
-        return previous.map((memo) =>
-          memo.scheduleId === scheduleId
-            ? { ...memo, title: trimmedTitle, content: trimmedContent }
-            : memo,
-        );
+        await updateTripMemo(existing.id, { content, title });
+        return;
       }
 
-      return [
-        ...previous,
-        {
-          id: `memo-${scheduleId}-${Date.now()}`,
-          scheduleId,
-          title: trimmedTitle,
-          content: trimmedContent,
-        },
-      ];
-    });
-  }, []);
+      await createTripMemo(tripId, { content, scheduleId, title });
+    },
+    onSuccess: invalidate,
+  });
+
+  const saveMemo = useCallback(
+    (scheduleId: string, draft: MemoDraft) => saveMutation.mutate({ draft, scheduleId }),
+    [saveMutation],
+  );
 
   return { memos, findMemoByScheduleId, saveMemo };
 }

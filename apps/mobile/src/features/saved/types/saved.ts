@@ -4,7 +4,8 @@ export type SavedPlace = {
   name: string;
   address: string;
   category: string;
-  imageUrl: string;
+  /** 사진이 없는 장소가 있다. RemoteImage 가 플레이스홀더를 그린다. */
+  imageUrl: string | null;
   /** ISO 8601. 목록을 최신순으로 정렬할 때 쓴다. */
   savedAt: string;
 };
