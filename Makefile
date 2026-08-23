@@ -1,16 +1,30 @@
-.PHONY: setup dev mobile-install api-install mobile-dev api-dev db-up db-down db-logs db-migrate \
-	db-migrate-check db-migration-smoke db-seed lint typecheck test check
+COMPOSE = docker compose --env-file .env -f infra/docker-compose.yml
+LOCAL_COMPOSE = $(COMPOSE) -f infra/docker-compose.local.yml
+
+.PHONY: setup dev dev-local mobile-install api-install mobile-dev api-dev backend-up \
+	backend-down backend-logs backend-local-up backend-local-down backend-local-logs \
+	db-migrate db-migrate-check db-migrate-local db-seed db-seed-local \
+	db-migration-smoke lint typecheck test check
 
 setup: mobile-install api-install
 
-dev: db-up db-migrate-check
-	@trap '$(MAKE) --no-print-directory -C "$(CURDIR)" db-down' EXIT; \
+dev: backend-up
+	@trap 'cd "$(CURDIR)" && $(COMPOSE) down --remove-orphans' EXIT; \
 	cd apps/mobile && npx concurrently \
 		--kill-others \
-		--names MOBILE,API \
+		--names MOBILE,API-LOGS \
 		--prefix-colors cyan,magenta \
 		"npm run dev" \
-		"cd ../api && uv run fastapi dev app/main.py"
+		"cd ../.. && $(COMPOSE) logs -f api"
+
+dev-local: backend-local-up
+	@trap 'cd "$(CURDIR)" && $(LOCAL_COMPOSE) down --remove-orphans' EXIT; \
+	cd apps/mobile && npx concurrently \
+		--kill-others \
+		--names MOBILE,API-LOGS \
+		--prefix-colors cyan,magenta \
+		"npm run dev" \
+		"cd ../.. && $(LOCAL_COMPOSE) logs -f api"
 
 mobile-install:
 	cd apps/mobile && npm ci
@@ -22,20 +36,41 @@ mobile-dev:
 	cd apps/mobile && npm run dev
 
 api-dev:
-	cd apps/api && uv run fastapi dev app/main.py
+	$(COMPOSE) up --build api
 
-db-up:
-	docker compose -f infra/docker-compose.yml up -d --wait postgres
+backend-up:
+	$(COMPOSE) up --build -d --wait --remove-orphans api
+
+backend-down:
+	$(COMPOSE) down --remove-orphans
+
+backend-logs:
+	$(COMPOSE) logs -f api
+
+backend-local-up: db-migrate-local
+	$(LOCAL_COMPOSE) up --build -d --wait --remove-orphans api
+
+backend-local-down:
+	$(LOCAL_COMPOSE) down --remove-orphans
+
+backend-local-logs:
+	$(LOCAL_COMPOSE) logs -f api
 
 db-migrate:
-	cd apps/api && uv run alembic upgrade head
+	$(COMPOSE) run --build --rm migrate .venv/bin/alembic upgrade head
 
-db-migrate-check: db-migrate
-	cd apps/api && uv run alembic current --check-heads
-	cd apps/api && uv run alembic check
+db-migrate-check:
+	$(COMPOSE) run --build --rm migrate
+
+db-migrate-local:
+	$(LOCAL_COMPOSE) up -d --wait postgres
+	$(LOCAL_COMPOSE) run --build --rm migrate
 
 db-seed:
 	cd apps/api && uv run python -m scripts.seed_dev
+
+db-seed-local: db-migrate-local
+	$(LOCAL_COMPOSE) run --build --rm api .venv/bin/python -m scripts.seed_dev
 
 db-migration-smoke:
 	@status=0; \
@@ -43,12 +78,6 @@ db-migration-smoke:
 		up --build --abort-on-container-exit --exit-code-from migrate-smoke || status=$$?; \
 	docker compose -f infra/docker-compose.migration-smoke.yml down --remove-orphans; \
 	exit $$status
-
-db-down:
-	docker compose -f infra/docker-compose.yml down
-
-db-logs:
-	docker compose -f infra/docker-compose.yml logs -f postgres
 
 lint:
 	cd apps/mobile && npm run lint
