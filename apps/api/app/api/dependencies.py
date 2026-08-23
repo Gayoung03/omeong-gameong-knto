@@ -35,3 +35,18 @@ def get_current_user(db: Annotated[Session, Depends(get_db)]) -> User:
 
 # 엔드포인트에서 `current_user: CurrentUser` 한 줄로 쓴다.
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def get_optional_user(db: Annotated[Session, Depends(get_db)]) -> User | None:
+    """토큰이 없어도 되는 조회용 사용자.
+
+    장소 조회는 비로그인도 할 수 있고, 로그인했을 때만 응답에 isFavorite 가
+    채워진다(docs/api/places.md). get_current_user 와 달리 **없으면 401 이 아니라
+    None** 이다. 인증이 실제 JWT 로 바뀌면 "헤더가 없으면 None, 있으면 검증"이
+    되는 자리다.
+    """
+    return db.get(User, DEV_USER_ID)
+
+
+#: 엔드포인트에서 `current_user: OptionalUser` 한 줄로 쓴다. None 일 수 있다.
+OptionalUser = Annotated[User | None, Depends(get_optional_user)]

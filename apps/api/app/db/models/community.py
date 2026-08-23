@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     ARRAY,
@@ -20,10 +21,13 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.db.models.enums import MessageRole, db_enum
+
+if TYPE_CHECKING:
+    from app.db.models.users import Pet, User
 
 
 class Favorite(Base):
@@ -68,6 +72,19 @@ class Review(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+    # --- 파이썬 쪽 연결 -------------------------------------------------
+    # ForeignKey(DB 제약)는 이미 있고, 여기서는 파이썬이 그 외래키를 따라가는
+    # 통로만 연다. DB 스키마 변경이 아니라서 마이그레이션이 필요 없다.
+    images: Mapped[list["ReviewImage"]] = relationship(
+        "ReviewImage",
+        order_by="ReviewImage.sort_order",
+        cascade="all, delete-orphan",
+    )
+    #: 작성자. 탈퇴(soft delete)해도 행이 남아 있어 None 이 되지는 않는다.
+    author: Mapped["User"] = relationship("User")
+    #: 함께 간 반려동물. pet_id 가 null 이거나 삭제됐으면 None.
+    pet: Mapped["Pet | None"] = relationship("Pet")
 
 
 class ReviewImage(Base):
