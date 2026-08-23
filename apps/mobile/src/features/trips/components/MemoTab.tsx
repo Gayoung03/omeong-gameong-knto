@@ -10,6 +10,7 @@ import { formatMonthDay } from '../utils/tripFormat';
 import { MemoEditModal } from './MemoEditModal';
 
 type MemoTabProps = {
+  tripId: string;
   schedules: Schedule[];
 };
 
@@ -17,8 +18,8 @@ const DAY_COLORS = [colors.primary, colors.leaf, colors.sea, colors.basalt] as c
 
 const EMPTY_DRAFT: MemoDraft = { title: '', content: '' };
 
-export function MemoTab({ schedules }: MemoTabProps) {
-  const { findMemoByScheduleId, saveMemo } = useTripMemos();
+export function MemoTab({ schedules, tripId }: MemoTabProps) {
+  const { findMemoByScheduleId, saveMemo } = useTripMemos(tripId);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
 
   const editingMemo = editingSchedule ? findMemoByScheduleId(editingSchedule.id) : null;

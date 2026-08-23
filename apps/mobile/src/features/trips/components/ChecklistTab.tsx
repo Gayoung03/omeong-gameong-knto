@@ -3,14 +3,18 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 
 import { colors, radius, spacing, typography } from '@/src/theme';
 
+import { CHECKLIST_CATEGORY_LABELS } from '../constants/checklist';
 import { useChecklist } from '../hooks/useChecklist';
-import { CHECKLIST_CATEGORY_LABELS } from '../mocks/checklist.mock';
 import { ChecklistProgress } from './ChecklistProgress';
 import { ChecklistRow } from './ChecklistRow';
 
-export function ChecklistTab() {
+type ChecklistTabProps = {
+  tripId: string;
+};
+
+export function ChecklistTab({ tripId }: ChecklistTabProps) {
   const { sections, totalCount, checkedCount, progressRate, toggleItem, addItem, removeItem } =
-    useChecklist();
+    useChecklist(tripId);
 
   const [isEditing, setIsEditing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
