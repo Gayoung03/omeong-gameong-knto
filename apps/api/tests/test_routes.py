@@ -15,8 +15,17 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.db.models import Route, RouteDay, User
-from app.db.models.enums import RouteStatus
+from app.db.models import (
+    Pet,
+    Place,
+    PlacePetPolicy,
+    Review,
+    Route,
+    RouteDay,
+    TravelLog,
+    User,
+)
+from app.db.models.enums import DataProvider, PetPolicyType, PetSpecies, RouteStatus
 from app.schemas.route import RouteItemCreate
 
 
@@ -273,3 +282,184 @@ def test_직접_입력_일정은_장소_없이도_만들_수_있다() -> None:
 
     assert payload.place_id is None
     assert payload.custom_place_name == "할머니 댁"
+
+
+# ---------------------------------------------------------------------------
+# 상세의 계산값 — DB 컬럼이 아니라 세어서 나오는 것들
+# ---------------------------------------------------------------------------
+
+
+def test_일정의_장소에_평점과_동반정책이_붙는다(
+    client: TestClient, db: Session, trip: Route, place: Place, stranger: User
+) -> None:
+    """리뷰·정책 집계가 여행 상세까지 따라오는지.
+
+    노트 03부터 `place` 의 rating·reviewCount·petPolicyType 이 비어 있었다.
+    리뷰·장소 API 를 만들면서 집계식이 생겨 이제 채울 수 있다.
+    """
+    db.add(
+        PlacePetPolicy(
+            place_id=place.id,
+            policy_type=PetPolicyType.OUTDOOR_ONLY,
+            source=DataProvider.INTERNAL,
+        )
+    )
+    db.add(Review(id=uuid.uuid4(), user_id=stranger.id, place_id=place.id, rating=4))
+    db.flush()
+
+    day_id = trip.route_days[0].id
+    client.post(
+        f"/api/v1/route-days/{day_id}/items",
+        json={"itemType": "attraction", "sortOrder": 0, "placeId": str(place.id)},
+    )
+
+    body = client.get(f"/api/v1/routes/{trip.id}").json()
+    added = next(item for item in body["routeDays"][0]["items"] if item["place"])
+
+    assert added["place"]["rating"] == 4.0
+    assert added["place"]["reviewCount"] == 1
+    assert added["place"]["petPolicyType"] == "outdoor_only"
+
+
+def test_정책이_없는_장소는_상세에서도_unknown(
+    client: TestClient, trip: Route, place: Place
+) -> None:
+    day_id = trip.route_days[0].id
+    client.post(
+        f"/api/v1/route-days/{day_id}/items",
+        json={"itemType": "attraction", "sortOrder": 0, "placeId": str(place.id)},
+    )
+
+    body = client.get(f"/api/v1/routes/{trip.id}").json()
+    added = next(item for item in body["routeDays"][0]["items"] if item["place"])
+
+    assert added["place"]["petPolicyType"] == "unknown"
+    assert added["place"]["rating"] is None
+    assert added["place"]["reviewCount"] == 0
+
+
+def test_여행기록_개수가_목록과_상세에_모두_나온다(
+    client: TestClient, db: Session, trip: Route, owner: User
+) -> None:
+    for _ in range(2):
+        db.add(
+            TravelLog(
+                id=uuid.uuid4(),
+                user_id=owner.id,
+                route_id=trip.id,
+                place_name_snapshot="협재해수욕장",
+                recorded_date=trip.start_at.date(),
+                original_image_url="https://a",
+                writing_style="dog_diary",
+            )
+        )
+    db.flush()
+
+    listed = client.get("/api/v1/routes").json()["items"]
+    detail = client.get(f"/api/v1/routes/{trip.id}").json()
+
+    # 여행 모아보기 화면 헤더가 이 값을 쓴다. 목록·상세 양쪽에 있어야 한다.
+    assert next(item for item in listed if item["id"] == str(trip.id))["logCount"] == 2
+    assert detail["logCount"] == 2
+
+
+def test_여행기록이_없으면_0(client: TestClient, trip: Route) -> None:
+    assert client.get(f"/api/v1/routes/{trip.id}").json()["logCount"] == 0
+
+
+# ---------------------------------------------------------------------------
+# 수동 생성
+# ---------------------------------------------------------------------------
+
+
+def _manual_trip(**overrides: object) -> dict:
+    payload = {
+        "title": "직접 만든 제주 여행",
+        "startAt": "2026-09-11T09:00:00+09:00",
+        "endAt": "2026-09-13T18:00:00+09:00",
+        "pace": "normal",
+        "transport": "rental_car",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_직접_만든_여행은_기간만큼_날짜가_생긴다(client: TestClient) -> None:
+    response = client.post("/api/v1/routes", json=_manual_trip())
+
+    assert response.status_code == 201
+    body = response.json()
+
+    # 일정 추가가 routeDayId 를 요구하는데 날짜를 만드는 API 가 따로 없다.
+    # 기간이 정해지면 날짜도 정해지므로 여기서 함께 만든다.
+    assert [day["dayNumber"] for day in body["routeDays"]] == [1, 2, 3]
+    assert [day["routeDate"] for day in body["routeDays"]] == [
+        "2026-09-11",
+        "2026-09-12",
+        "2026-09-13",
+    ]
+    # 껍데기만 만든다. 일정은 편집 API 로 채운다.
+    assert all(day["items"] == [] for day in body["routeDays"])
+
+
+def test_직접_만든_여행은_saved_로_시작한다(client: TestClient) -> None:
+    body = client.post("/api/v1/routes", json=_manual_trip()).json()
+
+    # generating 은 "만들어지는 중"이라 수동 여행에 맞지 않는다.
+    assert body["status"] == "saved"
+    assert body["creationType"] == "manual"
+    assert body["version"] == 1
+
+
+def test_만든_여행에_바로_일정을_넣을_수_있다(client: TestClient) -> None:
+    created = client.post("/api/v1/routes", json=_manual_trip()).json()
+    day_id = created["routeDays"][0]["id"]
+
+    response = client.post(
+        f"/api/v1/route-days/{day_id}/items",
+        json={"itemType": "cafe", "sortOrder": 0, "customPlaceName": "첫 일정"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["customPlaceName"] == "첫 일정"
+
+
+def test_끝나는_날이_시작보다_앞서면_422(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/routes",
+        json=_manual_trip(startAt="2026-09-13T09:00:00+09:00", endAt="2026-09-11T18:00:00+09:00"),
+    )
+
+    assert response.status_code == 422
+
+
+def test_너무_긴_여행은_422(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/routes",
+        json=_manual_trip(endAt="2027-09-13T18:00:00+09:00"),
+    )
+
+    # 기간만큼 route_days 를 미리 만들기 때문에 상한이 필요하다.
+    assert response.status_code == 422
+
+
+def test_남의_반려동물은_데려갈_수_없다(
+    client: TestClient, db: Session, stranger: User
+) -> None:
+    pet = Pet(id=uuid.uuid4(), user_id=stranger.id, name="남의 몽이", species=PetSpecies.DOG)
+    db.add(pet)
+    db.flush()
+
+    response = client.post("/api/v1/routes", json=_manual_trip(petIds=[str(pet.id)]))
+
+    assert response.status_code == 403
+
+
+def test_내_반려동물은_여행에_붙는다(client: TestClient, db: Session, owner: User) -> None:
+    pet = Pet(id=uuid.uuid4(), user_id=owner.id, name="몽이", species=PetSpecies.DOG)
+    db.add(pet)
+    db.flush()
+
+    body = client.post("/api/v1/routes", json=_manual_trip(petIds=[str(pet.id)])).json()
+
+    assert [p["name"] for p in body["pets"]] == ["몽이"]

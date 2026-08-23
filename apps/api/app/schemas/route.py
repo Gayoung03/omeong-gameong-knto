@@ -6,6 +6,7 @@ from datetime import date, datetime
 from pydantic import Field, computed_field, model_validator
 
 from app.db.models.enums import (
+    PetPolicyType,
     PetSize,
     PetSpecies,
     RouteCreationType,
@@ -34,6 +35,8 @@ class RouteListItem(APISchema):
     # Numeric 은 그대로 두면 문자열로 나간다. 명세가 숫자(92.5)라 float 로 받는다.
     pet_safety_score: float | None
     is_public: bool
+    #: 계산값. 이 여행에 속한 travel_logs 개수. 엔드포인트가 채운다.
+    log_count: int = 0
 
     # --- 계산값 (docs/api/README.md 6장) ---------------------------------
     # DB 에 저장하지 않고 조회할 때 만든다. start_at/end_at 은 KST(+09:00) 로
@@ -62,13 +65,20 @@ class RouteListResponse(APISchema):
 # ---------------------------------------------------------------------------
 # 상세 (GET /routes/{routeId})
 # ---------------------------------------------------------------------------
-# 오늘 넣지 않은 명세 필드: weather · moveToNext · distanceSummary · stays ·
-# logCount · place 의 rating/reviewCount/petPolicyType.
-# 전부 아직 데이터 소스가 없다(기상청·TMAP·리뷰 집계·place_pet_policies).
+# 아직 못 넣은 명세 필드: weather · moveToNext · distanceSummary · stays.
+# 각각 기상청·TMAP·TMAP·추천 요청서가 있어야 채워진다.
+#
+# logCount 와 place 의 rating/reviewCount/petPolicyType 은 2026-08-23 에 채웠다 —
+# 리뷰·즐겨찾기 API 를 만들면서 집계식(services/place_query.py)이 생겼기 때문이다.
 
 
 class PlaceSummary(APISchema):
-    """일정에 담긴 장소 요약."""
+    """일정에 담긴 장소 요약.
+
+    아래 세 개는 DB 컬럼이 아니라 **집계값**이다. `model_validate(place)` 로는
+    채워지지 않아서 기본값을 두고 엔드포인트가 나중에 넣는다.
+    기본값이 없으면 검증 단계에서 "필드가 없다"고 막힌다.
+    """
 
     id: uuid.UUID
     name: str
@@ -79,6 +89,11 @@ class PlaceSummary(APISchema):
     latitude: float
     longitude: float
     reservation_required: bool
+
+    # --- 집계값 (docs/api/routes.md 상세 응답) ---------------------------
+    rating: float | None = None
+    review_count: int = 0
+    pet_policy_type: PetPolicyType = PetPolicyType.UNKNOWN
 
 
 class RouteItemResponse(APISchema):
@@ -296,3 +311,39 @@ class MemoUpdate(APISchema):
 
     title: str | None = Field(default=None, max_length=150)
     content: str | None = Field(default=None, min_length=1)
+
+
+# ---------------------------------------------------------------------------
+# 수동 생성 (POST /routes)
+# ---------------------------------------------------------------------------
+
+
+class RouteCreate(APISchema):
+    """직접 만드는 여행.
+
+    **여행 껍데기만 만든다.** 일정은 만든 뒤 일정 편집 API 로 채운다
+    (docs/api/routes.md "수동 생성" 절의 유력안). 그렇게 나눈 이유는 두 가지다 —
+    작성 도중 앱이 꺼져도 만든 여행이 남고, 일정 추가·수정 API 가 어차피 필요해
+    재사용된다.
+
+    `pace` 와 `transport` 는 DB 가 NOT NULL 이라 필수다. 추천 여행에서는
+    추천 요청서에서 가져오지만 수동 여행은 요청서가 없어서 직접 받는다.
+    """
+
+    title: str = Field(min_length=1, max_length=150)
+    start_at: datetime
+    end_at: datetime
+    pace: TripPace
+    transport: TransportType
+    #: 함께 가는 반려동물. 본인 소유가 아니면 403.
+    pet_ids: list[uuid.UUID] = Field(default_factory=list)
+    style_keywords: list[str] | None = None
+    cover_image_url: str | None = None
+    memo: str | None = None
+
+    @model_validator(mode="after")
+    def _check_period(self) -> "RouteCreate":
+        # DB 에도 CHECK(end_at > start_at) 가 있지만 그건 500 으로 나간다.
+        if self.end_at <= self.start_at:
+            raise ValueError("endAt 은 startAt 보다 뒤여야 합니다")
+        return self
