@@ -10,12 +10,21 @@
 """
 
 import uuid
+from collections.abc import Sequence
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.db.models import Route, RouteChecklistItem, RouteDay, RouteItem, RouteMemo, User
+from app.db.models import (
+    Route,
+    RouteChecklistItem,
+    RouteDay,
+    RouteItem,
+    RouteMemo,
+    TravelLog,
+    User,
+)
 
 
 def route_detail_options() -> tuple:
@@ -87,3 +96,21 @@ def load_owned_memo(db: Session, memo_id: uuid.UUID, user: User) -> tuple[RouteM
 
     route = load_owned_route(db, memo.route_id, user)
     return memo, route
+
+
+def log_counts_of(db: Session, route_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, int]:
+    """여행별 여행기록(travel_logs) 개수. 여행 모아보기 화면 헤더가 쓴다.
+
+    저장된 값이 아니라 조회 시 집계다. 여행을 지워도
+    `travel_logs.route_id` 는 ON DELETE SET NULL 이라 기록 자체는 남는다.
+    """
+    unique_ids = list({route_id for route_id in route_ids})
+    if not unique_ids:
+        return {}
+
+    rows = db.execute(
+        select(TravelLog.route_id, func.count(TravelLog.id))
+        .where(TravelLog.route_id.in_(unique_ids))
+        .group_by(TravelLog.route_id)
+    ).all()
+    return {route_id: count for route_id, count in rows}

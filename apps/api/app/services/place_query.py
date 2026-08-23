@@ -11,6 +11,7 @@
 
 import uuid
 from collections.abc import Sequence
+from typing import NamedTuple
 
 from sqlalchemy import Float, Select, Text, and_, cast, exists, func, literal, or_, select
 from sqlalchemy.orm import Session
@@ -164,3 +165,42 @@ def with_computed_columns(statement: Select, user: User | None) -> Select:
         policy_type_expr().label("pet_policy_type"),
         is_favorite_expr(user).label("is_favorite"),
     )
+
+
+class PlaceStats(NamedTuple):
+    """장소 하나의 집계값. 여행 상세의 일정 카드가 쓴다."""
+
+    review_count: int
+    rating: float | None
+    #: DB 에서는 text 로 꺼내지만(enum 캐스팅 문제) 여기서 다시 enum 으로 돌린다.
+    #: 문자열째로 응답 모델에 넣으면 Pydantic 이 검증을 건너뛰고 경고를 남긴다.
+    pet_policy_type: PetPolicyType
+
+
+def place_stats(db: Session, place_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, PlaceStats]:
+    """여러 장소의 집계를 **한 번에** 가져온다.
+
+    여행 상세는 일정 항목마다 장소가 붙는다. 항목마다 따로 세면 3일짜리 여행
+    하나에 쿼리가 수십 번 나간다. 페이지에 실린 장소 id 를 모아 한 번만 부른다.
+    """
+    unique_ids = list({place_id for place_id in place_ids})
+    if not unique_ids:
+        return {}
+
+    rows = db.execute(
+        select(
+            Place.id,
+            review_count_expr().label("review_count"),
+            rating_expr().label("rating"),
+            policy_type_expr().label("pet_policy_type"),
+        ).where(Place.id.in_(unique_ids))
+    ).all()
+
+    return {
+        row.id: PlaceStats(
+            review_count=row.review_count,
+            rating=row.rating,
+            pet_policy_type=PetPolicyType(row.pet_policy_type),
+        )
+        for row in rows
+    }
