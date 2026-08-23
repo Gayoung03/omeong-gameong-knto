@@ -34,7 +34,7 @@ import type { SignupData } from '../types/auth';
 const initialData: SignupData = {
   agreements: { age14: false, terms: false, privacy: false, marketing: false },
   account: { email: '', password: '', passwordConfirm: '', nickname: '' },
-  pet: { type: null, size: null },
+  pet: { type: null, typeDetail: '', size: null },
   travel: {
     duration: null,
     transport: null,
@@ -106,7 +106,7 @@ export function SignupScreen() {
 
   const skipCurrentStep = () => {
     if (step === 2) {
-      setData((current) => ({ ...current, pet: { type: null, size: null } }));
+      setData((current) => ({ ...current, pet: { type: null, typeDetail: '', size: null } }));
       setStep(3);
       return;
     }
@@ -230,7 +230,12 @@ export function SignupScreen() {
                           onPress={() =>
                             setData((current) => ({
                               ...current,
-                              pet: { ...current.pet, type: option.value },
+                              pet: {
+                                ...current.pet,
+                                type: option.value,
+                                typeDetail:
+                                  option.value === 'other' ? current.pet.typeDetail : '',
+                              },
                             }))
                           }
                           style={({ pressed }) => [
@@ -247,6 +252,21 @@ export function SignupScreen() {
                       );
                     })}
                   </View>
+                  {data.pet.type === 'other' && (
+                    <TextInput
+                      maxLength={20}
+                      onChangeText={(value) =>
+                        setData((current) => ({
+                          ...current,
+                          pet: { ...current.pet, typeDetail: value.replace(/\n/g, '') },
+                        }))
+                      }
+                      placeholder="종 이름을 입력해주세요"
+                      placeholderTextColor={colors.textTertiary}
+                      style={styles.speciesDetailInput}
+                      value={data.pet.typeDetail}
+                    />
+                  )}
                 </Section>
 
                 <Section title="반려동물 크기">
@@ -505,6 +525,17 @@ const styles = StyleSheet.create({
   sectionTitle: { color: colors.textPrimary, fontSize: 16, fontWeight: '800' },
   optional: { color: colors.textTertiary, fontSize: 12, fontWeight: '500' },
   petTypeGrid: { flexDirection: 'row', gap: 8 },
+  speciesDetailInput: {
+    backgroundColor: colors.surface,
+    borderColor: colors.divider,
+    borderRadius: 15,
+    borderWidth: 1,
+    color: colors.textPrimary,
+    fontSize: 14,
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
   petTypeCard: {
     alignItems: 'center',
     backgroundColor: colors.surface,

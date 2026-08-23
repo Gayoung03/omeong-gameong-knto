@@ -1,5 +1,7 @@
 export type PetFormValues = {
   name: string;
+  /** '기타'를 골랐을 때 입력한 종 이름. 그 외에는 검사하지 않는다. */
+  speciesDetail?: string;
   breed: string;
   /** 입력 원문. 검증 시점에 파싱한다. */
   age: string;
@@ -8,12 +10,14 @@ export type PetFormValues = {
 
 export type PetFormErrors = {
   name?: string;
+  speciesDetail?: string;
   breed?: string;
   age?: string;
   weight?: string;
 };
 
 const NAME_MAX = 10;
+const SPECIES_DETAIL_MAX = 20;
 const BREED_MAX = 20;
 const AGE_MAX = 30;
 const WEIGHT_MIN = 0.1;
@@ -27,6 +31,16 @@ export function validatePetForm(values: PetFormValues): PetFormErrors {
     errors.name = '이름을 입력해 주세요';
   } else if (name.length > NAME_MAX) {
     errors.name = `이름은 ${NAME_MAX}자 이하로 입력해 주세요`;
+  }
+
+  // '기타'가 아니면 speciesDetail 자체를 넘기지 않으므로 undefined 는 통과시킨다.
+  if (values.speciesDetail !== undefined) {
+    const speciesDetail = values.speciesDetail.trim();
+    if (speciesDetail.length === 0) {
+      errors.speciesDetail = '종 이름을 입력해 주세요';
+    } else if (speciesDetail.length > SPECIES_DETAIL_MAX) {
+      errors.speciesDetail = `종 이름은 ${SPECIES_DETAIL_MAX}자 이하로 입력해 주세요`;
+    }
   }
 
   const breed = values.breed.trim();

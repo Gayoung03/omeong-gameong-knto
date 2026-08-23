@@ -343,77 +343,75 @@ git add package-lock.json
 ## 5. main PR 본문에 옮길 내용
 
 > **이 블록은 "아직 main 에 안 올라간 것"만 담는다.** main PR 을 낼 때마다 비우고 다시 쓴다.
-> 이전 내용(PR #32·#36·#37 의 공통 컴포넌트·PetPolicy 5종·저장 기능 등)은 **이미 main 에 반영되었다.**
-> 2026-08-22 에 `git diff --name-only origin/main...HEAD` 로 실제 파일을 확인하고 다시 썼다.
+> 이전 내용(여행 조회 API + 내 여행 화면 연결)은 **PR #61 로 이미 main 에 반영되었다.**
+> 2026-08-23 에 `git log --oneline origin/main..HEAD` 로 확인하고 다시 썼다.
 >
-> 현재 대상: **여행 조회 API(구 PR #51) + 내 여행 화면 API 연결**
+> 현재 대상: **여행 편집·장소·리뷰 API (백엔드만, 앱 변경 없음)**
 
 ```markdown
 ## 신규 설치 라이브러리
 
-- 없음. npm ci 불필요합니다.
+- 없음. npm ci 불필요합니다. 앱(apps/mobile) 파일은 하나도 건드리지 않았습니다.
 
 ## 이번 PR 내용
 
-- 여행 목록·상세 조회 API — GET /routes, GET /routes/{routeId}
-- 개발용 씨앗 데이터 — apps/api/scripts/seed_dev.py, make db-seed
-- 앱 내 여행 화면을 위 API 에 연결 — features/trips/api/routeAdapter.ts 신설
+백엔드 엔드포인트 29개를 추가했습니다. 기존 2개와 합쳐 31개입니다.
+
+- 일정 편집 4개 — POST /route-days/{id}/items, PATCH·DELETE /route-items/{id},
+  PUT /route-days/{id}/items/order
+- 여행 관리 4개 — PATCH·DELETE /routes/{id}, POST /routes/{id}/share,
+  GET /routes/shared/{token}
+- 체크리스트 4개, 메모 4개
+- 장소 8개 — 목록·검색, 상세, 등록, 내 장소, 태그, 즐겨찾기 목록·등록·해제
+- 리뷰 5개 — 장소별 목록, 작성, 내 리뷰, 수정, 삭제
+
+전부 `/docs` (FastAPI 자동 문서)에서 눌러볼 수 있습니다.
 
 ## 공통 파일 변경
 
-- Makefile — db-seed 타깃을 추가했습니다 (.PHONY 한 줄 + 아래 3줄이 전부).
-
-      db-seed:
-          cd apps/api && uv run python -m scripts.seed_dev
-
-  **가영님 Docker/RDS 작업과 겹치는 유일한 파일입니다.**
-
-앱 공통 파일(src/theme/, src/components/, app/_layout.tsx, app.config.ts,
-package.json, .gitignore, .env.example)은 건드리지 않았습니다.
+- 없습니다. Makefile·.env.example·app.config.ts·package.json 모두 그대로입니다.
+- **Alembic revision 도 없습니다.** 전부 이미 있는 테이블을 씁니다.
+  `models/community.py` 의 Review 에 파이썬 쪽 relationship 3개를 추가했지만
+  ForeignKey 는 원래 있던 것이라 DB 스키마는 바뀌지 않습니다.
 
 ## 팀원 확인 사항
 
-- **내 여행 화면이 목데이터를 버리고 실제 API 를 부릅니다.** 백엔드가 떠 있어야 보입니다.
+- **DB 테스트는 TEST_DATABASE_URL 이 있을 때만 돕니다.**
 
-      make dev        # FastAPI + Expo + 로컬 PostgreSQL
-      make db-seed    # 씨앗 데이터. 자동 실행되지 않습니다
+      make db-migrate-local
+      cd apps/api
+      TEST_DATABASE_URL=postgresql+psycopg://omeong:omeong@localhost:5432/omeong uv run pytest
 
-  씨앗을 안 심으면 목록이 빈 화면입니다. 서버 없이 UI 만 볼 때 비는 것은 고장이 아닙니다.
+  이 변수가 없으면 DB 테스트는 건너뛰고 스키마 검증만 돕니다(CI 가 지금 그 상태).
+  **settings.database_url 을 자동으로 갖다 쓰지 않게 일부러 막아뒀습니다** —
+  그 값이 공유 RDS 를 가리킬 때 테스트가 팀 데이터를 지우게 됩니다.
 
-- **.env 는 두 벌이고 내용이 서로 달라야 합니다.** 오늘 실제로 사고가 났습니다.
+- **GET /places 에는 사용자가 등록한 장소가 나오지 않습니다.** 내 장소는
+  GET /users/me/places 로만 봅니다. 남이 등록한 장소는 어떤 경로로도 안 나옵니다
+  (docs/api/places.md 2026-08-18 확정). 앱의 `나만의 장소` 탭은 후자를 부르면 됩니다.
 
-      루트 .env           DATABASE_URL, SECRET_KEY, 외부 API 키
-      apps/mobile/.env    EXPO_PUBLIC_* 두 개뿐
+- **같은 장소에 리뷰를 다시 쓰려면 30일이 지나야 합니다.** 안 지났으면 429 이고
+  detail 이 "동일 장소 리뷰는 한 달에 한번만 가능해요" 입니다. 그대로 보여주면 됩니다.
 
-  Expo 는 expo start 를 실행하는 폴더의 .env 를 읽습니다.
-  루트 것을 apps/mobile 에 복사하면 앱이 백엔드 주소를 잃습니다.
-
-- **EXPO_PUBLIC_API_URL 을 빈 값으로 두지 마세요.** apiClient 가 `?? 기본값` 이라
-  빈 문자열은 그대로 통과합니다. baseURL 이 '' 이 되어 모든 요청이 조용히 실패합니다.
-  안 쓸 거면 줄째로 지우는 편이 안전합니다. 실기기는 localhost 대신 PC 내부 IP 를 씁니다.
-
-- **주소가 /trips 가 아니라 /routes 입니다.** 서버의 trips.py 는 여행기록(travel_logs) 담당입니다.
-
-- **서버·앱 타입 변환은 features/trips/api/routeAdapter.ts 한 곳에만 있습니다.**
-  서버에 아직 없는 값(날씨·이동거리·동반정책·평점)은 빈 값으로 채워 화면이 그리지 않게 했습니다.
-  서버가 값을 내려주기 시작하면 이 파일만 고치면 됩니다. 훅·화면은 손대지 않았습니다.
-
-- **테스트 계정** — 씨앗 사용자 id 는 00000000-0000-0000-0000-000000000001 (seed@omeong.local).
-  get_current_user 가 이 사용자를 돌려주므로 두 값이 어긋나면 로컬에서 401 이 납니다.
+- **앱은 아직 이 API 들을 부르지 않습니다.** 일정 편집·체크리스트·메모는 여전히
+  화면 상태까지만 저장됩니다. 연결은 다음 작업입니다.
 
 ## 협의가 필요한 사항
 
-- **여행 이동수단(transport) 값 개수가 서버와 앱이 다릅니다.** 서버 7종
-  (rental_car / own_car / taxi / public_transport / walk / ferry / airplane),
-  앱 TripTransport 는 4종(rentalCar / ownCar / publicTransport / walk)입니다.
-  어댑터가 taxi·ferry·airplane 을 publicTransport 로 접고 있어 정보가 줄어듭니다.
+- **api-ci.yml 에 PostgreSQL 서비스를 넣을지** (가영님). 지금은 CI 에 DB 가 없어
+  엔드포인트 테스트 43개가 CI 에서는 건너뛰어집니다. 로컬에서만 돌고 있습니다.
+
+- **이용약관에 "탈퇴 후에도 작성한 게시물은 유지된다" 조항이 필요합니다.**
+  탈퇴한 사용자의 리뷰를 남기고 작성자만 "탈퇴한 사용자"로 바꿔 내리도록
+  구현했습니다(리뷰를 함께 지우면 장소 평점이 급변합니다). 약관에 근거가 없으면
+  이 동작을 유지할 수 없습니다. 서비스 오픈 전에 확인해야 합니다.
+
+- **여행 이동수단(transport) 값 개수가 서버 7종 / 앱 4종입니다.** 어댑터가
+  taxi·ferry·airplane 을 publicTransport 로 접고 있어 정보가 줄어듭니다.
   제주도는 배·비행기가 실제 이동수단이라 앱 union 을 넓히는 쪽이 맞아 보입니다.
 
-- **담당 영역이 겹쳤습니다.** 내 여행 화면을 오늘 두 사람이 같은 날 건드려
-  tripsApi.ts 에서 충돌이 났습니다. 착수 전에 서로 알리는 규칙이 필요합니다.
-
-- **apiClient 의 `??` 를 `||` 로 바꿀지.** 위 EXPO_PUBLIC_API_URL 함정을 막는 한 글자
-  수정인데, src/services/apiClient.ts 가 공통 파일이라 별도 PR 로 올리겠습니다.
+- **담당 영역 겹침 방지 규칙.** 지난주 내 여행 화면을 두 사람이 같은 날 건드려
+  충돌이 났습니다. 착수 전에 서로 알리는 규칙이 필요합니다.
 ```
 
 > 위 블록은 작업이 진행되는 대로 1~3번 표의 내용을 반영해 갱신한다.
@@ -461,3 +459,4 @@ package.json, .gitignore, .env.example)은 건드리지 않았습니다.
 | 2026-08-21 | **백엔드 B 파트(장소·리뷰·여행) 착수.** 씨앗 데이터 스크립트(`apps/api/scripts/seed_dev.py`) 신설 — 사용자·반려동물·장소 4곳·여행 1개(3일 / 일정 6개)를 심는다. 프론트 목데이터(`trips.mock.ts`)와 같은 이름·좌표를 써서 API 연동 시 화면을 눈으로 대조할 수 있게 했다. **시간대** — `timestamptz` 는 절대 시각을 담으므로 저장은 처음부터 정확했고 psql 이 UTC 로 보여주던 것뿐이었다. 저장 방식은 그대로 두고 엔진 `connect_args` 로 **세션 시간대만** `Asia/Seoul` 로 맞췄다. 명세(`docs/api/README.md` 6장)가 `+09:00` 표기를 쓰고, UTC 로 내리면 이른 아침 일정에서 날짜가 하루 밀린다. **테스트 계정** — id `00000000-0000-0000-0000-000000000001` / `seed@omeong.local` 을 A 와 공유해 회원가입 API 와 충돌하지 않게 했다. **에러 메시지는 한국어로 확정** (`README.md` 8장의 '첫 도메인 구현 시 정한다' 항목) — 단 `422` 는 FastAPI 자동 생성이라 영문이고, 앱이 `detail` 이 배열이면 자기 문구를 쓴다. **5번 항목은 아직 비우지 않았다** — 오늘 작업을 마치고 main PR 을 낼 때 다시 쓴다 |
 | 2026-08-22 | **내 여행 화면을 여행 조회 API 에 연결.** `tripsApi.ts` 의 목데이터 호출을 `GET /routes` · `GET /routes/{routeId}` 로 교체하고, 서버·앱 타입 차이를 흡수하는 `api/routeAdapter.ts` 와 서버 응답 타입 `types/routeApi.ts` 를 신설했다. **훅·화면은 한 줄도 고치지 않았다** — 장소 상세(`placesApi.ts`)에서 쓴 어댑터 방식과 같다. 흡수한 차이: `startAt`(시각) → `startDate`(날짜), `sortOrder` 0부터 → `order` 1부터, `itemType` → `PlaceCategory`, 숙소 요약을 일정에서 추출, `pace` → 여행 성향 문구. 서버에 없는 값(날씨·이동거리·동반정책·평점·이동시간)은 빈 값으로 두어 화면이 그리지 않는다. **신규 라이브러리·공통 파일 변경 없음.** 다만 팀원이 pull 후 백엔드를 띄우지 않으면 내 여행 탭이 비므로 5번 항목에 안내를 넣었다. `trips.mock.ts` 는 **지우면 안 된다** — `features/places/api/placesApi.ts` 가 장소 상세 어댑터에서 아직 쓴다 |
 | 2026-08-22 | **최신 main 을 받아와 합침(lucky 님 내 여행 목록 화면 PR #53·#54).** 충돌은 `api/tripsApi.ts` 한 파일 — 내 API 호출 구현을 살리고 `getLatestTrip` 을 제거했다(목록 화면이 생겨 "가장 최근 여행 하나"가 불필요해졌다). 합친 뒤 **lucky 님 목록 화면이 곧바로 실서버를 부른다** — `useTrips()` → `getTrips()` → `GET /routes`. 지금까지 쓰는 화면이 없던 목록 엔드포인트가 처음으로 화면을 가졌다. 화면에 씨앗 여행 1건만 뜨는 것으로 확인. **5번 항목을 현재 기준으로 다시 썼다** — PR #32·#36·#37 내용이 이미 main 에 반영됐는데 그대로 남아 있었다(`git diff --name-only origin/main...HEAD` 로 실제 파일을 확인). 이번 PR 의 공통 파일 변경은 **Makefile 의 db-seed 타깃 하나뿐**이고, 가영님 Docker/RDS 작업과 겹치는 유일한 지점이다 |
+| 2026-08-23 | **여행 편집·장소·리뷰 API 29개 추가(백엔드만).** 일정 편집 4개·여행 관리 4개·체크리스트 4개·메모 4개·장소 8개·리뷰 5개. **앱 파일과 공통 파일은 하나도 건드리지 않았고 Alembic revision 도 없다** — 전부 이미 있는 테이블을 쓴다. 소유권 확인은 `services/route_access.py` 한 곳으로 모았다(없는 것은 404, 남의 것은 403 — 합치면 남의 여행 id 존재 여부가 새어 나간다). **순번(sort_order)은 두 번에 나눠 쓴다** — UNIQUE(route_day_id, sort_order) 를 PostgreSQL 이 행마다 즉시 검사해서 0·1·2 를 1·2·3 으로 한 번에 올리면 실패한다. 겹칠 수 없는 높은 구간으로 피했다가 0 부터 내려앉힌다. **GET /places 는 공식 장소만** 내린다(`created_by_user_id IS NULL`) — 한 줄만 빠뜨려도 남이 등록한 장소가 이름·좌표째로 검색에 섞인다. 거리는 PostGIS 없이 하버사인으로 계산하고 `least(1, ...)` 로 감쌌다(같은 좌표 조회 시 부동소수점 오차로 acos 가 터진다). 테스트 48개 신설, **TEST_DATABASE_URL 이 있을 때만** DB 테스트가 돈다(settings.database_url 을 자동으로 쓰면 공유 RDS 를 건드리게 된다). 5번 항목을 현재 기준으로 다시 썼다 — PR #61 내용이 그대로 남아 있었다 |
