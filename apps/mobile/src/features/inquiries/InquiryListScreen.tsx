@@ -3,17 +3,14 @@ import { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ErrorState } from '@/src/components/feedback/ErrorState';
 import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
 import { colors, radius, spacing, typography } from '@/src/theme';
 import { INQUIRY_STATUS_LABEL, type InquiryItem } from '@/src/types/inquiry';
 
 import { InquiryCard } from './components/InquiryCard';
 import { InquiryFilterTabs, type InquiryFilter } from './components/InquiryFilterTabs';
-import {
-  InquiryEmptyState,
-  InquiryErrorState,
-  InquiryNoResultsState,
-} from './components/InquiryStates';
+import { InquiryEmptyState, InquiryNoResultsState } from './components/InquiryStates';
 import { useInquiries } from './hooks/useInquiries';
 
 export function InquiryListScreen() {
@@ -32,7 +29,7 @@ export function InquiryListScreen() {
   const renderEmptyContent = () => {
     // 로딩 중에는 빈 상태 문구가 잠깐 스쳐 지나가지 않도록 아무것도 그리지 않는다.
     if (isPending) return null;
-    if (isError) return <InquiryErrorState onRetry={() => refetch()} />;
+    if (isError) return <ErrorState onRetry={() => refetch()} />;
     if (inquiries.length === 0) return <InquiryEmptyState onCreate={goToCreate} />;
     if (filter !== 'all') return <InquiryNoResultsState statusLabel={INQUIRY_STATUS_LABEL[filter]} />;
 

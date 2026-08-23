@@ -14,6 +14,7 @@ import { GestureDetector } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ErrorState } from '@/src/components/feedback/ErrorState';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
 import { AddScheduleSheet } from '../components/AddScheduleSheet';
@@ -64,16 +65,7 @@ export function AddScheduleScreen({ tripId, scheduleId }: AddScheduleScreenProps
   if (isError || !trip) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.centered}>
-          <Text style={styles.stateTitle}>여행 정보를 불러오지 못했어요</Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => refetch()}
-            style={styles.retryButton}
-          >
-            <Text style={styles.retryText}>다시 시도</Text>
-          </Pressable>
-        </View>
+        <ErrorState onRetry={() => refetch()} />
       </SafeAreaView>
     );
   }
