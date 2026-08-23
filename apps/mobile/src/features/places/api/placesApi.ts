@@ -1,12 +1,34 @@
 import { MOCK_TRIPS } from '@/src/features/trips/mocks/trips.mock';
 import type { SchedulePlace } from '@/src/features/trips/types/trip';
 import { getPlaceCategoryLabel } from '@/src/features/trips/utils/tripFormat';
+import { apiClient } from '@/src/services/apiClient';
 
 import { mockPlaces } from '../mocks/place.mock';
 import type { PlaceDetail } from '../types/placeDetail';
+import type { PlaceListResponse } from '../types/placeApi';
 import type { Place } from '../types/place';
 
+import { toPlace } from './placeAdapter';
+
 const RESPONSE_DELAY_MS = 250;
+
+/** 제주도 장소 수가 많지 않아 한 번에 받아 화면에서 거른다. */
+const LIST_LIMIT = 100;
+
+/**
+ * 공식 장소 목록.
+ *
+ * 사용자가 등록한 "나만의 장소"는 여기 나오지 않는다. 서버가 경로를 나눠뒀다
+ * (`GET /users/me/places`). 조건을 빠뜨리면 남이 등록한 장소가 이름·좌표째로
+ * 섞이는 구조라, 섞일 수 없게 막아둔 것이다.
+ */
+export async function getPlaces(): Promise<Place[]> {
+  const { data } = await apiClient.get<PlaceListResponse>('/places', {
+    params: { limit: LIST_LIMIT },
+  });
+
+  return data.items.map(toPlace);
+}
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => {
