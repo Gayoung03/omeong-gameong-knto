@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ErrorState } from '@/src/components/feedback/ErrorState';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
 import { TripInfoEditForm } from '../components/TripInfoEditForm';
@@ -36,12 +37,7 @@ export function TripInfoScreen({ tripId }: TripInfoScreenProps) {
     return (
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <TripInfoHeader />
-        <View style={styles.centered}>
-          <Text style={styles.stateTitle}>여행 정보를 불러오지 못했어요</Text>
-          <Pressable onPress={() => refetch()} style={styles.retryButton}>
-            <Text style={styles.retryText}>다시 시도</Text>
-          </Pressable>
-        </View>
+        <ErrorState onRetry={() => refetch()} />
       </SafeAreaView>
     );
   }
@@ -384,21 +380,5 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: spacing.sm,
     justifyContent: 'center',
-  },
-  stateTitle: {
-    color: colors.textPrimary,
-    fontSize: typography.subtitle.fontSize,
-    fontWeight: typography.subtitle.fontWeight,
-  },
-  retryButton: {
-    backgroundColor: colors.primarySoft,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  retryText: {
-    color: colors.primary,
-    fontSize: typography.label.fontSize,
-    fontWeight: '700',
   },
 });

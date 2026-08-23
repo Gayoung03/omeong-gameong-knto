@@ -5,7 +5,8 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'rea
 import DraggableFlatList, { type RenderItemParams } from 'react-native-draggable-flatlist';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, radius, spacing, typography } from '@/src/theme';
+import { ErrorState } from '@/src/components/feedback/ErrorState';
+import { colors, spacing, typography } from '@/src/theme';
 
 import { DayChips } from '../components/DayChips';
 import { ScheduleEditRow } from '../components/ScheduleEditRow';
@@ -36,12 +37,7 @@ export function TripScheduleEditScreen({ tripId }: TripScheduleEditScreenProps) 
     return (
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <EditHeader />
-        <View style={styles.centered}>
-          <Text style={styles.stateTitle}>여행 정보를 불러오지 못했어요</Text>
-          <Pressable onPress={() => refetch()} style={styles.retryButton}>
-            <Text style={styles.retryText}>다시 시도</Text>
-          </Pressable>
-        </View>
+        <ErrorState onRetry={() => refetch()} />
       </SafeAreaView>
     );
   }
@@ -285,16 +281,5 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: typography.caption.fontSize,
     textAlign: 'center',
-  },
-  retryButton: {
-    backgroundColor: colors.primarySoft,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  retryText: {
-    color: colors.primary,
-    fontSize: typography.label.fontSize,
-    fontWeight: '700',
   },
 });
