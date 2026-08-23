@@ -13,7 +13,7 @@ import { useTrips } from '../hooks/useTrips';
 
 export function MyTripsScreen() {
   const router = useRouter();
-  const { data: trips, isLoading, isError, refetch } = useTrips();
+  const { data: trips, error, isLoading, isError, refetch } = useTrips();
 
   const openTrip = (tripId: string) => {
     router.push({ pathname: '/trips/[tripId]', params: { tripId } });
@@ -38,7 +38,13 @@ export function MyTripsScreen() {
     }
 
     if (isError) {
-      return <ErrorState onRetry={() => refetch()} />;
+      return (
+        <ErrorState
+          error={error}
+          onRetry={() => void refetch()}
+          title="여행 목록을 불러오지 못했어요"
+        />
+      );
     }
 
     if (!trips || trips.length === 0) {
