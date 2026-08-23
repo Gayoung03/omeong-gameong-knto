@@ -187,8 +187,8 @@ export function TripDetailScreen({ tripId }: { tripId: string }) {
       <TripSummaryCard onPressInfo={handlePressTripInfo} trip={trip} />
       <TripTabBar activeTab={activeTab} onChangeTab={setActiveTab} />
 
-      {activeTab === 'checklist' && <ChecklistTab />}
-      {activeTab === 'memo' && <MemoTab schedules={trip.schedules} />}
+      {activeTab === 'checklist' && <ChecklistTab tripId={trip.id} />}
+      {activeTab === 'memo' && <MemoTab schedules={trip.schedules} tripId={trip.id} />}
 
       {activeTab === 'map' && <MapTab onPressPlace={handlePressPlace} schedules={trip.schedules} />}
 

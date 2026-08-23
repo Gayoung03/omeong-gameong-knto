@@ -26,3 +26,29 @@ const PET_POLICY_LABELS: Record<PetPolicy, string> = {
 export function getPetPolicyLabel(petPolicy: PetPolicy): string {
   return PET_POLICY_LABELS[petPolicy];
 }
+
+/** 서버 `petPolicy.policyType` 표기. DB enum 이라 snake_case 다. */
+export type ServerPetPolicy =
+  | 'indoor_allowed'
+  | 'outdoor_only'
+  | 'partial_allowed'
+  | 'not_allowed'
+  | 'unknown';
+
+const PET_POLICY_BY_SERVER_VALUE: Record<ServerPetPolicy, PetPolicy> = {
+  indoor_allowed: 'indoorAllowed',
+  not_allowed: 'notAllowed',
+  outdoor_only: 'outdoorOnly',
+  partial_allowed: 'partialAllowed',
+  unknown: 'unknown',
+};
+
+/**
+ * 서버 표기 → 앱 표기.
+ *
+ * 장소 탐색과 내 여행이 같은 변환을 쓴다. 각자 두면 한쪽만 값이 늘었을 때
+ * 다른 쪽이 조용히 `undefined` 를 그린다.
+ */
+export function toPetPolicy(serverValue: ServerPetPolicy): PetPolicy {
+  return PET_POLICY_BY_SERVER_VALUE[serverValue] ?? 'unknown';
+}
