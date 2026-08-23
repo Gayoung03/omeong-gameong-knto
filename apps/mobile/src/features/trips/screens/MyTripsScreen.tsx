@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ErrorState } from '@/src/components/feedback/ErrorState';
 import { AppHeader } from '@/src/components/layout/AppHeader';
 import { ScreenTitleBar } from '@/src/components/layout/ScreenTitleBar';
 import { colors, radius, spacing, typography } from '@/src/theme';
@@ -37,14 +38,7 @@ export function MyTripsScreen() {
     }
 
     if (isError) {
-      return (
-        <View style={styles.centered}>
-          <Text style={styles.stateTitle}>여행 목록을 불러오지 못했어요</Text>
-          <Pressable onPress={() => refetch()} style={styles.retryButton}>
-            <Text style={styles.retryText}>다시 시도</Text>
-          </Pressable>
-        </View>
-      );
+      return <ErrorState onRetry={() => refetch()} />;
     }
 
     if (!trips || trips.length === 0) {
@@ -142,17 +136,6 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
-  },
-  retryButton: {
-    backgroundColor: colors.primarySoft,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  retryText: {
-    color: colors.primary,
-    fontSize: typography.label.fontSize,
-    fontWeight: '700',
   },
   safeArea: {
     backgroundColor: colors.background,

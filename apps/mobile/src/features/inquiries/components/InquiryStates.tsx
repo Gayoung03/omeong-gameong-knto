@@ -48,19 +48,6 @@ export function InquiryNoResultsState({ statusLabel }: { statusLabel: string }) 
   );
 }
 
-/** 데이터를 불러오지 못한 상태. 기술적인 오류 메시지는 노출하지 않는다. */
-export function InquiryErrorState({ onRetry }: { onRetry: () => void }) {
-  return (
-    <MessageState
-      description="잠시 후 다시 시도해 주세요."
-      icon="cloud-offline-outline"
-      title="문의 내역을 불러오지 못했어요."
-    >
-      <Button label="다시 시도" onPress={onRetry} variant="primary" />
-    </MessageState>
-  );
-}
-
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
