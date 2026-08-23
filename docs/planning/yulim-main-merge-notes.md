@@ -231,6 +231,10 @@
 | ---- | --------------------------------- | ------------------------------------------- |
 | 제목 | 18pt `800` → 18pt `700`           | 16pt → **18pt** (`typography.sectionTitle`) |
 | 링크 | 회색 → **주황**(`colors.primary`) | 16pt → **13pt** (`typography.label`)        |
+| `apps/api/app/db/session.py`                                          | **DB 세션 시간대를 `Asia/Seoul` 로 고정** (`connect_args`). 저장 방식(`timestamptz`) 변경이 아니라 **읽어올 때 표기만** KST(`+09:00`)로 통일한다. UTC 로 내려가면 앱이 `startDate` 앞 10글자를 자를 때 이른 아침 일정의 날짜가 하루 밀린다 | 예정    |
+| `apps/api/scripts/seed_dev.py` (신규)                                 | 개발용 씨앗 데이터. 사용자·반려동물·장소 4곳·여행 1개(3일 / 일정 6개). 여러 번 돌려도 중복이 쌓이지 않는다. 테스트 계정 `00000000-0000-0000-0000-000000000001` / `seed@omeong.local` 은 **A 와 공유한 고정 값**              | 예정    |
+| `apps/api/app/api/dependencies.py`                                    | **`get_current_user` 신설** (임시 구현 — 개발용 고정 사용자 반환). 인증 담당이 **함수 안쪽만** JWT 검증으로 바꾸면 엔드포인트는 수정이 없다. 테스트는 `dependency_overrides` 로 갈아끼운다. 타입 별칭 `CurrentUser` 제공 | 예정    |
+| `Makefile`                                                            | `db-seed` 타깃 추가 — 씨앗 데이터는 컨테이너 기동 시 자동 실행하지 않고 이 명령으로만 심는다                                                                                                                              | 예정    |
 
 바깥 여백은 화면마다 달라서 컴포넌트에서 빼고 `style` prop 으로 넘기도록 했다.
 
@@ -339,70 +343,109 @@ git add package-lock.json
 ## 5. main PR 본문에 옮길 내용
 
 > **이 블록은 "아직 main 에 안 올라간 것"만 담는다.** main PR 을 낼 때마다 비우고 다시 쓴다.
-> 이전 내용(라이브러리 8개 설치, theme 토큰, app.config.ts, .gitignore, .env.example 등)은
-> #21·#26 으로 이미 main 에 반영되었다.
+> 오전에 쓴 내용(여행 편집·장소·리뷰 API 29개)은 **PR #66 으로 이미 main 에 반영되었다.**
+> 2026-08-23 오후에 `git log --oneline origin/main..HEAD` 로 확인하고 다시 썼다.
 >
-> 현재 대상: **PR #32 · #36 · #37**
+> 현재 대상: **수동 여행 생성 API + 앱 5개 화면을 서버에 연결**
+>
+> **오전 PR 과 성격이 다르다.** 오전은 백엔드만이었고 이번엔 **앱 공통 파일을 건드렸다.**
 
 ```markdown
 ## 신규 설치 라이브러리
 
-- 없음
+- 없음. npm ci 불필요합니다.
+
+## 이번 PR 내용
+
+### 백엔드
+
+- 수동 여행 생성 — POST /routes. B 파트 엔드포인트가 32/35 가 되었습니다.
+- 여행 상세에 비어 있던 계산값을 채웠습니다 — logCount, 그리고 일정에 담긴
+  장소의 rating·reviewCount·petPolicyType.
+- 씨앗 데이터에 체크리스트 10개와 Day 메모 2개를 넣었습니다.
+
+### 앱 — 목데이터를 버리고 서버를 봅니다
+
+- 장소 탐색 목록 — GET /places
+- 즐겨찾기 — PUT/DELETE /places/{placeId}/favorite, GET /users/me/favorites
+- 일정 편집 저장 — 순서 변경·삭제·날짜 이동
+- 체크리스트 탭 — 조회·추가·체크·삭제
+- 메모 탭 — 조회·작성·수정·삭제
 
 ## 공통 파일 변경
 
-- app/_layout.tsx
-  Stack.Screen 4개 추가 (travel-guides/index, travel-guides/preparation, saved/places, saved/routes)
+- **src/types/place.ts** — 서버 표기(snake_case)를 앱 표기로 옮기는
+  `toPetPolicy()` 와 `ServerPetPolicy` 타입을 추가했습니다. 기존 값은 그대로이고
+  추가만 했습니다. 장소 탐색과 내 여행이 같은 변환을 쓰게 하려는 것입니다.
 
-- src/types/place.ts (신규)
-  PetPolicy 정본을 features 밖으로 승격했습니다. 내 여행과 장소 탐색이 함께 씁니다.
-  trips/types/trip.ts 가 재export 하므로 기존 import 경로는 그대로 동작합니다.
-  **값이 5종입니다** — outdoorOnly / indoorAllowed / partialAllowed / notAllowed / unknown.
-  서버 petPolicy.policyType 과 1:1 대응이며, 서버 표기는 snake_case 라 연동 시 변환이 필요합니다.
+앱 공통 파일 중 src/theme/·src/components/·app/_layout.tsx·app.config.ts·
+package.json·.gitignore·.env.example 은 건드리지 않았습니다.
 
-- src/components/domain/PetPolicyBadge.tsx (신규)
-  동반정책 배지를 공용으로 승격했습니다. unknown 은 회색 '정보 없음' 배지입니다.
-
-- src/components/feedback/EmptyState.tsx (신규)
-  목록이 비었을 때 쓰는 공통 안내. 아이콘·제목·설명 + 선택형 액션 버튼.
-
-- src/components/ui/Card.tsx
-  카드에 테두리를 추가했습니다 (borderWidth 1 + colors.border).
-  흰 배경 위 흰 카드라 경계가 보이지 않던 문제입니다.
-  **이 컴포넌트를 쓰는 여행기록·문의·회원탈퇴 화면도 함께 바뀝니다.**
-
-- src/components/ui/StatTile.tsx
-  variant 를 2색에서 4색으로 바꿨습니다 (categoryColors 참조). 마이페이지 전용입니다.
-
-- src/components/layout/NotificationPopup.tsx
-  알림 목데이터 정본이 features/notifications/mocks/ 로 옮겨져 import 경로가 바뀌었습니다.
+- **Alembic revision 없습니다.** 전부 이미 있는 테이블을 씁니다.
 
 ## 팀원 확인 사항
 
-- **npm ci 는 필요 없습니다.** 신규 라이브러리도, 환경변수·네이티브 권한 추가도 없습니다.
-- **PetPolicy 가 5종이 되었습니다.** Record<PetPolicy, ...> 로 받는 코드가 있다면 unknown 키를
-  추가해야 컴파일됩니다. 현재 앱 안에서는 배지 두 곳뿐이라 이미 처리했습니다.
-- **삭제해도 되는 파일 2개** — 재export 만 남아 참조가 없습니다.
-  - src/components/layout/notificationPreview.mock.ts
-  - src/features/trips/components/PetPolicyBadge.tsx
-- **저장 기능이 AsyncStorage 를 씁니다.** 키는 아래 형태이고, 로그아웃해도 지우지 않되
-  계정별로 분리됩니다.
-  - omeong-gameong.saved-places.<이메일>
-  - omeong-gameong.saved-routes.<이메일>
-- **API 명세 문서 3개를 고쳤습니다** (lucky 님 확인 후). places.md / type-mismatch-report.md /
-  README.md 에서 PetPolicyBadge 경로와 unknown 반영 상태만 갱신했고 분석·판단은 건드리지 않았습니다.
+- **장소 탐색·체크리스트·메모 탭이 이제 백엔드가 떠 있어야 보입니다.**
+  서버 없이 UI 만 볼 때 비는 것은 고장이 아닙니다.
+
+      make dev-local        # 로컬 PostgreSQL + FastAPI + Expo
+      make db-seed-local    # 씨앗 데이터. 자동 실행되지 않습니다
+
+  씨앗을 다시 심어야 체크리스트·메모가 생깁니다. 이미 심으셨어도 한 번 더 돌려주세요
+  (중복은 쌓이지 않습니다).
+
+- **장소가 4개만 보입니다.** 목데이터 8개를 버리고 씨앗 데이터를 보기 때문입니다.
+  개수가 줄어든 것이 연결이 된 증거입니다.
+
+- **지역 칩은 두 개만 반응합니다.** 씨앗의 region 이 "제주시"·"서귀포시" 라
+  제주시/제주국제공항 과 서귀포시/모슬포 에만 걸립니다. 나머지를 누르면 빈 목록이
+  나오는데 고장이 아닙니다. 아래 협의 사항 참고.
+
+- **사진·동반정책이 비어 보입니다.** 씨앗에 primaryImageUrl 과
+  place_pet_policies 가 없어서입니다. 회색 "정보 없음" 배지가 자리를 지키는 것이
+  의도한 동작입니다.
+
+- **드래그로 순서 바꾸기는 웹에서 동작하지 않습니다.**
+  react-native-draggable-flatlist 의 길게 누르기 제스처를 브라우저가 잘 못 잡습니다.
+  실기기·시뮬레이터에서는 됩니다. 웹에서는 "날짜 옮기기"로 확인하실 수 있습니다.
+
+- **목데이터 두 개가 죽었습니다.** trips/mocks/checklist.mock.ts 와 memos.mock.ts 를
+  아무도 참조하지 않습니다. 이번 PR 에서는 지우지 않았습니다 — 정리 PR 을 따로 냅니다.
 
 ## 협의가 필요한 사항
 
-- **PlaceCategory 이름 충돌.** places 는 필터 칩 정의 객체 { id, label, icon },
-  trips 는 장소 분류 union 'attraction' | 'restaurant' | ... 로 같은 이름을 다르게 씁니다.
-  type-mismatch-report.md 의 1-4 와 같은 사안이며 회의 안건입니다.
-- **"저장한 코스" 의 내부 용어.** 가이드 11장에 따라 route 를 쓰고 화면 문구만 '코스' 로 두었습니다.
-  경로는 /saved/routes 입니다.
-- **공유 이미지 카드(TripShareCard)의 순번 배지.** 다른 화면은 주황 단색으로 통일했는데
-  여기만 연한 주황입니다. 흰 배경에 인쇄되듯 나가는 화면이라 의도적으로 남겨두었습니다.
-- **여행 준비 가이드의 성격.** 특정 여행과 무관한 일반 지식 콘텐츠로 잡았습니다.
-  여행별 준비물은 내 여행의 체크리스트 탭이 담당합니다.
+1. **추천 방식을 규칙 기반으로 할지 AI 기반으로 할지.** 남은 엔드포인트 3개
+   (POST /route-requests, GET /routes/{id}/status, POST /routes/{id}/regenerate)가
+   전부 여기서 막혀 있습니다. 장소 태그와 사용자 취향 단어를 통일할지도 같이 갈립니다
+   (규칙 기반이면 반드시 통일해야 합니다).
+
+2. **api-ci.yml 에 PostgreSQL 서비스를 넣을지** (가영님). 지금 CI 에 DB 가 없어
+   엔드포인트 테스트가 CI 에서는 건너뛰어집니다. 로컬에서만 검증되고 있습니다.
+
+3. **이용약관에 "탈퇴 후에도 작성한 게시물은 유지된다" 조항이 필요합니다.**
+   탈퇴한 사용자의 리뷰를 남기고 작성자만 "탈퇴한 사용자"로 바꿔 내리도록
+   구현했습니다. 함께 지우면 장소 평점이 급변합니다.
+
+4. **POST /uploads 담당자를 정해야 합니다.** 명세에 있는데 아무도 만들지 않았습니다.
+   리뷰 사진(imageUrls)과 장소 사진(primaryImageUrl)이 전부 "업로드로 미리 받은
+   주소"를 전제해서, 지금은 사진 기능을 실제로 쓸 수 없습니다.
+   B 파트 35개 목록에 없는 항목입니다.
+
+5. **서버 region 값과 앱 지역 칩 이름을 통일할지.** 서버는 자유 문자열
+   ("제주시"·"서귀포시")이고 앱은 6종 union("제주시/제주국제공항")입니다.
+   지금은 어댑터가 매핑표로 옮기고, 못 찾으면 null 로 두어 '전체' 에서만 보이게 합니다.
+   장소 데이터에 손대야 해서 되돌리기가 비쌉니다.
+
+6. **일정을 다른 날짜로 옮기는 API 를 명세에 추가할지.** 지금은 서버에 없어서
+   앱이 DELETE 후 새 날짜에 POST 합니다. 이때 추천 점수·추천 이유가 따라가지 못합니다.
+
+7. **PlaceCategory 라벨이 두 벌입니다.** 내 여행은 "카페/디저트", 장소 탐색은
+   "카페·식당" 을 씁니다. 기존 이름 충돌 안건과 함께 정리가 필요합니다.
+
+8. **여행 이동수단이 서버 7종 / 앱 4종입니다.** (기존 안건) 어댑터가
+   taxi·ferry·airplane 을 publicTransport 로 접고 있어 정보가 줄어듭니다.
+
+9. **담당 영역 겹침 방지 규칙.** (기존 안건) 착수 전에 서로 알리는 규칙이 필요합니다.
 ```
 
 > 위 블록은 작업이 진행되는 대로 1~3번 표의 내용을 반영해 갱신한다.
@@ -447,3 +490,8 @@ git add package-lock.json
 | 2026-08-18 | 동반 정책에 `unknown` 추가 — lucky 님 API 명세(`docs/api/places.md`, `type-mismatch-report.md`)를 오늘 작업과 대조했다. **정책이 5종으로 확정(2026-08-18)됐는데 우리 타입은 4종**이었고, 명세가 `PetPolicyBadge` 를 콕 집어 '서버가 `unknown` 을 내려주면 `BADGE_COLORS[petPolicy]` 가 undefined 가 되어 화면이 죽는다' 고 경고하고 있었다. 타입·라벨·배지 색을 5종으로 맞췄다. `unknown` 은 회색 '정보 없음' 배지이고 발바닥 이모지를 빼 다른 정책과 구분한다. **대조에서 확인한 나머지 차이는 이번에 고치지 않았다** — 표기법(snake_case), 필드명(`primaryImageUrl`·`reservationRequired`), `petPolicy` 가 객체라는 점 등은 `places/api/placesApi.ts` 어댑터 안에서 흡수할 것들이고, 필드명 규칙은 팀 회의 안건(문서 4-3)이라 합의 후에 손대야 한다. **참고** — 명세서는 PR #30 시점까지만 반영돼 있어 오늘 만든 타입 4개(`types/place.ts`, `places/types/placeDetail.ts`, `saved/types/saved.ts`, `notifications/types/notification.ts`)는 대조 대상이 아니고, 문서가 가리키는 `PetPolicyBadge` 경로도 옛 위치(`features/trips/components/`)다 |
 | 2026-08-18 | API 명세 문서 3개 갱신(lucky 님 확인 후) — **사실 관계가 바뀐 부분만** 고쳤다. ① `PetPolicyBadge` 경로를 `features/trips/components/` → `src/components/domain/` 으로 (3개 문서에 걸쳐 있었다), ② `unknown` 미반영 경고를 '반영 완료' 로 바꾸고 README 의 '앱 코드 수정이 필요한 것' 목록에서 제거, ③ `type-mismatch-report.md` 부록에 PR #32·#36 신규 타입 4개를 '대조 안 함' 으로 추가. **분석·판단·회의 안건은 건드리지 않았다** — 문서 소유는 lucky 님이다. 변경 이력에 작성자를 남겼다                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 2026-08-18 | 5번 항목(main PR 본문) 재작성 — #21·#26 으로 이미 main 에 올라간 내용이 그대로 남아 있어 **아직 main 에 없는 것(PR #32·#36·#37)만** 담도록 비우고 다시 썼다. 이 블록은 main PR 을 낼 때마다 비우고 다시 쓰는 것이라는 안내도 함께 넣었다                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| 2026-08-21 | **백엔드 B 파트(장소·리뷰·여행) 착수.** 씨앗 데이터 스크립트(`apps/api/scripts/seed_dev.py`) 신설 — 사용자·반려동물·장소 4곳·여행 1개(3일 / 일정 6개)를 심는다. 프론트 목데이터(`trips.mock.ts`)와 같은 이름·좌표를 써서 API 연동 시 화면을 눈으로 대조할 수 있게 했다. **시간대** — `timestamptz` 는 절대 시각을 담으므로 저장은 처음부터 정확했고 psql 이 UTC 로 보여주던 것뿐이었다. 저장 방식은 그대로 두고 엔진 `connect_args` 로 **세션 시간대만** `Asia/Seoul` 로 맞췄다. 명세(`docs/api/README.md` 6장)가 `+09:00` 표기를 쓰고, UTC 로 내리면 이른 아침 일정에서 날짜가 하루 밀린다. **테스트 계정** — id `00000000-0000-0000-0000-000000000001` / `seed@omeong.local` 을 A 와 공유해 회원가입 API 와 충돌하지 않게 했다. **에러 메시지는 한국어로 확정** (`README.md` 8장의 '첫 도메인 구현 시 정한다' 항목) — 단 `422` 는 FastAPI 자동 생성이라 영문이고, 앱이 `detail` 이 배열이면 자기 문구를 쓴다. **5번 항목은 아직 비우지 않았다** — 오늘 작업을 마치고 main PR 을 낼 때 다시 쓴다 |
+| 2026-08-22 | **내 여행 화면을 여행 조회 API 에 연결.** `tripsApi.ts` 의 목데이터 호출을 `GET /routes` · `GET /routes/{routeId}` 로 교체하고, 서버·앱 타입 차이를 흡수하는 `api/routeAdapter.ts` 와 서버 응답 타입 `types/routeApi.ts` 를 신설했다. **훅·화면은 한 줄도 고치지 않았다** — 장소 상세(`placesApi.ts`)에서 쓴 어댑터 방식과 같다. 흡수한 차이: `startAt`(시각) → `startDate`(날짜), `sortOrder` 0부터 → `order` 1부터, `itemType` → `PlaceCategory`, 숙소 요약을 일정에서 추출, `pace` → 여행 성향 문구. 서버에 없는 값(날씨·이동거리·동반정책·평점·이동시간)은 빈 값으로 두어 화면이 그리지 않는다. **신규 라이브러리·공통 파일 변경 없음.** 다만 팀원이 pull 후 백엔드를 띄우지 않으면 내 여행 탭이 비므로 5번 항목에 안내를 넣었다. `trips.mock.ts` 는 **지우면 안 된다** — `features/places/api/placesApi.ts` 가 장소 상세 어댑터에서 아직 쓴다 |
+| 2026-08-22 | **최신 main 을 받아와 합침(lucky 님 내 여행 목록 화면 PR #53·#54).** 충돌은 `api/tripsApi.ts` 한 파일 — 내 API 호출 구현을 살리고 `getLatestTrip` 을 제거했다(목록 화면이 생겨 "가장 최근 여행 하나"가 불필요해졌다). 합친 뒤 **lucky 님 목록 화면이 곧바로 실서버를 부른다** — `useTrips()` → `getTrips()` → `GET /routes`. 지금까지 쓰는 화면이 없던 목록 엔드포인트가 처음으로 화면을 가졌다. 화면에 씨앗 여행 1건만 뜨는 것으로 확인. **5번 항목을 현재 기준으로 다시 썼다** — PR #32·#36·#37 내용이 이미 main 에 반영됐는데 그대로 남아 있었다(`git diff --name-only origin/main...HEAD` 로 실제 파일을 확인). 이번 PR 의 공통 파일 변경은 **Makefile 의 db-seed 타깃 하나뿐**이고, 가영님 Docker/RDS 작업과 겹치는 유일한 지점이다 |
+| 2026-08-23 | **여행 편집·장소·리뷰 API 29개 추가(백엔드만).** 일정 편집 4개·여행 관리 4개·체크리스트 4개·메모 4개·장소 8개·리뷰 5개. **앱 파일과 공통 파일은 하나도 건드리지 않았고 Alembic revision 도 없다** — 전부 이미 있는 테이블을 쓴다. 소유권 확인은 `services/route_access.py` 한 곳으로 모았다(없는 것은 404, 남의 것은 403 — 합치면 남의 여행 id 존재 여부가 새어 나간다). **순번(sort_order)은 두 번에 나눠 쓴다** — UNIQUE(route_day_id, sort_order) 를 PostgreSQL 이 행마다 즉시 검사해서 0·1·2 를 1·2·3 으로 한 번에 올리면 실패한다. 겹칠 수 없는 높은 구간으로 피했다가 0 부터 내려앉힌다. **GET /places 는 공식 장소만** 내린다(`created_by_user_id IS NULL`) — 한 줄만 빠뜨려도 남이 등록한 장소가 이름·좌표째로 검색에 섞인다. 거리는 PostGIS 없이 하버사인으로 계산하고 `least(1, ...)` 로 감쌌다(같은 좌표 조회 시 부동소수점 오차로 acos 가 터진다). 테스트 48개 신설, **TEST_DATABASE_URL 이 있을 때만** DB 테스트가 돈다(settings.database_url 을 자동으로 쓰면 공유 RDS 를 건드리게 된다). 5번 항목을 현재 기준으로 다시 썼다 — PR #61 내용이 그대로 남아 있었다 |
+| 2026-08-23 | **수동 여행 생성 API + 앱 5개 화면 연결(오후).** 오전 PR #66 에 이어 `POST /routes` 를 유력안대로 만들었다 — 여행 껍데기만 만들고 **날짜(route_days)는 서버가 기간만큼 미리 만든다**(일정 추가가 routeDayId 를 요구하는데 날짜를 만드는 API 가 명세에 없다). 여행 상세의 빈 칸이던 `logCount` 와 장소의 `rating`·`reviewCount`·`petPolicyType` 을 채웠다 — 오전에 만든 집계식을 그대로 썼다. **앱은 다섯 곳이 목데이터를 버렸다** — 장소 목록·즐겨찾기·일정 편집 저장·체크리스트·메모. **즐겨찾기만 바꿀 수 없었다**: 목데이터 id 가 `hamdeok-beach` 같은 문자열이고 서버는 UUID 라, 장소 목록부터 서버로 옮겨야 했다. **공통 파일 `src/types/place.ts` 에 `toPetPolicy()` 를 추가**해 장소 탐색과 내 여행이 같은 변환을 쓰게 했다. 어댑터가 흡수한 차이 — 미터→km, 서버 category 코드→한글 라벨(안 그러면 분류 칩 필터가 통째로 안 먹는다), 서버 region 자유 문자열→앱 칩 6종(못 찾으면 null, 억지로 끼우면 엉뚱한 장소가 섞인다). **날짜 이동은 DELETE 후 POST 다** — 서버에 이동 API 가 없어서이고, 추천 점수·이유는 따라가지 못한다(안건). 순서 저장 때는 **화면에서 걸러진 좌표 없는 일정까지 챙긴다** — 순서 API 가 그 날짜 전체를 요구해서 화면이 아는 것만 보내면 422 다. 체크박스는 낙관적 갱신(왕복을 기다리면 한 박자 늦게 움직인다). 씨앗에 체크리스트 10개·메모 2개를 넣었다 — 없으면 '연결 안 됨'과 '데이터 없음'이 구분되지 않는다. `mocks/checklist.mock.ts`·`memos.mock.ts` 는 참조가 0 이 됐지만 이번엔 지우지 않았다. 5번 항목을 오후 기준으로 다시 썼다 — 협의 안건이 5건 늘었다 |

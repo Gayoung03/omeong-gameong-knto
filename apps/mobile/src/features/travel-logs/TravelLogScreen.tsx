@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ErrorState } from '@/src/components/feedback/ErrorState';
 import { useAllPets } from '@/src/features/profile/hooks/usePets';
 import { colors, spacing, typography } from '@/src/theme';
 import type { TravelLogListItem } from '@/src/types/travelLog';
@@ -12,11 +13,7 @@ import { PetFilterBottomSheet } from './components/PetFilterBottomSheet';
 import { TravelLogFilterBar } from './components/TravelLogFilterBar';
 import { TravelLogHeader } from './components/TravelLogHeader';
 import { TravelLogSkeleton } from './components/TravelLogSkeleton';
-import {
-  TravelLogEmptyState,
-  TravelLogErrorState,
-  TravelLogNoResultsState,
-} from './components/TravelLogStates';
+import { TravelLogEmptyState, TravelLogNoResultsState } from './components/TravelLogStates';
 import { TripCard } from './components/TripCard';
 import { UngroupedLogCard } from './components/UngroupedLogCard';
 import { useTravelLogFilters } from './hooks/useTravelLogFilters';
@@ -69,7 +66,7 @@ export function TravelLogScreen() {
     }
 
     if (isError) {
-      return <TravelLogErrorState onRetry={() => refetch()} />;
+      return <ErrorState onRetry={() => refetch()} />;
     }
 
     if (isFilterActive) {

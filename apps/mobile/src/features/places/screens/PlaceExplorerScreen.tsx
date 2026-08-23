@@ -2,8 +2,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -13,6 +13,8 @@ import {
   View,
 } from 'react-native';
 
+import { PetPolicyBadge } from '@/src/components/domain/PetPolicyBadge';
+import { RemoteImage } from '@/src/components/ui/RemoteImage';
 import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
 import {
   useSavedPlaceIds,
@@ -22,7 +24,7 @@ import { colors, spacing } from '@/src/theme';
 
 import { InteractivePlaceMap } from '../components/InteractivePlaceMap';
 import { placeCategories } from '../constants/placeCategories';
-import { mockPlaces } from '../mocks/place.mock';
+import { usePlaces } from '../hooks/usePlaces';
 import { isPlaceRegion, placeRegions, type PlaceRegionFilter } from '../constants/placeRegions';
 import type { Place } from '../types/place';
 
@@ -37,7 +39,8 @@ export function PlaceExplorerScreen() {
   );
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(view === 'map' ? 'map' : 'list');
-  // 저장 목록은 기기에 남는다. 정본은 features/saved 의 저장소다.
+  // 장소 목록도 저장 목록도 서버가 정본이다. 목데이터는 더 이상 쓰지 않는다.
+  const { data: places = [], isPending } = usePlaces();
   const savedPlaceIds = useSavedPlaceIds();
   const toggleSavedPlace = useToggleSavedPlace();
 
@@ -52,7 +55,7 @@ export function PlaceExplorerScreen() {
   const filteredPlaces = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('ko-KR');
 
-    return mockPlaces.filter((place) => {
+    return places.filter((place) => {
       const matchesQuery =
         !normalizedQuery ||
         place.name.toLocaleLowerCase('ko-KR').includes(normalizedQuery) ||
@@ -66,16 +69,10 @@ export function PlaceExplorerScreen() {
 
       return matchesQuery && matchesRegion && matchesCategory;
     });
-  }, [query, selectedCategory, selectedRegion]);
+  }, [places, query, selectedCategory, selectedRegion]);
 
   const toggleFavorite = (place: Place) => {
-    toggleSavedPlace.mutate({
-      address: place.address,
-      category: place.category,
-      id: place.id,
-      imageUrl: place.imageUrl,
-      name: place.name,
-    });
+    toggleSavedPlace.mutate({ isSaved: savedPlaceIds.has(place.id), placeId: place.id });
   };
 
   return (
@@ -183,7 +180,15 @@ export function PlaceExplorerScreen() {
           contentContainerStyle={styles.listContent}
           data={filteredPlaces}
           keyExtractor={(place) => place.id}
-          ListEmptyComponent={<EmptyResult />}
+          ListEmptyComponent={
+            isPending ? (
+              <View style={styles.loading}>
+                <ActivityIndicator color={colors.primary} />
+              </View>
+            ) : (
+              <EmptyResult />
+            )
+          }
           renderItem={({ item }) => (
             <PlaceRow
               isFavorite={savedPlaceIds.has(item.id)}
@@ -238,11 +243,7 @@ function PlaceRow({ isFavorite, onPressFavorite, place }: PlaceRowProps) {
       onPress={() => router.push(`/places/${place.id}`)}
       style={({ pressed }) => [styles.placeRow, pressed && styles.rowPressed]}
     >
-      <Image
-        accessibilityLabel={`${place.name} 사진`}
-        source={{ uri: place.imageUrl }}
-        style={styles.placeImage}
-      />
+      <RemoteImage style={styles.placeImage} uri={place.imageUrl ?? undefined} />
       <View style={styles.placeCopy}>
         <Text numberOfLines={1} style={styles.placeName}>
           {place.name}
@@ -251,12 +252,9 @@ function PlaceRow({ isFavorite, onPressFavorite, place }: PlaceRowProps) {
           {place.address}
         </Text>
         <View style={styles.tagRow}>
-          {place.petFriendly ? (
-            <View style={styles.petTag}>
-              <Ionicons color={colors.primary} name="paw" size={10} />
-              <Text style={styles.petTagText}>반려동물 동반 가능</Text>
-            </View>
-          ) : null}
+          {/* 동반 정책은 5종 배지로 그린다. 정보가 없는 장소도 회색 배지가 자리를 지켜
+              카드 높이가 들쭉날쭉해지지 않는다. */}
+          {place.petPolicy ? <PetPolicyBadge petPolicy={place.petPolicy} /> : null}
           <View style={styles.categoryTag}>
             <Text style={styles.categoryTagText}>{place.category}</Text>
           </View>
@@ -277,7 +275,9 @@ function PlaceRow({ isFavorite, onPressFavorite, place }: PlaceRowProps) {
             size={22}
           />
         </Pressable>
-        <Text style={styles.distance}>{place.distanceKm.toFixed(1)}km</Text>
+        {place.distanceKm === null ? null : (
+          <Text style={styles.distance}>{place.distanceKm.toFixed(1)}km</Text>
+        )}
       </View>
     </Pressable>
   );
@@ -418,6 +418,10 @@ const styles = StyleSheet.create({
   modeTextSelected: {
     color: colors.surface,
   },
+  loading: {
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+  },
   listContent: {
     paddingHorizontal: spacing.md,
     paddingBottom: 20,
@@ -462,20 +466,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-  },
-  petTag: {
-    height: 20,
-    paddingHorizontal: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    borderRadius: 6,
-    backgroundColor: colors.primarySoft,
-  },
-  petTagText: {
-    color: colors.primaryDeep,
-    fontSize: 9,
-    fontWeight: '700',
   },
   categoryTag: {
     height: 20,

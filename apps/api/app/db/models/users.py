@@ -26,6 +26,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 from app.db.models.enums import (
     AuthProvider,
+    ConsentType,
     PetSize,
     PetSpecies,
     TransportType,
@@ -59,6 +60,38 @@ class User(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class UserConsent(Base):
+    """약관 동의 이력.
+
+    한 행을 고쳐 쓰지 않고 동의·철회가 있을 때마다 새 행을 쌓는다.
+    마케팅 동의는 켜고 끌 수 있고 약관은 개정될 수 있어서, 덮어쓰면
+    "그 시점에 어떤 버전에 동의했는지"가 사라져 분쟁 시 증빙이 되지 않는다.
+
+    현재 동의 상태는 (user_id, consent_type)별 created_at 이 가장 큰 행이다.
+    """
+
+    __tablename__ = "user_consents"
+    __table_args__ = (
+        Index("ix_user_consents_user_type_created", "user_id", "consent_type", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    consent_type: Mapped[ConsentType] = mapped_column(
+        db_enum(ConsentType, "consent_type"), nullable=False
+    )
+    #: 동의는 True, 철회는 False.
+    is_agreed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    #: 동의한 약관 문서의 버전. 문서가 없는 age_14_or_over 는 비어 있다.
+    document_version: Mapped[str | None] = mapped_column(String(50))
+    #: 동의하거나 철회한 시각.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 

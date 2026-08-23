@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors } from '@/src/theme';
 
+import { AgreementSection, hasAllRequiredAgreements } from '../components/AgreementSection';
 import { AuthHeader } from '../components/AuthHeader';
 import { ChoiceChip } from '../components/ChoiceChip';
 import { IconTextField } from '../components/IconTextField';
@@ -31,8 +32,9 @@ import { completeSignup } from '../services/authStorage';
 import type { SignupData } from '../types/auth';
 
 const initialData: SignupData = {
+  agreements: { age14: false, terms: false, privacy: false, marketing: false },
   account: { email: '', password: '', passwordConfirm: '', nickname: '' },
-  pet: { type: null, size: null },
+  pet: { type: null, typeDetail: '', size: null },
   travel: {
     duration: null,
     transport: null,
@@ -49,6 +51,7 @@ export function SignupScreen() {
   const [step, setStep] = useState(1);
   const [data, setData] = useState<SignupData>(initialData);
   const [accountErrors, setAccountErrors] = useState<AccountErrors>({});
+  const [agreementError, setAgreementError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
 
   const updateAccount = (key: keyof SignupData['account'], value: string) => {
@@ -76,7 +79,11 @@ export function SignupScreen() {
       errors.nickname = '닉네임을 2자 이상 입력해주세요.';
     }
     setAccountErrors(errors);
-    return Object.keys(errors).length === 0;
+
+    const agreementsMissing = !hasAllRequiredAgreements(data.agreements);
+    setAgreementError(agreementsMissing ? '필수 항목에 모두 동의해주세요.' : undefined);
+
+    return Object.keys(errors).length === 0 && !agreementsMissing;
   };
 
   const goNext = () => {
@@ -89,12 +96,17 @@ export function SignupScreen() {
       setStep((current) => current - 1);
       return;
     }
-    router.back();
+    // 새로고침이나 딥링크로 바로 들어오면 돌아갈 화면이 없어 back 이 실패한다.
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/login');
   };
 
   const skipCurrentStep = () => {
     if (step === 2) {
-      setData((current) => ({ ...current, pet: { type: null, size: null } }));
+      setData((current) => ({ ...current, pet: { type: null, typeDetail: '', size: null } }));
       setStep(3);
       return;
     }
@@ -187,11 +199,15 @@ export function SignupScreen() {
                     value={data.account.nickname}
                   />
                 </View>
+                <AgreementSection
+                  error={agreementError}
+                  onChange={(agreements) => {
+                    setData((current) => ({ ...current, agreements }));
+                    if (agreementError) setAgreementError(undefined);
+                  }}
+                  value={data.agreements}
+                />
                 <PrimaryButton icon="chevron-forward" label="다음" onPress={goNext} />
-                <Text style={styles.terms}>
-                  회원가입을 하면 서비스 <Text style={styles.termsAccent}>이용약관</Text> 및{' '}
-                  <Text style={styles.termsAccent}>개인정보 처리방침</Text>에 동의하게 됩니다.
-                </Text>
                 <InfoCard />
               </View>
             )}
@@ -214,7 +230,12 @@ export function SignupScreen() {
                           onPress={() =>
                             setData((current) => ({
                               ...current,
-                              pet: { ...current.pet, type: option.value },
+                              pet: {
+                                ...current.pet,
+                                type: option.value,
+                                typeDetail:
+                                  option.value === 'other' ? current.pet.typeDetail : '',
+                              },
                             }))
                           }
                           style={({ pressed }) => [
@@ -231,6 +252,21 @@ export function SignupScreen() {
                       );
                     })}
                   </View>
+                  {data.pet.type === 'other' && (
+                    <TextInput
+                      maxLength={20}
+                      onChangeText={(value) =>
+                        setData((current) => ({
+                          ...current,
+                          pet: { ...current.pet, typeDetail: value.replace(/\n/g, '') },
+                        }))
+                      }
+                      placeholder="종 이름을 입력해주세요"
+                      placeholderTextColor={colors.textTertiary}
+                      style={styles.speciesDetailInput}
+                      value={data.pet.typeDetail}
+                    />
+                  )}
                 </Section>
 
                 <Section title="반려동물 크기">
@@ -462,8 +498,6 @@ const styles = StyleSheet.create({
   introTitle: { color: colors.textPrimary, fontSize: 25, fontWeight: '900', letterSpacing: -0.8 },
   introDescription: { color: colors.textSecondary, fontSize: 14, lineHeight: 21, marginTop: 8 },
   fieldList: { gap: 13, marginBottom: 20 },
-  terms: { color: colors.iconGray, fontSize: 11, lineHeight: 18, marginTop: 13, textAlign: 'center' },
-  termsAccent: { color: colors.primary, fontWeight: '700' },
   infoCard: {
     alignItems: 'center',
     backgroundColor: colors.primarySoft,
@@ -491,6 +525,17 @@ const styles = StyleSheet.create({
   sectionTitle: { color: colors.textPrimary, fontSize: 16, fontWeight: '800' },
   optional: { color: colors.textTertiary, fontSize: 12, fontWeight: '500' },
   petTypeGrid: { flexDirection: 'row', gap: 8 },
+  speciesDetailInput: {
+    backgroundColor: colors.surface,
+    borderColor: colors.divider,
+    borderRadius: 15,
+    borderWidth: 1,
+    color: colors.textPrimary,
+    fontSize: 14,
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
   petTypeCard: {
     alignItems: 'center',
     backgroundColor: colors.surface,

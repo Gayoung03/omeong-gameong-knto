@@ -18,7 +18,10 @@ const wait = (ms: number) =>
  * 프로필 이미지처럼 세션에 없는 값은 목업으로 남긴다.
  * TODO: 사용자 API(GET /users/me) 연결 시 이 파일 전체를 실제 호출로 교체한다.
  */
-/** 사용자가 사진을 올리기 전에 보여주는 기본 프로필 일러스트. */
+/**
+ * 사용자가 사진을 올리기 전에 보여주는 기본 프로필 일러스트.
+ * `Image.resolveAssetSource` 는 react-native-web 에 없어 웹에서 깨지므로 `Asset` 을 쓴다.
+ */
 const DEFAULT_USER_AVATAR = Asset.fromModule(
   require('@/assets/images/profile/default-user.jpg'),
 ).uri;

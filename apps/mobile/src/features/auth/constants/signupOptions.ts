@@ -3,8 +3,6 @@ import type { PetSize, PetType } from '../types/auth';
 export const petTypeOptions: { value: PetType; label: string; icon: string }[] = [
   { value: 'dog', label: '강아지', icon: '🐶' },
   { value: 'cat', label: '고양이', icon: '🐱' },
-  { value: 'rabbit', label: '토끼', icon: '🐰' },
-  { value: 'bird', label: '새', icon: '🐦' },
   { value: 'other', label: '기타', icon: '•••' },
 ];
 

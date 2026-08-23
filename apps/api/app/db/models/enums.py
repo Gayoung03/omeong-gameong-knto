@@ -21,11 +21,20 @@ class AuthProvider(StrEnum):
     GOOGLE = "google"
 
 
+class ConsentType(StrEnum):
+    """회원가입·설정에서 받는 동의 항목."""
+
+    TERMS_OF_SERVICE = "terms_of_service"
+    PRIVACY_POLICY = "privacy_policy"
+    AGE_14_OR_OVER = "age_14_or_over"
+    MARKETING = "marketing"
+
+
 class PetSpecies(StrEnum):
+    """강아지·고양이 외에는 종 이름을 species_detail 에 직접 받는다."""
+
     DOG = "dog"
     CAT = "cat"
-    RABBIT = "rabbit"
-    BIRD = "bird"
     OTHER = "other"
 
 

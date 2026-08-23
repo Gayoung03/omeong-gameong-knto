@@ -1,4 +1,4 @@
-import type { Pet, PetSpecies } from '@/src/types/pet';
+import type { Pet, PetSize, PetSpecies } from '@/src/types/pet';
 import type { TravelLogPetSnapshot } from '@/src/types/travelLog';
 import { createId } from '@/src/utils/createId';
 
@@ -22,9 +22,12 @@ let currentPets: Pet[] = mockPets.map((pet) => ({ ...pet }));
 export type PetFormInput = {
   name: string;
   species: PetSpecies;
+  /** species가 '기타'일 때만 채운다. */
+  speciesDetail?: string;
   breed: string;
   age: number;
   weight: number;
+  size: PetSize;
   /** 새로 고른 로컬 이미지. removeProfileImage와 동시에 지정할 수 없다. */
   localProfileImageUri?: string;
   /** 기본 이미지로 되돌리기. localProfileImageUri와 동시에 지정할 수 없다. */
@@ -81,6 +84,8 @@ function toPetFields(input: PetFormInput) {
   return {
     name: input.name.trim(),
     species: input.species,
+    speciesDetail: input.speciesDetail,
+    size: input.size,
     breed: input.breed.trim(),
     age: input.age,
     weight: input.weight,
