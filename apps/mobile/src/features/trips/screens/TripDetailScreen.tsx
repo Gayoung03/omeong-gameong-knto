@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ErrorState } from '@/src/components/feedback/ErrorState';
 import { IconButton } from '@/src/components/ui/IconButton';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
@@ -143,12 +144,7 @@ export function TripDetailScreen({ tripId }: { tripId: string }) {
   if (isError) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.centered}>
-          <Text style={styles.stateTitle}>여행 정보를 불러오지 못했어요</Text>
-          <Pressable onPress={() => refetch()} style={styles.retryButton}>
-            <Text style={styles.retryText}>다시 시도</Text>
-          </Pressable>
-        </View>
+        <ErrorState onRetry={() => refetch()} />
       </SafeAreaView>
     );
   }

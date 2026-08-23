@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ErrorState } from '@/src/components/feedback/ErrorState';
 import { Card } from '@/src/components/ui/Card';
 import { RemoteImage } from '@/src/components/ui/RemoteImage';
 import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
@@ -10,7 +11,6 @@ import { colors, radius, spacing, typography } from '@/src/theme';
 import type { InquiryItem } from '@/src/types/inquiry';
 
 import { InquiryStatusBadge } from './components/InquiryStatusBadge';
-import { InquiryErrorState } from './components/InquiryStates';
 import { useInquiry } from './hooks/useInquiries';
 
 const THUMBNAIL_SIZE = 120;
@@ -26,7 +26,7 @@ export function InquiryDetailScreen({ inquiryId }: Props) {
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScreenHeader title="문의 상세" />
       <ScrollView contentContainerStyle={styles.content}>
-        {isError ? <InquiryErrorState onRetry={() => refetch()} /> : null}
+        {isError ? <ErrorState onRetry={() => refetch()} /> : null}
         {/* 로딩 중에는 잠깐 빈 화면을 두고, 도착하면 한 번에 그린다. */}
         {!isPending && !isError && inquiry ? <InquiryDetailBody inquiry={inquiry} /> : null}
       </ScrollView>
