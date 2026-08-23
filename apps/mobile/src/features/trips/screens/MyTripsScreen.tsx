@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ApiErrorState } from '@/src/components/feedback/ApiErrorState';
 import { AppHeader } from '@/src/components/layout/AppHeader';
 import { ScreenTitleBar } from '@/src/components/layout/ScreenTitleBar';
 import { colors, radius, spacing, typography } from '@/src/theme';
@@ -12,7 +13,7 @@ import { useTrips } from '../hooks/useTrips';
 
 export function MyTripsScreen() {
   const router = useRouter();
-  const { data: trips, isLoading, isError, refetch } = useTrips();
+  const { data: trips, error, isLoading, isError, refetch } = useTrips();
 
   const openTrip = (tripId: string) => {
     router.push({ pathname: '/trips/[tripId]', params: { tripId } });
@@ -38,12 +39,11 @@ export function MyTripsScreen() {
 
     if (isError) {
       return (
-        <View style={styles.centered}>
-          <Text style={styles.stateTitle}>여행 목록을 불러오지 못했어요</Text>
-          <Pressable onPress={() => refetch()} style={styles.retryButton}>
-            <Text style={styles.retryText}>다시 시도</Text>
-          </Pressable>
-        </View>
+        <ApiErrorState
+          error={error}
+          onRetry={() => void refetch()}
+          title="여행 목록을 불러오지 못했어요"
+        />
       );
     }
 
@@ -142,17 +142,6 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
-  },
-  retryButton: {
-    backgroundColor: colors.primarySoft,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  retryText: {
-    color: colors.primary,
-    fontSize: typography.label.fontSize,
-    fontWeight: '700',
   },
   safeArea: {
     backgroundColor: colors.background,
