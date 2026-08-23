@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ApiErrorState } from '@/src/components/feedback/ApiErrorState';
+import { ErrorState } from '@/src/components/feedback/ErrorState';
 import { AppHeader } from '@/src/components/layout/AppHeader';
 import { ScreenTitleBar } from '@/src/components/layout/ScreenTitleBar';
 import { colors, radius, spacing, typography } from '@/src/theme';
@@ -39,7 +39,7 @@ export function MyTripsScreen() {
 
     if (isError) {
       return (
-        <ApiErrorState
+        <ErrorState
           error={error}
           onRetry={() => void refetch()}
           title="여행 목록을 불러오지 못했어요"

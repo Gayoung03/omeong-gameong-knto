@@ -28,9 +28,9 @@ services:
       - /bin/sh
       - -ec
       - |
-        uv run alembic upgrade head
-        uv run alembic current --check-heads
-        uv run alembic check
-        uv run alembic downgrade base
-        uv run alembic upgrade head
-        uv run alembic current --check-heads
+        .venv/bin/alembic upgrade head
+        .venv/bin/alembic current --check-heads
+        .venv/bin/alembic check
+        .venv/bin/alembic downgrade base
+        .venv/bin/alembic upgrade head
+        .venv/bin/alembic current --check-heads

@@ -42,16 +42,53 @@ make setup
 
 ## 실행
 
-저장소 루트에서 다음 명령 하나로 PostgreSQL, DB 마이그레이션, FastAPI, Expo를 동시에 실행합니다.
+루트 `.env`에 AWS RDS 연결 주소를 설정합니다. 실제 비밀번호가 들어 있는 `.env`는
+Git에서 제외되며 `.env.example`에는 비밀번호를 넣지 않습니다.
+
+```dotenv
+DATABASE_URL=postgresql+psycopg://omeong_app:<URL 인코딩한 비밀번호>@<RDS 호스트>:5432/omeong?sslmode=require
+MIGRATION_DATABASE_URL=postgresql+psycopg://<마이그레이션 계정>:<URL 인코딩한 비밀번호>@<RDS 호스트>:5432/omeong?sslmode=require
+```
+
+공유 AWS RDS를 사용해 FastAPI와 Expo를 실행합니다.
 
 ```bash
 make dev
 ```
 
-종료할 때는 `Ctrl+C`를 누릅니다. Expo와 FastAPI가 함께 종료되고 PostgreSQL
-컨테이너도 자동으로 종료됩니다. PostgreSQL 데이터 볼륨은 삭제되지 않습니다.
+FastAPI는 Docker 컨테이너에서 실행하고 Expo는 호스트에서 실행합니다. FastAPI는
+`DATABASE_URL`로 AWS RDS에 접속합니다. 처음 실행하거나 API 의존성이 바뀌면 이미지를
+빌드하며, 이후에는 Docker 빌드 캐시를 사용합니다. API 소스 코드는 컨테이너에 연결되어
+저장 시 FastAPI가 자동으로 재시작됩니다.
 
-`make dev`는 PostgreSQL이 준비될 때까지 기다린 뒤 다음을 순서대로 실행합니다.
+종료할 때는 `Ctrl+C`를 누릅니다. Expo와 FastAPI 컨테이너가 함께 종료됩니다.
+
+개인 데이터를 자유롭게 수정할 때는 로컬 PostgreSQL 모드를 사용합니다.
+
+```bash
+make dev-local
+```
+
+이 명령은 로컬 PostgreSQL을 시작하고 migration을 적용한 뒤, FastAPI와 Expo를
+실행합니다. 종료해도 PostgreSQL volume은 삭제되지 않아 데이터가 유지됩니다.
+
+개발용 씨앗 데이터는 사용할 DB에 맞는 명령으로 직접 넣습니다.
+
+```bash
+make db-seed        # AWS RDS
+make db-seed-local  # 로컬 PostgreSQL
+```
+
+공유 RDS의 씨앗 데이터는 모든 팀원에게 보이므로 변경 전에 팀원과 확인합니다.
+
+공유 RDS가 자동으로 변경되지 않도록 `make dev`는 마이그레이션을 실행하지 않습니다.
+팀원과 마이그레이션 실행 시점을 합의한 뒤 다음 명령을 명시적으로 실행합니다.
+
+```bash
+make db-migrate-check
+```
+
+이 명령은 `MIGRATION_DATABASE_URL`을 사용해 다음을 순서대로 실행합니다.
 
 ```text
 alembic upgrade head
@@ -60,8 +97,8 @@ alembic upgrade head
 ```
 
 최신 마이그레이션을 적용하고 DB revision이 head인지, SQLAlchemy 모델 변경에서
-누락된 마이그레이션이 없는지 검증합니다. 하나라도 실패하면 FastAPI와 Expo를
-실행하지 않습니다.
+누락된 마이그레이션이 없는지 검증합니다. 하나라도 실패하면 마이그레이션 작업이
+실패합니다.
 
 - FastAPI: `http://localhost:8000`
 - Swagger: `http://localhost:8000/docs`
@@ -71,12 +108,33 @@ alembic upgrade head
 필요한 경우 각 서비스를 따로 실행할 수도 있습니다.
 
 ```bash
-make db-up
+make backend-up
+make backend-logs
+make backend-down
+make backend-local-up
+make backend-local-logs
+make backend-local-down
 make db-migrate
 make db-migrate-check
+make db-migrate-local
+make db-seed
+make db-seed-local
 make api-dev
 make mobile-dev
 ```
+
+- `make backend-up`: FastAPI를 빌드하고 백그라운드에서 실행합니다.
+- `make backend-logs`: FastAPI 로그를 확인합니다.
+- `make backend-down`: FastAPI 컨테이너를 정리합니다.
+- `make backend-local-up`: 로컬 PostgreSQL에 연결한 FastAPI를 실행합니다.
+- `make backend-local-logs`: 로컬 DB 모드의 FastAPI 로그를 확인합니다.
+- `make backend-local-down`: 로컬 FastAPI와 PostgreSQL을 종료합니다.
+- `make db-migrate`: 합의 후 AWS RDS에 최신 마이그레이션을 적용합니다.
+- `make db-migrate-check`: 마이그레이션 적용 후 revision과 모델 차이를 검사합니다.
+- `make db-migrate-local`: 로컬 PostgreSQL에 최신 마이그레이션을 적용합니다.
+- `make db-seed`: AWS RDS에 개발용 씨앗 데이터를 넣습니다.
+- `make db-seed-local`: 로컬 PostgreSQL에 개발용 씨앗 데이터를 넣습니다.
+- `make api-dev`: FastAPI 로그를 전면에서 확인합니다.
 
 ### 마이그레이션 전체 재현 검사
 
@@ -86,14 +144,13 @@ make mobile-dev
 make db-migration-smoke
 ```
 
-이 명령은 기존 개발 DB와 분리된 임시 PostgreSQL에서 `upgrade head → downgrade base →
+이 명령은 AWS RDS와 분리된 임시 PostgreSQL에서 `upgrade head → downgrade base →
 upgrade head`를 검증합니다. 호스트 포트와 영구 volume을 사용하지 않으며 검사 후
 임시 컨테이너와 DB는 자동으로 정리됩니다. Docker Desktop이 실행 중이어야 합니다.
 
-- `make db-down`: PostgreSQL 컨테이너만 종료하고 기존 DB volume은 유지합니다.
-- `make db-migration-smoke`: 기존 DB와 volume에 접근하지 않습니다.
+- `make db-migration-smoke`: AWS RDS에 접근하지 않습니다.
 
-실제 휴대폰에서 API를 호출할 때는 `.env`의 `EXPO_PUBLIC_API_URL`에 컴퓨터의
+실제 휴대폰에서 API를 호출할 때는 `apps/mobile/.env`의 `EXPO_PUBLIC_API_URL`에 컴퓨터의
 같은 Wi-Fi 내부 IP를 지정해야 합니다.
 
 ```dotenv
