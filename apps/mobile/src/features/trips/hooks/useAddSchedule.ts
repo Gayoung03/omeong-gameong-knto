@@ -10,6 +10,7 @@ import type {
   ScheduleItem,
   Trip,
 } from '../types/trip';
+import { toDaySearchArea, toStaySearchArea } from '../utils/placeSearchArea';
 import { usePlaceCandidates, usePlaceSearchResults } from './usePlaceSearch';
 import { tripQueryKeys } from './useTrips';
 
@@ -68,16 +69,29 @@ export function useAddSchedule({ tripId, schedules, initialScheduleId }: UseAddS
 
   const isSearching = searchKeyword.trim().length > 0;
 
-  const candidatesQuery = usePlaceCandidates(activeTab, filter);
-  const searchQuery = usePlaceSearchResults(searchKeyword, filter);
-
-  const activeQuery = isSearching ? searchQuery : candidatesQuery;
-  const places = useMemo(() => activeQuery.data ?? [], [activeQuery.data]);
-
   const selectedSchedule = useMemo(
     () => schedules.find((schedule) => schedule.id === selectedScheduleId) ?? schedules[0] ?? null,
     [schedules, selectedScheduleId],
   );
+
+  /** 탭마다 기준이 다르다. 추천은 그 날짜의 마지막 일정, 내 숙소는 담긴 숙소. */
+  const searchArea = useMemo(() => {
+    if (activeTab === 'dayRecommend') {
+      return toDaySearchArea(selectedSchedule?.items ?? []);
+    }
+
+    if (activeTab === 'nearStay') {
+      return toStaySearchArea(schedules);
+    }
+
+    return null;
+  }, [activeTab, schedules, selectedSchedule]);
+
+  const candidatesQuery = usePlaceCandidates(activeTab, filter, searchArea);
+  const searchQuery = usePlaceSearchResults(searchKeyword, filter);
+
+  const activeQuery = isSearching ? searchQuery : candidatesQuery;
+  const places = useMemo(() => activeQuery.data ?? [], [activeQuery.data]);
 
   const submitSearch = useCallback(() => {
     setSearchKeyword(keywordInput);
