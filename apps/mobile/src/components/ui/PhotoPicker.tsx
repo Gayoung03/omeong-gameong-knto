@@ -4,19 +4,19 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { RemoteImage } from '@/src/components/ui/RemoteImage';
 import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 
-export const MAX_INQUIRY_IMAGES = 3;
-
 const THUMBNAIL_SIZE = 92;
 
 type Props = {
   imageUris: string[];
+  maxImages: number;
   onAdd: () => void;
   onRemove: (uri: string) => void;
   disabled?: boolean;
 };
 
-export function InquiryPhotoPicker({ imageUris, onAdd, onRemove, disabled = false }: Props) {
-  const canAdd = imageUris.length < MAX_INQUIRY_IMAGES;
+/** 사진 여러 장을 고르고 미리보는 공용 UI. 실제 앨범 접근·업로드는 화면마다 따로 구현한다. */
+export function PhotoPicker({ imageUris, maxImages, onAdd, onRemove, disabled = false }: Props) {
+  const canAdd = imageUris.length < maxImages;
 
   return (
     <View style={styles.container}>
@@ -50,7 +50,7 @@ export function InquiryPhotoPicker({ imageUris, onAdd, onRemove, disabled = fals
         ))}
       </View>
 
-      <Text style={styles.hint}>최대 {MAX_INQUIRY_IMAGES}장</Text>
+      <Text style={styles.hint}>최대 {maxImages}장</Text>
     </View>
   );
 }
