@@ -6,6 +6,7 @@ import { PetPolicyBadge } from '@/src/components/domain/PetPolicyBadge';
 import { EmptyState } from '@/src/components/feedback/EmptyState';
 import { RemoteImage } from '@/src/components/ui/RemoteImage';
 import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
+import { ReviewPreviewSection } from '@/src/features/reviews/components/ReviewPreviewSection';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
 import { usePlaceDetail } from '../hooks/usePlaceDetail';
@@ -110,6 +111,8 @@ function PlaceDetailView({ place }: { place: PlaceDetail }) {
           <Text style={styles.noticeText}>예약이 가능한 장소예요.</Text>
         </View>
       )}
+
+      <ReviewPreviewSection placeId={place.id} />
     </ScrollView>
   );
 }

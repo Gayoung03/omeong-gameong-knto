@@ -20,6 +20,8 @@ export default function RootLayout() {
               <Stack.Screen name="(auth)" />
 
               <Stack.Screen name="places/[placeId]" />
+            <Stack.Screen name="places/[placeId]/reviews/index" />
+            <Stack.Screen name="places/[placeId]/reviews/new" />
               <Stack.Screen name="stories/[storyId]" />
 
               <Stack.Screen name="trips/[tripId]/index" />
