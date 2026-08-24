@@ -22,15 +22,17 @@ import { toPlaceCandidate } from './placeCandidateAdapter';
 /** 지도에 20개까지 그리고 목록은 스크롤한다. 서버 상한은 100. */
 const LIST_LIMIT = 50;
 
-/** 하루 루트 근처. 제주는 한 날짜 안에서도 꽤 움직여서 넉넉히 잡는다. */
-const DAY_RADIUS_METERS = 10_000;
-
-/** 숙소 근처. 걸어서 갈 만한 거리 + 차로 몇 분. */
-const STAY_RADIUS_METERS = 3_000;
-
-export type PlaceCoordinate = {
+/**
+ * 좌표 + 반경.
+ *
+ * 반경이 탭마다 고정이 아니라 **그 날짜 일정이 퍼진 정도에 따라 달라져서** 함께 다닌다.
+ * 계산은 `utils/placeSearchArea.ts` 가 한다.
+ */
+export type PlaceSearchArea = {
   latitude: number;
   longitude: number;
+  /** 미터 */
+  radius: number;
 };
 
 function filterByCategory(places: PlaceCandidate[], filter: PlaceFilter | null): PlaceCandidate[] {
@@ -49,16 +51,13 @@ function filterByCategory(places: PlaceCandidate[], filter: PlaceFilter | null):
  * 분류 필터는 서버에 넘기지 않는다 — 서버 `category` 는 한 번에 하나인데
  * 앱의 '맛집' 칩은 `restaurant` 와 `cafe` 둘을 함께 보기 때문이다.
  */
-async function getNearbyPlaces(
-  coordinate: PlaceCoordinate,
-  radius: number,
-): Promise<PlaceCandidate[]> {
+async function getNearbyPlaces(area: PlaceSearchArea): Promise<PlaceCandidate[]> {
   const { data } = await apiClient.get<PlaceListResponse>('/places', {
     params: {
-      latitude: coordinate.latitude,
+      latitude: area.latitude,
       limit: LIST_LIMIT,
-      longitude: coordinate.longitude,
-      radius,
+      longitude: area.longitude,
+      radius: area.radius,
     },
   });
 
@@ -94,28 +93,28 @@ async function getMyPlaces(): Promise<PlaceCandidate[]> {
 type GetPlaceCandidatesParams = {
   tab: PlaceSourceTab;
   filter: PlaceFilter | null;
-  /** 탭이 기준으로 삼을 좌표. 없으면 탭마다 다르게 처리한다. */
-  coordinate: PlaceCoordinate | null;
+  /** 탭이 기준으로 삼을 범위. 없으면 탭마다 다르게 처리한다. */
+  area: PlaceSearchArea | null;
 };
 
 /**
  * 탭별 장소 목록.
  *
  * **추천 알고리즘은 아직 없다.** 남은 엔드포인트 3개가 추천 방식(규칙 vs AI) 결정을
- * 기다리는 중이라, 지금 '추천' 탭은 **그 날짜 일정의 중심 좌표에서 가까운 순**이다.
+ * 기다리는 중이라, 지금 '추천' 탭은 **그 날짜 마지막 일정에서 가까운 순**이다.
  * 거리만 보는 것이라 취향·날씨·동반 조건은 반영되지 않는다.
  * 추천 API 가 생기면 `dayRecommend` 갈래만 그쪽으로 바꾼다.
  */
 export async function getPlaceCandidates({
-  coordinate,
+  area,
   filter,
   tab,
 }: GetPlaceCandidatesParams): Promise<PlaceCandidate[]> {
-  const places = await loadByTab(tab, coordinate);
+  const places = await loadByTab(tab, area);
   return filterByCategory(places, filter);
 }
 
-function loadByTab(tab: PlaceSourceTab, coordinate: PlaceCoordinate | null) {
+function loadByTab(tab: PlaceSourceTab, area: PlaceSearchArea | null) {
   switch (tab) {
     case 'recentSaved':
       return getFavoritePlaces();
@@ -126,13 +125,13 @@ function loadByTab(tab: PlaceSourceTab, coordinate: PlaceCoordinate | null) {
     case 'nearStay':
       // 숙소가 일정에 없으면 기준점이 없다. 빈 목록의 안내 문구가
       // "숙소를 먼저 일정에 담으면 근처 장소를 추천해드려요" 라 그대로 맞는다.
-      return coordinate ? getNearbyPlaces(coordinate, STAY_RADIUS_METERS) : Promise.resolve([]);
+      return area ? getNearbyPlaces(area) : Promise.resolve([]);
 
     case 'dayRecommend':
     default:
       // 그 날짜가 아직 비어 있으면 기준점이 없다. 이때는 빈 화면 대신 전체 목록을 준다 —
       // 첫 장소를 담으려고 들어온 사용자에게 아무것도 안 보여주면 할 수 있는 게 없다.
-      return coordinate ? getNearbyPlaces(coordinate, DAY_RADIUS_METERS) : getAllPlaces();
+      return area ? getNearbyPlaces(area) : getAllPlaces();
   }
 }
 
