@@ -5,6 +5,7 @@ import { Alert, Keyboard, KeyboardAvoidingView, Linking, Platform, ScrollView, S
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/src/components/ui/Button';
+import { getApiErrorMessage } from '@/src/services/apiError';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
 import { DiscardChangesModal } from './components/DiscardChangesModal';
@@ -118,8 +119,8 @@ export function ProfileEditScreen() {
           setErrorMessage(undefined);
           setSaveCompleteVisible(true);
         },
-        onError: () => {
-          setErrorMessage('프로필을 저장할 수 없었어요. 잠시 후 다시 시도해 주세요.');
+        onError: (error) => {
+          setErrorMessage(getApiErrorMessage(error).description);
         },
       },
     );

@@ -21,15 +21,13 @@ export function useDeletePet() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (petId: string): Promise<Pet> => deletePet(petId),
-    onSuccess: (deleted) => {
-      // 화면에 보이는 활성 목록에서만 제거한다.
-      // mock service에는 status: 'deleted'로 남아있고, 여행 로그 캐시는 그대로 둔다.
+    mutationFn: (petId: string): Promise<string> => deletePet(petId),
+    onSuccess: (deletedPetId) => {
       queryClient.setQueryData<Pet[]>(petsQueryKey(), (current = []) =>
-        current.filter((pet) => pet.petId !== deleted.petId),
+        current.filter((pet) => pet.petId !== deletedPetId),
       );
       queryClient.invalidateQueries({ queryKey: allPetsQueryKey() });
-      removePetFromDraft(deleted.petId);
+      removePetFromDraft(deletedPetId);
     },
   });
 }

@@ -36,10 +36,11 @@ export function PetProfileCard({ pet }: PetProfileCardProps) {
         <View style={styles.info}>
           <Text style={styles.name}>{pet.name}</Text>
           <Text style={styles.detail}>
-            {formatSpecies(pet)} · {pet.breed}
+            {formatSpecies(pet)} · {pet.breed || '품종 미입력'}
           </Text>
           <Text style={styles.detail}>
-            {pet.age}세 · {pet.weight}kg
+            {pet.age === null ? '나이 미입력' : `${pet.age}세`} ·{' '}
+            {pet.weight === null ? '몸무게 미입력' : `${pet.weight}kg`}
           </Text>
         </View>
       </Card>
