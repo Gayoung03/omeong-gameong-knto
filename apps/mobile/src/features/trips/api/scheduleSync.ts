@@ -1,3 +1,4 @@
+import type { RouteDetailResponse, RouteItemResponse } from '../types/routeApi';
 import type { Schedule } from '../types/trip';
 
 import { toKstIso, toRouteItemCreateRequest } from './routeItemPayload';
@@ -75,8 +76,46 @@ export async function saveScheduleChanges(
     }
   }
 
-  await patchEditedItems(original, draft, movedIdSet);
-  await reorderChangedDays(tripId, original, draft, serverIdOf);
+  // 서버 상태를 한 번만 읽어 두 곳에서 쓴다 — 시각을 고칠 때 원래 종료 시각이 필요하고,
+  // 순서를 저장할 때 화면에 없는 일정까지 알아야 한다.
+  const serverRoute = await getTripRaw(tripId);
+
+  await patchEditedItems(original, draft, movedIdSet, serverRoute);
+  await reorderChangedDays(original, draft, serverIdOf, serverRoute);
+}
+
+/** 서버 일정 항목을 id 로 찾을 수 있게 편다. */
+function serverItemsOf(route: RouteDetailResponse): Map<string, RouteItemResponse> {
+  const map = new Map<string, RouteItemResponse>();
+  for (const day of route.routeDays) {
+    for (const item of day.items) {
+      map.set(item.id, item);
+    }
+  }
+  return map;
+}
+
+/**
+ * 방문 시각을 옮길 때 종료 시각도 같이 옮긴다.
+ *
+ * **이걸 안 하면 서버가 422 로 거절한다.** `PATCH /route-items` 는 고친 뒤의
+ * `startsAt` 과 **기존** `endsAt` 을 함께 검사하는데, 씨앗 데이터의 일정은
+ * `endsAt = startsAt + 체류시간` 이라 시각을 뒤로 옮기는 순간 끝이 시작보다 앞서게 된다.
+ *
+ * 그래서 **머문 시간을 유지한 채 통째로 민다.** 앱에는 종료 시각 개념이 없어
+ * 사용자가 정할 방법이 없고, 원래 머물던 만큼 머문다고 보는 것이 가장 덜 놀랍다.
+ */
+function shiftEndsAt(
+  serverItem: RouteItemResponse | undefined,
+  nextStartsAt: string,
+): string | undefined {
+  if (!serverItem?.startsAt || !serverItem.endsAt) return undefined;
+
+  const durationMs =
+    new Date(serverItem.endsAt).getTime() - new Date(serverItem.startsAt).getTime();
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return undefined;
+
+  return new Date(new Date(nextStartsAt).getTime() + durationMs).toISOString();
 }
 
 /**
@@ -92,7 +131,10 @@ async function patchEditedItems(
   original: Schedule[],
   draft: Schedule[],
   movedIds: Set<string>,
+  serverRoute: RouteDetailResponse,
 ): Promise<void> {
+  const serverItems = serverItemsOf(serverRoute);
+
   const before = new Map<string, { startTime: string | null; memo: string }>();
   for (const schedule of original) {
     for (const item of schedule.items) {
@@ -111,9 +153,16 @@ async function patchEditedItems(
       const memoChanged = previous.memo !== item.memo;
       if (!timeChanged && !memoChanged) continue;
 
+      const nextStartsAt = item.startTime ? toKstIso(schedule.date, item.startTime) : null;
+      const nextEndsAt =
+        nextStartsAt === null
+          ? // 시작이 없는데 끝만 남으면 뜻이 없다. 함께 지운다.
+            null
+          : shiftEndsAt(serverItems.get(item.id), nextStartsAt);
+
       await updateRouteItem(item.id, {
         ...(timeChanged
-          ? { startsAt: item.startTime ? toKstIso(schedule.date, item.startTime) : null }
+          ? { startsAt: nextStartsAt, ...(nextEndsAt === undefined ? {} : { endsAt: nextEndsAt }) }
           : {}),
         ...(memoChanged ? { note: item.memo || null } : {}),
       });
@@ -132,10 +181,10 @@ async function patchEditedItems(
  * 항목이라 자리를 지켜줄 근거가 없다. 화면에서 다룰 수 있게 되면 이 보정은 사라진다.
  */
 async function reorderChangedDays(
-  tripId: string,
   original: Schedule[],
   draft: Schedule[],
   serverIdOf: Map<string, string>,
+  serverRoute: RouteDetailResponse,
 ): Promise<void> {
   const changedDays = draft.filter((schedule) => {
     const before = original.find((item) => item.id === schedule.id);
@@ -145,8 +194,6 @@ async function reorderChangedDays(
   });
 
   if (changedDays.length === 0) return;
-
-  const serverRoute = await getTripRaw(tripId);
 
   for (const schedule of changedDays) {
     const serverDay = serverRoute.routeDays.find((day) => day.id === schedule.id);
