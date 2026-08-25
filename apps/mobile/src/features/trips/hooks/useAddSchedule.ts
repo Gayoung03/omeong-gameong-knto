@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 
-import { getApiErrorMessage } from '@/src/services/apiError';
+import { getApiErrorDetail, getApiErrorMessage } from '@/src/services/apiError';
 
 import { toRouteItemCreateRequest } from '../api/routeItemPayload';
 import { addRouteItem } from '../api/tripsApi';
@@ -132,7 +132,12 @@ export function useAddSchedule({ tripId, schedules, initialScheduleId }: UseAddS
         if (index === -1) return previous;
         return [...previous.slice(0, index), ...previous.slice(index + 1)];
       });
-      setAddErrorMessage(getApiErrorMessage(error).description);
+      const detail = getApiErrorDetail(error);
+      setAddErrorMessage(
+        detail
+          ? `${getApiErrorMessage(error).description} (${detail})`
+          : getApiErrorMessage(error).description,
+      );
     },
     onSuccess: () => {
       setAddErrorMessage(undefined);

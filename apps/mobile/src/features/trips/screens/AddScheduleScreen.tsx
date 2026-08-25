@@ -121,6 +121,18 @@ function AddScheduleContent({ trip, initialScheduleId }: AddScheduleContentProps
     addErrorMessage,
   } = useAddSchedule({ tripId: trip.id, schedules: trip.schedules, initialScheduleId });
 
+  /**
+   * 뒤로 갈 곳이 없으면(주소로 바로 들어왔거나 히스토리가 비었으면) 여행 상세로 보낸다.
+   * 웹에서 `router.back()` 만 부르면 "GO_BACK was not handled by any navigator" 로 죽는다.
+   */
+  const goToTrip = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace({ params: { tripId: trip.id }, pathname: '/trips/[tripId]' });
+  };
+
   const mapCandidates = places.slice(0, MAX_MAP_CANDIDATES);
   // 후보 목록이나 날짜가 바뀔 때만 지도를 새로 그린다
   const redrawKey = `${selectedScheduleId}|${mapCandidates.map((place) => place.id).join(',')}`;
@@ -258,11 +270,7 @@ function AddScheduleContent({ trip, initialScheduleId }: AddScheduleContentProps
         {addedPlaceIds.length > 0 && (
           <View style={[styles.addedBar, { paddingBottom: spacing.sm + 2 + insets.bottom }]}>
             <Text style={styles.addedBarText}>{addedPlaceIds.length}곳을 담았어요</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.back()}
-              style={styles.addedBarButton}
-            >
+            <Pressable accessibilityRole="button" onPress={goToTrip} style={styles.addedBarButton}>
               <Text style={styles.addedBarButtonText}>일정으로 돌아가기</Text>
             </Pressable>
           </View>
