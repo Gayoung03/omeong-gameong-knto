@@ -5,31 +5,22 @@ import { categoryColors } from '@/src/theme';
 export const quickMenuItems: QuickMenuItem[] = [
   {
     id: 'travel-guide',
-    title: '여행가이드',
+    title: '여행 준비 가이드',
     subtitle: '제주 여행 정보',
     icon: 'book-outline',
+    // 마이페이지 '나의 여행'의 같은 메뉴와 이름·아이콘·색을 맞춘다. (TravelSummarySection)
     iconColor: categoryColors.green.fg,
     iconBackgroundColor: categoryColors.green.bg,
-    destination: 'travel-guides',
+    destination: 'travel-preparation',
   },
   {
     id: 'pet-friendly-place',
     title: '동반장소찾기',
     subtitle: '함께 갈 장소',
     icon: 'location-outline',
-    iconColor: categoryColors.orange.fg,
-    iconBackgroundColor: categoryColors.orange.bg,
+    iconColor: categoryColors.purple.fg,
+    iconBackgroundColor: categoryColors.purple.bg,
     destination: 'place-explorer',
-  },
-  {
-    id: 'pet-character',
-    title: '내 캐릭터 만들기',
-    subtitle: '우리 아이 캐릭터',
-    icon: 'paw-outline',
-    iconColor: categoryColors.yellow.fg,
-    iconBackgroundColor: categoryColors.yellow.bg,
-    // 캐릭터 생성 기능은 아직 설계 전이라 준비 중 화면으로 둔다.
-    destination: 'coming-soon',
   },
   {
     id: 'travel-log',
@@ -39,6 +30,16 @@ export const quickMenuItems: QuickMenuItem[] = [
     iconColor: categoryColors.blue.fg,
     iconBackgroundColor: categoryColors.blue.bg,
     destination: 'travel-log-new',
+  },
+  {
+    id: 'saved-places',
+    title: '저장한 장소',
+    subtitle: '찜한 곳 모아보기',
+    icon: 'bookmark-outline',
+    // 마이페이지 '나의 여행'의 같은 메뉴와 색을 맞춘다. (TravelSummarySection)
+    iconColor: categoryColors.orange.fg,
+    iconBackgroundColor: categoryColors.orange.bg,
+    destination: 'saved-places',
   },
 ];
 
