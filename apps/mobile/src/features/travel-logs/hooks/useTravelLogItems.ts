@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 
 import type { TravelLogListItem } from '@/src/types/travelLog';
 
-import { fetchTravelLogItems } from '../mocks/travelLog.mock';
+import { getTravelLogGroups } from '../api/travelLogsApi';
 import { useSavedLogStore } from '../stores/useSavedLogStore';
 
 export const travelLogQueryKey = ['travel-logs'] as const;
@@ -12,7 +12,7 @@ export function useTravelLogItems() {
   const savedLogs = useSavedLogStore((state) => state.savedLogs);
   const query = useQuery<TravelLogListItem[]>({
     queryKey: travelLogQueryKey,
-    queryFn: fetchTravelLogItems,
+    queryFn: getTravelLogGroups,
   });
   const data = useMemo(() => {
     if (!query.data || savedLogs.length === 0) return query.data;

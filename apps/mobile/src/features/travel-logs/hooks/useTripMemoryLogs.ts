@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 
 import type { TravelLog, Trip } from '@/src/types/travelLog';
 
-import { fetchTripDetail, fetchTripLogs } from '../mocks/travelLog.mock';
+import { getTripHeader, getTripLogs } from '../api/travelLogsApi';
 import { useSavedLogStore } from '../stores/useSavedLogStore';
 
 export function tripDetailQueryKey(tripId: string) {
@@ -29,11 +29,11 @@ export function useTripMemoryLogs(tripId: string): TripMemoryQueryResult {
     queries: [
       {
         queryKey: tripDetailQueryKey(tripId),
-        queryFn: () => fetchTripDetail(tripId),
+        queryFn: () => getTripHeader(tripId),
       },
       {
         queryKey: tripLogsQueryKey(tripId),
-        queryFn: () => fetchTripLogs(tripId),
+        queryFn: () => getTripLogs(tripId),
       },
     ],
   });
