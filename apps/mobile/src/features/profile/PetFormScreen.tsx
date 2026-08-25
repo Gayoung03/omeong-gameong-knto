@@ -1,5 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, useRouter } from 'expo-router';
+
+import { useSafeBack } from '@/src/hooks/useSafeBack';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -16,6 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { EmptyState } from '@/src/components/feedback/EmptyState';
 import { Button } from '@/src/components/ui/Button';
 import { Chip, ChipRow } from '@/src/components/ui/Chip';
 import { colors, radius, spacing, typography } from '@/src/theme';
@@ -32,7 +35,10 @@ import {
 import { DiscardChangesModal } from './components/DiscardChangesModal';
 import { PetDeleteConfirmModal } from './components/PetDeleteConfirmModal';
 import { PetFormHeader } from './components/PetFormHeader';
-import { ProfileImageChangeBottomSheet, type ProfileImageChangeBottomSheetHandle } from './components/ProfileImageChangeBottomSheet';
+import {
+  ProfileImageChangeBottomSheet,
+  type ProfileImageChangeBottomSheetHandle,
+} from './components/ProfileImageChangeBottomSheet';
 import { ProfileImagePicker } from './components/ProfileImagePicker';
 import { SaveCompleteModal } from './components/SaveCompleteModal';
 import { useCreatePet } from './hooks/useCreatePet';
@@ -59,6 +65,7 @@ function showPermissionAlert() {
 
 export function PetFormScreen({ petId }: Props) {
   const router = useRouter();
+  const goBack = useSafeBack('/profile');
   const navigation = useNavigation();
   const isEditMode = petId !== undefined;
 
@@ -114,15 +121,13 @@ export function PetFormScreen({ petId }: Props) {
     }
   }, [editingPet]);
 
-  // 지워졌거나 존재하지 않는 프로필이면 안내 후 마이페이지로 돌려보낸다.
+  // 지워졌거나 존재하지 않는 프로필이면 나가기 확인 창을 띄우지 않는다.
+  // 안내는 화면 안에서 한다(아래 renderMissingPet) — 예전에는 `Alert` 로 물었는데
+  // **웹에서는 뜨지 않아 빈 폼에 갇혔다.**
   useEffect(() => {
     if (!isMissingPet) return;
-
     allowExitRef.current = true;
-    Alert.alert('프로필을 찾을 수 없어요', '이미 지웠거나 존재하지 않는 반려동물이에요.', [
-      { text: '확인', onPress: () => router.back() },
-    ]);
-  }, [isMissingPet, router]);
+  }, [isMissingPet]);
 
   const isOtherSpecies = species === OTHER_SPECIES;
 
@@ -156,15 +161,15 @@ export function PetFormScreen({ petId }: Props) {
   const isDirty = isEditMode
     ? Boolean(
         editingPet &&
-          (name.trim() !== editingPet.name ||
-            species !== editingPet.species ||
-            speciesDetail.trim() !== (editingPet.speciesDetail ?? '') ||
-            size !== (editingPet.size ?? PET_SIZE_OPTIONS[0]) ||
-            breed.trim() !== (editingPet.breed ?? '') ||
-            birthDate.trim() !== (editingPet.birthDate ?? '') ||
-            weight.trim() !== (editingPet.weight === null ? '' : String(editingPet.weight)) ||
-            localImageUri !== undefined ||
-            imageReset),
+        (name.trim() !== editingPet.name ||
+          species !== editingPet.species ||
+          speciesDetail.trim() !== (editingPet.speciesDetail ?? '') ||
+          size !== (editingPet.size ?? PET_SIZE_OPTIONS[0]) ||
+          breed.trim() !== (editingPet.breed ?? '') ||
+          birthDate.trim() !== (editingPet.birthDate ?? '') ||
+          weight.trim() !== (editingPet.weight === null ? '' : String(editingPet.weight)) ||
+          localImageUri !== undefined ||
+          imageReset),
       )
     : Boolean(name || speciesDetail || breed || birthDate || weight || localImageUri);
 
@@ -297,12 +302,33 @@ export function PetFormScreen({ petId }: Props) {
     router.back();
   };
 
+  if (isMissingPet) {
+    return (
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
+        <PetFormHeader title="반려동물 수정" />
+        <EmptyState
+          actionLabel="마이페이지로"
+          description="이미 지웠거나 존재하지 않는 반려동물이에요."
+          icon="paw-outline"
+          onPressAction={goBack}
+          title="프로필을 찾을 수 없어요"
+        />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <PetFormHeader title={isEditMode ? '반려동물 수정' : '반려동물 등록'} />
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.flex}
+      >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <ProfileImagePicker imageUri={displayImageUri} onPress={() => imageChangeSheetRef.current?.open()} />
+          <ProfileImagePicker
+            imageUri={displayImageUri}
+            onPress={() => imageChangeSheetRef.current?.open()}
+          />
 
           <View style={styles.section}>
             <Text style={styles.label}>이름</Text>
@@ -409,7 +435,9 @@ export function PetFormScreen({ petId }: Props) {
                 />
               ))}
             </ChipRow>
-            <Text style={styles.sizeHint}>몸무게를 입력하면 자동으로 골라드려요. 직접 바꿔도 됩니다.</Text>
+            <Text style={styles.sizeHint}>
+              몸무게를 입력하면 자동으로 골라드려요. 직접 바꿔도 됩니다.
+            </Text>
           </View>
 
           {errorMessage && <Text style={styles.mutationError}>{errorMessage}</Text>}

@@ -2,7 +2,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -36,6 +35,13 @@ export function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
+  /**
+   * 아직 연결되지 않은 기능을 눌렀을 때 보여줄 안내.
+   *
+   * `Alert` 을 쓰지 않는다 — 웹에서는 뜨지 않아 눌러도 아무 반응이 없다.
+   * 로그인 화면은 심사에서 가장 먼저 보는 화면이라 무반응으로 두면 고장으로 읽힌다.
+   */
+  const [noticeMessage, setNoticeMessage] = useState<string>();
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
   useEffect(() => {
@@ -115,10 +121,12 @@ export function LoginScreen() {
                   </View>
                   <Text style={styles.optionText}>로그인 상태 유지</Text>
                 </Pressable>
-                <Pressable onPress={() => Alert.alert('준비 중', '비밀번호 찾기는 추후 연결됩니다.')}>
+                <Pressable onPress={() => setNoticeMessage('비밀번호 찾기는 준비 중이에요.')}>
                   <Text style={styles.optionText}>비밀번호 찾기</Text>
                 </Pressable>
               </View>
+
+              {noticeMessage && <Text style={styles.noticeText}>{noticeMessage}</Text>}
 
               <PrimaryButton label="로그인" onPress={() => void handleLogin()} />
             </View>
@@ -134,7 +142,7 @@ export function LoginScreen() {
                 <Pressable
                   accessibilityLabel={`${provider.label} 로그인`}
                   key={provider.label}
-                  onPress={() => Alert.alert('추후 연동', `${provider.label} 로그인을 연결할 예정입니다.`)}
+                  onPress={() => setNoticeMessage(`${provider.label} 로그인은 준비 중이에요.`)}
                   style={({ pressed }) => [
                     styles.socialButton,
                     { backgroundColor: provider.background },
@@ -161,6 +169,12 @@ export function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  noticeText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    paddingVertical: 6,
+    textAlign: 'center',
+  },
   flex: { flex: 1 },
   safeArea: { backgroundColor: colors.surface, flex: 1 },
   scrollContent: { flexGrow: 1 },
@@ -220,4 +234,3 @@ const styles = StyleSheet.create({
   signupPromptText: { color: colors.textStrong, fontSize: 14 },
   signupLink: { color: colors.primary, fontSize: 14, fontWeight: '800' },
 });
-

@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useSafeBack } from '@/src/hooks/useSafeBack';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { IconButton } from '@/src/components/ui/IconButton';
@@ -8,11 +8,11 @@ const ICON_SIZE = 24;
 const ICON_BUTTON_TOUCH_SIZE = 44;
 
 export function ProfileEditHeader() {
-  const router = useRouter();
+  const goBack = useSafeBack('/profile');
 
   return (
     <View style={styles.header}>
-      <IconButton icon="chevron-back" onPress={() => router.back()} size={ICON_SIZE} />
+      <IconButton icon="chevron-back" onPress={goBack} size={ICON_SIZE} />
       <Text style={styles.title}>프로필 관리</Text>
       <View style={styles.spacer} />
     </View>
