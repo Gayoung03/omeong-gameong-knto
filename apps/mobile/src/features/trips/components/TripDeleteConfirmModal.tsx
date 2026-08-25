@@ -1,6 +1,4 @@
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-
-import { colors, overlayColors, radius, shadow, spacing, typography } from '@/src/theme';
+import { ConfirmModal } from '@/src/components/feedback/ConfirmModal';
 
 type Props = {
   visible: boolean;
@@ -10,12 +8,7 @@ type Props = {
   onConfirm: () => void;
 };
 
-/**
- * 여행 삭제 확인.
- *
- * `Alert.alert` 이 아니라 `Modal` 인 이유 — Alert 은 웹에서 뜨지 않는다.
- * 되돌릴 수 없는 동작이라 확인 창이 조용히 사라지면 안 된다.
- */
+/** 여행 삭제 확인. 여행기록·사진이 남는다는 것을 함께 알린다. */
 export function TripDeleteConfirmModal({
   visible,
   tripTitle,
@@ -24,119 +17,18 @@ export function TripDeleteConfirmModal({
   onConfirm,
 }: Props) {
   return (
-    <Modal
-      animationType="fade"
-      onRequestClose={onCancel}
-      statusBarTranslucent
-      transparent
+    <ConfirmModal
+      busyLabel="삭제 중..."
+      confirmLabel="삭제"
+      description={'일정·체크리스트·메모가 모두 지워지고\n되돌릴 수 없어요.'}
+      isBusy={isDeleting}
+      // 사진까지 지워질까 봐 망설이는 경우가 많은데 실제로는 남는다.
+      note="여행 로그와 사진은 지워지지 않아요"
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+      title={tripTitle}
+      tone="destructive"
       visible={visible}
-    >
-      <View style={styles.overlay}>
-        <Pressable accessibilityLabel="취소" onPress={onCancel} style={styles.backdrop} />
-        <View accessibilityViewIsModal style={[styles.card, shadow.sm]}>
-          <Text style={styles.title}>{tripTitle}</Text>
-          <Text style={styles.description}>
-            일정·체크리스트·메모가 모두 지워지고{'\n'}되돌릴 수 없어요.
-          </Text>
-          {/* 여행기록이 남는다는 것은 알려주는 편이 낫다 — 사진까지 지워질까 봐
-              망설이는 경우가 많고, 실제로는 남는다. */}
-          <Text style={styles.note}>여행 로그와 사진은 지워지지 않아요</Text>
-
-          <View style={styles.actions}>
-            <Pressable
-              accessibilityRole="button"
-              disabled={isDeleting}
-              onPress={onCancel}
-              style={[styles.button, styles.cancelButton]}
-            >
-              <Text style={styles.cancelLabel}>취소</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              disabled={isDeleting}
-              onPress={onConfirm}
-              style={[styles.button, styles.confirmButton, isDeleting && styles.buttonDisabled]}
-            >
-              <Text style={styles.confirmLabel}>{isDeleting ? '삭제 중...' : '삭제'}</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  actions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  backdrop: {
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-  },
-  button: {
-    alignItems: 'center',
-    borderRadius: radius.sm,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 48,
-    paddingHorizontal: spacing.sm,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  cancelButton: {
-    backgroundColor: colors.neutralGray,
-  },
-  cancelLabel: {
-    color: colors.textPrimary,
-    fontSize: typography.label.fontSize + 1,
-    fontWeight: '700',
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    maxWidth: 360,
-    padding: spacing.lg,
-    width: '88%',
-  },
-  confirmButton: {
-    backgroundColor: colors.error,
-  },
-  confirmLabel: {
-    color: colors.surface,
-    fontSize: typography.label.fontSize + 1,
-    fontWeight: '700',
-  },
-  description: {
-    color: colors.textSecondary,
-    fontSize: typography.label.fontSize + 1,
-    lineHeight: 21,
-    marginTop: spacing.sm,
-    textAlign: 'center',
-  },
-  note: {
-    color: colors.textTertiary,
-    fontSize: typography.caption.fontSize,
-    marginTop: spacing.sm,
-    textAlign: 'center',
-  },
-  overlay: {
-    alignItems: 'center',
-    backgroundColor: overlayColors.dim,
-    flex: 1,
-    justifyContent: 'center',
-    padding: spacing.md,
-  },
-  title: {
-    color: colors.textPrimary,
-    fontSize: typography.body.fontSize + 1,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-});
