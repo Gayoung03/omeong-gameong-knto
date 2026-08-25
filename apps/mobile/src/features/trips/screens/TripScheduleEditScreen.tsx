@@ -1,16 +1,19 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import DraggableFlatList, { type RenderItemParams } from 'react-native-draggable-flatlist';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState } from '@/src/components/feedback/ErrorState';
+import { DiscardChangesModal } from '@/src/features/profile/components/DiscardChangesModal';
+import { getApiErrorDetail, getApiErrorMessage } from '@/src/services/apiError';
 import { colors, spacing, typography } from '@/src/theme';
 
 import { DayChips } from '../components/DayChips';
 import { ScheduleEditRow } from '../components/ScheduleEditRow';
 import { ScheduleItemActionSheet } from '../components/ScheduleItemActionSheet';
+import { ScheduleItemDetailModal } from '../components/ScheduleItemDetailModal';
 import { useSaveSchedule } from '../hooks/useSaveSchedule';
 import { useScheduleEdit } from '../hooks/useScheduleEdit';
 import { useTrip } from '../hooks/useTrips';
@@ -102,36 +105,57 @@ function TripScheduleEditContent({ trip }: TripScheduleEditContentProps) {
     selectSchedule,
     isDirty,
     reorderItems,
+    updateItemDetail,
     removeItem,
     moveItemToSchedule,
   } = useScheduleEdit(trip.schedules);
   const saveSchedule = useSaveSchedule(trip.id);
 
   const [actionItemId, setActionItemId] = useState<string | null>(null);
+  const [detailItemId, setDetailItemId] = useState<string | null>(null);
+  const [isDiscardModalOpen, setDiscardModalOpen] = useState(false);
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string>();
 
   const actionItem = selectedSchedule?.items.find((item) => item.id === actionItemId) ?? null;
+  const detailItem = selectedSchedule?.items.find((item) => item.id === detailItemId) ?? null;
 
-  const handlePressCancel = () => {
-    if (!isDirty) {
+  /** 뒤로 갈 곳이 없으면(주소로 바로 들어온 경우) 여행 상세로 보낸다. */
+  const leaveScreen = () => {
+    if (router.canGoBack()) {
       router.back();
       return;
     }
+    router.replace({ params: { tripId: trip.id }, pathname: '/trips/[tripId]' });
+  };
 
-    Alert.alert('편집을 취소할까요?', '저장하지 않은 변경 사항이 사라져요.', [
-      { text: '계속 편집', style: 'cancel' },
-      { text: '취소하고 나가기', style: 'destructive', onPress: () => router.back() },
-    ]);
+  const handlePressCancel = () => {
+    if (!isDirty) {
+      leaveScreen();
+      return;
+    }
+
+    // Alert 이 아니라 모달이다 — Alert 은 웹에서 뜨지 않아, 저장 안 한 변경이
+    // 있는데도 아무 확인 없이 나가는 것처럼 보인다.
+    setDiscardModalOpen(true);
   };
 
   const handlePressSave = () => {
     saveSchedule.mutate(
       { draft: draftSchedules, original: trip.schedules },
       {
-        onError: () => {
+        onError: (error) => {
           // 실패했을 때 화면을 닫으면 사용자는 저장된 줄 안다. 편집 상태로 남긴다.
-          Alert.alert('저장하지 못했어요', '잠시 후 다시 시도해 주세요.');
+          const detail = getApiErrorDetail(error);
+          setSaveErrorMessage(
+            detail
+              ? `${getApiErrorMessage(error).description} (${detail})`
+              : getApiErrorMessage(error).description,
+          );
         },
-        onSuccess: () => router.back(),
+        onSuccess: () => {
+          setSaveErrorMessage(undefined);
+          leaveScreen();
+        },
       },
     );
   };
@@ -142,6 +166,23 @@ function TripScheduleEditContent({ trip }: TripScheduleEditContentProps) {
     }
     removeItem(selectedSchedule.id, actionItem.id);
     setActionItemId(null);
+  };
+
+  const handleEditDetail = () => {
+    if (!actionItem) {
+      return;
+    }
+    // 액션 시트를 먼저 닫고 수정 시트를 연다. 둘이 겹쳐 뜨면 iOS 에서 뒤엣것이 안 보인다.
+    setDetailItemId(actionItem.id);
+    setActionItemId(null);
+  };
+
+  const handleSubmitDetail = (patch: { startTime: string | null; memo: string }) => {
+    if (!selectedSchedule || !detailItem) {
+      return;
+    }
+    updateItemDetail(selectedSchedule.id, detailItem.id, patch);
+    setDetailItemId(null);
   };
 
   const handleMoveToSchedule = (toScheduleId: string) => {
@@ -178,10 +219,16 @@ function TripScheduleEditContent({ trip }: TripScheduleEditContentProps) {
       <View style={styles.hint}>
         <Ionicons color={colors.textTertiary} name="information-circle-outline" size={14} />
         <Text style={styles.hintText}>
-          왼쪽 손잡이를 길게 눌러 끌면 순서가 바뀌어요. 오른쪽 버튼으로 날짜를 옮기거나 삭제할 수
-          있어요.
+          왼쪽 손잡이를 길게 눌러 끌면 순서가 바뀌어요. 오른쪽 버튼으로 시각·메모를 고치거나 날짜를
+          옮기고 삭제할 수 있어요.
         </Text>
       </View>
+
+      {saveErrorMessage && (
+        <View style={styles.saveErrorBar}>
+          <Text style={styles.saveErrorText}>{saveErrorMessage}</Text>
+        </View>
+      )}
 
       {selectedSchedule && selectedSchedule.items.length > 0 ? (
         <DraggableFlatList
@@ -205,10 +252,29 @@ function TripScheduleEditContent({ trip }: TripScheduleEditContentProps) {
         <ScheduleItemActionSheet
           currentScheduleId={selectedSchedule.id}
           onClose={() => setActionItemId(null)}
+          onEditDetail={handleEditDetail}
           onMoveToSchedule={handleMoveToSchedule}
           onRemove={handleRemove}
           placeName={actionItem.place.name}
           schedules={draftSchedules}
+        />
+      )}
+
+      <DiscardChangesModal
+        description="저장하지 않은 변경 사항이 사라져요."
+        onContinue={() => setDiscardModalOpen(false)}
+        onDiscard={() => {
+          setDiscardModalOpen(false);
+          leaveScreen();
+        }}
+        visible={isDiscardModalOpen}
+      />
+
+      {detailItem && (
+        <ScheduleItemDetailModal
+          item={detailItem}
+          onClose={() => setDetailItemId(null)}
+          onSubmit={handleSubmitDetail}
         />
       )}
     </SafeAreaView>
@@ -268,6 +334,18 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     flex: 1,
+  },
+  saveErrorBar: {
+    backgroundColor: colors.errorBg,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  saveErrorText: {
+    color: colors.error,
+    fontSize: typography.caption.fontSize,
+    lineHeight: 18,
   },
   listContent: {
     paddingBottom: spacing.xl,
