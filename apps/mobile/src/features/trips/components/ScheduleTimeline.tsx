@@ -7,11 +7,18 @@ import { ScheduleTimelineItem } from './ScheduleTimelineItem';
 
 type ScheduleTimelineProps = {
   schedule: Schedule;
+  /** 저장한 장소 id 집합. 하트를 켤지 판단하는 데만 쓴다. */
+  savedPlaceIds: Set<string>;
   onPressItem: (placeId: string) => void;
-  onToggleSave: (scheduleItemId: string) => void;
+  onToggleSave: (placeId: string, isSaved: boolean) => void;
 };
 
-export function ScheduleTimeline({ schedule, onPressItem, onToggleSave }: ScheduleTimelineProps) {
+export function ScheduleTimeline({
+  schedule,
+  savedPlaceIds,
+  onPressItem,
+  onToggleSave,
+}: ScheduleTimelineProps) {
   if (schedule.items.length === 0) {
     return (
       <View style={styles.empty}>
@@ -26,6 +33,7 @@ export function ScheduleTimeline({ schedule, onPressItem, onToggleSave }: Schedu
       {schedule.items.map((item, index) => (
         <ScheduleTimelineItem
           isLast={index === schedule.items.length - 1}
+          isSaved={savedPlaceIds.has(item.place.id)}
           item={item}
           key={item.id}
           onPressItem={onPressItem}
