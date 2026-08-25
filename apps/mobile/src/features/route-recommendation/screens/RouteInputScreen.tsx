@@ -20,6 +20,7 @@ import { CalendarPicker, WheelTimePicker } from '../components/InlineDateTimePic
 import { formatTripDuration } from '../utils/tripDuration';
 
 import { AppHeader } from '@/src/components/layout/AppHeader';
+import { ConfirmModal } from '@/src/components/feedback/ConfirmModal';
 import { colors as theme, overlayColors, radius, spacing, typography } from '@/src/theme';
 
 const DRAFT_KEY = 'route-input-draft';
@@ -335,6 +336,13 @@ export function RouteInputScreen() {
   const [newPlace, setNewPlace] = useState('');
   const [notice, setNotice] = useState('');
   const [utilityModal, setUtilityModal] = useState<UtilityModal>(null);
+  /**
+   * 삭제를 기다리는 숙소.
+   *
+   * 예전에는 `Alert.alert` 으로 물었는데 **웹에서는 뜨지 않아 삭제가 아예 안 됐다.**
+   * 확인을 받아야 하는 동작은 `ConfirmModal` 을 쓴다.
+   */
+  const [pendingStayDelete, setPendingStayDelete] = useState<Stay | null>(null);
   const [formError, setFormError] = useState('');
   const [pageError, setPageError] = useState('');
   /** 지금까지 열린 단계 수. 되돌아가도 줄지 않는다. */
@@ -732,20 +740,7 @@ export function RouteInputScreen() {
                 </Pressable>
                 <Pressable
                   accessibilityLabel={`${stay.name} 삭제`}
-                  onPress={() =>
-                    Alert.alert('숙소 삭제', `${stay.name} 정보를 삭제할까요?`, [
-                      { style: 'cancel', text: '취소' },
-                      {
-                        onPress: () =>
-                          updateDraft(
-                            'stays',
-                            draft.stays.filter((item) => item.id !== stay.id),
-                          ),
-                        style: 'destructive',
-                        text: '삭제',
-                      },
-                    ])
-                  }
+                  onPress={() => setPendingStayDelete(stay)}
                 >
                   <Ionicons color={colors.red} name="trash-outline" size={17} />
                 </Pressable>
@@ -1134,6 +1129,24 @@ export function RouteInputScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <ConfirmModal
+        confirmLabel="삭제"
+        description={`${pendingStayDelete?.name ?? ''} 정보를 삭제할까요?`}
+        onCancel={() => setPendingStayDelete(null)}
+        onConfirm={() => {
+          if (pendingStayDelete) {
+            updateDraft(
+              'stays',
+              draft.stays.filter((item) => item.id !== pendingStayDelete.id),
+            );
+          }
+          setPendingStayDelete(null);
+        }}
+        title="숙소 삭제"
+        tone="destructive"
+        visible={pendingStayDelete !== null}
+      />
 
       <Modal
         animationType="fade"
