@@ -32,7 +32,7 @@ export async function withdrawAccount(): Promise<void> {
  * 탈퇴 성공 후 기기에 남은 사용자 흔적을 지운다.
  *
  * TODO: 인증 토큰 삭제(expo-secure-store) — 아직 토큰을 저장하는 코드가 없어 비워 둔다.
- * TODO: 세션 동안만 유지되는 zustand 스토어(useSavedLogStore, useLogDraftStore)도 초기화한다.
+ * TODO: 세션 동안만 유지되는 zustand 스토어(useLogDraftStore)도 초기화한다.
  */
 export async function clearLocalUserData(): Promise<void> {
   if (IS_WITHDRAW_MOCKED) return;

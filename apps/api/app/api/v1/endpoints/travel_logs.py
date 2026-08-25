@@ -7,38 +7,58 @@
 S3 가 일시적으로 실패했을 때 "DB 는 지워졌는데 요청은 500" 인 어긋난 상태가
 생긴다. 주인 없는 파일은 배치가 나중에 정리한다(docs/api/uploads.md).
 
-생성(`POST`)·상태 조회(`status`)·재생성(`regenerate`)은 아직 없다. AI 이미지
-생성을 무엇으로 할지가 정해지지 않았다. 그래서 이 파일의 모든 엔드포인트는
-`generation_status` 를 **읽기만** 하고 바꾸지 않는다.
+생성은 **"접수했습니다" 방식**이다. 이미지 생성이 오래 걸려 끝날 때까지 붙잡고
+있으면 앱 화면이 멈춘 것처럼 보인다. 그래서 행만 만들고 `202` 를 즉시 돌려준 뒤
+뒷작업에서 이미지를 만든다. 앱은 `GET /{logId}/status` 로 진행을 확인한다.
+
+뒷작업은 FastAPI 의 BackgroundTasks 로 돈다 — Redis·Celery 를 깔지 않기 위해서다.
+대신 **서버를 재시작하면 진행 중이던 건이 `generating` 에 멈춘다.** 그 상태는
+앱의 "다시 만들기"(`regenerate`)로 복구한다.
 """
 
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Response,
+    status,
+)
 from sqlalchemy import Integer, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.dependencies import CurrentUser
-from app.db.models import Pet, Place, Route, TravelLog, TravelLogPet, User
-from app.db.session import get_db
+from app.db.models import Notification, Pet, Place, Route, TravelLog, TravelLogPet, User
+from app.db.models.enums import GenerationStatus, MomentMood, WritingStyle
+from app.db.session import BackgroundSessionFactory, get_background_session, get_db
+from app.integrations.llm.travel_log_image import generate_log_image
 from app.schemas.travel_log import (
     TravelLogCompanion,
+    TravelLogCreate,
+    TravelLogGenerationStatus,
     TravelLogGroupsResponse,
     TravelLogItem,
     TravelLogListResponse,
     TravelLogMonthGroup,
     TravelLogMonthSummary,
+    TravelLogRegenerate,
     TravelLogRouteGroup,
     TravelLogRouteSummary,
     TravelLogUpdate,
 )
-from app.services.route_access import pets_of
+from app.services.route_access import load_owned_route, pets_of
 
 router = APIRouter(prefix="/travel-logs")
 
 DbSession = Annotated[Session, Depends(get_db)]
+
+#: 뒷작업이 쓸 DB 연결 공장. 요청용 연결은 응답과 함께 닫혀서 못 쓴다.
+OpenSession = Annotated[BackgroundSessionFactory, Depends(get_background_session)]
 
 #: `routeId=none` 은 "여행에 속하지 않은 개별 기록만" 이라는 뜻이다.
 #: UUID 자리에 들어오는 리터럴이라 파라미터를 str 로 받아 직접 가른다.
@@ -61,6 +81,59 @@ _LOG_ORDER = (
 
 _YEAR = func.extract("year", TravelLog.recorded_date).cast(Integer)
 _MONTH = func.extract("month", TravelLog.recorded_date).cast(Integer)
+
+
+@router.post(
+    "",
+    response_model=TravelLogGenerationStatus,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="기록 생성 및 이미지 생성 시작",
+)
+def create_travel_log(
+    payload: TravelLogCreate,
+    background_tasks: BackgroundTasks,
+    current_user: CurrentUser,
+    db: DbSession,
+    open_session: OpenSession,
+) -> TravelLogGenerationStatus:
+    """행을 만들고 **202** 를 즉시 돌려준다. 이미지는 뒷작업이 만든다."""
+    if payload.recorded_date > datetime.now(KST).date():
+        raise HTTPException(status_code=422, detail="기록 날짜는 미래일 수 없습니다")
+
+    if payload.route_id is not None:
+        # 없으면 404, 남의 여행이면 403. 여행 쪽과 같은 규칙을 그대로 쓴다.
+        load_owned_route(db, payload.route_id, current_user)
+
+    place_name = _resolve_place_name(db, payload.place_id, payload.place_name)
+
+    log = TravelLog(
+        user_id=current_user.id,
+        route_id=payload.route_id,
+        place_id=payload.place_id,
+        place_name_snapshot=place_name,
+        recorded_date=payload.recorded_date,
+        visited_at=payload.visited_at,
+        original_image_url=payload.original_image_url,
+        writing_style=payload.writing_style,
+        mood=payload.mood,
+        generation_status=GenerationStatus.GENERATING,
+        personal_message=payload.personal_message or None,
+    )
+    db.add(log)
+    db.flush()
+
+    if payload.pet_ids:
+        _replace_companions(db, log, payload.pet_ids, current_user)
+
+    db.commit()
+
+    # 커밋 뒤에 예약한다. 뒷작업은 자기 DB 연결로 이 행을 다시 읽기 때문에
+    # 먼저 저장돼 있어야 한다.
+    background_tasks.add_task(run_image_generation, log.id, open_session)
+
+    return TravelLogGenerationStatus(
+        id=log.id, generation_status=GenerationStatus.GENERATING
+    )
 
 
 @router.get("", response_model=TravelLogListResponse, summary="여행기록 목록")
@@ -192,6 +265,61 @@ def list_travel_log_groups(
     return TravelLogGroupsResponse(items=items, total=total, limit=limit, offset=offset)
 
 
+@router.get(
+    "/{log_id}/status",
+    response_model=TravelLogGenerationStatus,
+    summary="이미지 생성 상태",
+)
+def get_generation_status(
+    log_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+) -> TravelLogGenerationStatus:
+    """앱이 생성이 끝났는지 확인할 때 반복해서 부르는 곳.
+
+    상세 조회(`GET /{logId}`)보다 가볍다 — 반려동물 스냅샷을 함께 읽지 않는다.
+    """
+    log = _load_own_log(db, log_id, current_user, with_companions=False)
+    return TravelLogGenerationStatus(
+        id=log.id,
+        generation_status=log.generation_status,
+        generated_image_url=log.generated_image_url,
+    )
+
+
+@router.post(
+    "/{log_id}/regenerate",
+    response_model=TravelLogGenerationStatus,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="이미지 재생성",
+)
+def regenerate_travel_log(
+    log_id: uuid.UUID,
+    payload: TravelLogRegenerate,
+    background_tasks: BackgroundTasks,
+    current_user: CurrentUser,
+    db: DbSession,
+    open_session: OpenSession,
+) -> TravelLogGenerationStatus:
+    """같은 원본 사진으로 다시 만든다.
+
+    `generatedImageUrl` 은 새 이미지로 덮어쓰고 `originalImageUrl` 은 그대로 둔다.
+    실패해서 `failed` 로 남은 기록을 되살리는 길이기도 하다.
+    """
+    log = _load_own_log(db, log_id, current_user, with_companions=False)
+
+    if payload.writing_style is not None:
+        log.writing_style = payload.writing_style
+    if payload.mood is not None:
+        log.mood = payload.mood
+    log.generation_status = GenerationStatus.GENERATING
+    db.commit()
+
+    background_tasks.add_task(run_image_generation, log.id, open_session)
+
+    return TravelLogGenerationStatus(
+        id=log.id, generation_status=GenerationStatus.GENERATING
+    )
+
+
 @router.get("/{log_id}", response_model=TravelLogItem, summary="여행기록 상세")
 def get_travel_log(log_id: uuid.UUID, current_user: CurrentUser, db: DbSession) -> TravelLogItem:
     return _to_item(_load_own_log(db, log_id, current_user))
@@ -260,24 +388,114 @@ def delete_travel_log(log_id: uuid.UUID, current_user: CurrentUser, db: DbSessio
 
 
 # ---------------------------------------------------------------------------
+# 이미지 생성 뒷작업
+# ---------------------------------------------------------------------------
+
+
+def run_image_generation(
+    log_id: uuid.UUID, open_session: BackgroundSessionFactory
+) -> None:
+    """요청이 끝난 뒤 이미지를 만들고 결과를 기록한다.
+
+    **연결을 직접 만들지 않고 넘겨받는다.** 요청용 연결은 응답과 함께 닫혀서
+    쓸 수 없고, `SessionLocal` 을 곧장 부르면 테스트가 공유 RDS 를 건드린다
+    (app/db/session.py 의 `get_background_session` 설명 참고).
+
+    성공하면 `completed` 로 바꾸고 알림을 남긴다. 실패하면 `failed` 로만 바꾸고
+    **행은 지우지 않는다** — 지우면 사용자가 "다시 만들기"를 누를 대상이 없어진다.
+    실패 사유를 담을 컬럼이 없어 사유는 남기지 않는다(docs/api/travel-logs.md).
+    """
+    with open_session() as db:
+        log = db.get(TravelLog, log_id)
+        if log is None:
+            # 생성 중에 사용자가 지웠다. 되살릴 것이 없으니 조용히 끝낸다.
+            return
+
+        try:
+            log.generated_image_url = generate_log_image(
+                log.original_image_url,
+                WritingStyle(log.writing_style),
+                MomentMood(log.mood) if log.mood else None,
+                log.place_name_snapshot,
+            )
+        except Exception:
+            # 어떤 이유로 실패했든 앱에는 "다시 만들기" 하나만 보여준다.
+            log.generation_status = GenerationStatus.FAILED
+            db.commit()
+            return
+
+        log.generation_status = GenerationStatus.COMPLETED
+        db.add(_ready_notification(log))
+        db.commit()
+
+
+def _ready_notification(log: TravelLog) -> Notification:
+    """생성 완료 알림.
+
+    생성이 오래 걸려 사용자가 화면을 벗어나도 완료를 알 수 있게 한다.
+    실패했을 때는 보내지 않는다(docs/api/notifications.md).
+
+    앱이 이 알림을 읽는 창구(`GET /notifications`)는 아직 없다. 지금은 쌓아만
+    두고, 알림 화면을 만들 때 그대로 쓰인다.
+    """
+    return Notification(
+        user_id=log.user_id,
+        type="travel_log_ready",
+        title="여행기록이 완성됐어요",
+        content=f"{log.place_name_snapshot}에서의 순간이 기록으로 만들어졌어요.",
+        icon_key="image-outline",
+        action_path=f"/travel-logs/{log.id}",
+    )
+
+
+# ---------------------------------------------------------------------------
 # 공용
 # ---------------------------------------------------------------------------
 
 
-def _load_own_log(db: Session, log_id: uuid.UUID, user: User) -> TravelLog:
+def _load_own_log(
+    db: Session, log_id: uuid.UUID, user: User, *, with_companions: bool = True
+) -> TravelLog:
     """없으면 404, 남의 것이면 403.
 
     둘을 전부 403 으로 합치면 남의 기록 id 를 찍어보며 존재 여부를 알아낼 수
     있게 된다. 명세가 둘을 나눠둔 이유다(services/route_access.py 와 같은 규칙).
+
+    `with_companions=False` 는 상태 조회처럼 반려동물이 필요 없는 곳에서 쓴다.
+    앱이 2 초마다 부르는 자리라 쓸데없는 왕복을 줄인다.
     """
-    log = db.scalar(
-        select(TravelLog).where(TravelLog.id == log_id).options(selectinload(TravelLog.companions))
-    )
+    statement = select(TravelLog).where(TravelLog.id == log_id)
+    if with_companions:
+        statement = statement.options(selectinload(TravelLog.companions))
+
+    log = db.scalar(statement)
     if log is None:
         raise HTTPException(status_code=404, detail="여행기록을 찾을 수 없습니다")
     if log.user_id != user.id:
         raise HTTPException(status_code=403, detail="다른 사용자의 여행기록입니다")
     return log
+
+
+def _resolve_place_name(
+    db: Session, place_id: uuid.UUID | None, place_name: str | None
+) -> str:
+    """기록에 박제할 장소명을 정한다.
+
+    `placeId` 를 보내도 **그 시점의 장소명을 복사**한다. 장소가 나중에 삭제되거나
+    이름이 바뀌어도 기록 화면이 유지된다(docs/api/travel-logs.md).
+
+    이름을 함께 보냈으면 그쪽을 존중한다 — 앱이 화면에 보여준 이름과 어긋나지
+    않게 한다. PATCH 의 장소 변경도 같은 규칙이다.
+    """
+    if place_id is not None:
+        place = db.get(Place, place_id)
+        if place is None or not place.is_active:
+            raise HTTPException(status_code=404, detail="장소를 찾을 수 없습니다")
+        return place_name or place.name
+
+    if not place_name:
+        raise HTTPException(status_code=422, detail="placeId 가 없으면 placeName 이 필요합니다")
+    return place_name
 
 
 def _apply_filters(

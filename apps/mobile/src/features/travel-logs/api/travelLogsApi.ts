@@ -4,9 +4,12 @@
  * 서버와 앱의 타입 차이는 `./travelLogAdapter.ts` 가 흡수한다.
  * 이 파일은 "어디를 부르는가"만 담고, 훅·화면은 수정하지 않는다.
  *
- * 아직 서버에 없는 것 — **기록 생성(`POST /travel-logs`)**.
- * AI 이미지 생성을 무엇으로 할지 정해지지 않아 만들기 흐름은 여전히
- * `../services/mockLogService.ts` 를 쓴다.
+ * 생성은 **"접수했습니다" 방식**이다. 서버가 이미지를 다 만들 때까지 기다리면
+ * 화면이 멈춘 것처럼 보이므로, 서버는 202 로 접수만 알리고 앱이
+ * `getGenerationStatus` 로 완료를 확인한다.
+ *
+ * 이미지를 실제로 그리는 부분은 아직 서버에서 임시 구현이라 원본 사진이
+ * 그대로 결과물로 온다. 앱이 고칠 것은 없다 — 서버만 바뀌면 된다.
  */
 
 import { apiClient } from '@/src/services/apiClient';
@@ -14,9 +17,13 @@ import type { Trip, TravelLog, TravelLogListItem } from '@/src/types/travelLog';
 
 import type { RouteDetailResponse } from '../../trips/types/routeApi';
 import type {
+  ServerGenerationStatus,
+  TravelLogCreateRequest,
+  TravelLogGenerationStatusResponse,
   TravelLogGroupsResponse,
   TravelLogItemResponse,
   TravelLogListResponse,
+  TravelLogRegenerateRequest,
   TravelLogUpdateRequest,
 } from '../types/travelLogApi';
 import { toTravelLog, toTravelLogListItem } from './travelLogAdapter';
@@ -62,6 +69,96 @@ export async function getTripLogs(tripId: string): Promise<TravelLog[]> {
     params: { routeId: tripId, limit: 100 },
   });
   return data.items.map(toTravelLog);
+}
+
+/**
+ * 기록 만들기 — POST /travel-logs
+ *
+ * 서버는 행만 만들고 **202** 로 바로 답한다. 이미지는 뒤에서 만들어지므로
+ * 이 함수가 끝났다고 완성된 것이 아니다. `getGenerationStatus` 로 확인한다.
+ */
+export async function createTravelLog(
+  payload: TravelLogCreateRequest,
+): Promise<TravelLogGenerationStatusResponse> {
+  const { data } = await apiClient.post<TravelLogGenerationStatusResponse>(
+    '/travel-logs',
+    payload,
+  );
+  return data;
+}
+
+/** 생성 진행 상태 — GET /travel-logs/{logId}/status */
+export async function getGenerationStatus(
+  logId: string,
+): Promise<TravelLogGenerationStatusResponse> {
+  const { data } = await apiClient.get<TravelLogGenerationStatusResponse>(
+    `/travel-logs/${logId}/status`,
+  );
+  return data;
+}
+
+/**
+ * 다시 만들기 — POST /travel-logs/{logId}/regenerate
+ *
+ * 실패(`failed`)로 남은 기록을 되살리는 길이기도 하다.
+ * 원본 사진은 그대로 두고 완성 이미지만 새로 만든다.
+ */
+export async function regenerateTravelLog(
+  logId: string,
+  payload: TravelLogRegenerateRequest = {},
+): Promise<TravelLogGenerationStatusResponse> {
+  const { data } = await apiClient.post<TravelLogGenerationStatusResponse>(
+    `/travel-logs/${logId}/regenerate`,
+    payload,
+  );
+  return data;
+}
+
+/** 기록 하나 조회 — GET /travel-logs/{logId} */
+export async function getTravelLog(logId: string): Promise<TravelLog> {
+  const { data } = await apiClient.get<TravelLogItemResponse>(`/travel-logs/${logId}`);
+  return toTravelLog(data);
+}
+
+/** 완료를 기다리며 다시 물어보는 간격 */
+const POLL_INTERVAL_MS = 2_000;
+
+/**
+ * 이만큼 지나도 안 끝나면 포기한다.
+ *
+ * 서버가 재시작되면 진행 중이던 건이 `generating` 에 영영 멈춘다. 제한이 없으면
+ * 앱이 그 화면에서 끝없이 돈다. 포기해도 기록은 서버에 남아 있어서
+ * 목록의 "다시 만들기"로 이어갈 수 있다.
+ */
+const POLL_TIMEOUT_MS = 120_000;
+
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+/**
+ * 생성이 끝날 때까지 기다렸다가 완성된 기록을 돌려준다.
+ *
+ * `onStatus` 로 진행 상태를 알려준다 — 화면이 "사진을 준비하고 있어요" 와
+ * "여행의 순간을 기록하고 있어요" 를 바꿔 보여주는 데 쓴다.
+ */
+export async function waitForGeneration(
+  logId: string,
+  onStatus?: (status: ServerGenerationStatus) => void,
+): Promise<TravelLog> {
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+
+  for (;;) {
+    const { generationStatus } = await getGenerationStatus(logId);
+    onStatus?.(generationStatus);
+
+    if (generationStatus === 'completed') return getTravelLog(logId);
+    if (generationStatus === 'failed') throw new Error('GENERATION_FAILED');
+    if (Date.now() >= deadline) throw new Error('GENERATION_TIMEOUT');
+
+    await wait(POLL_INTERVAL_MS);
+  }
 }
 
 /** 나의 한 줄 수정 — PATCH /travel-logs/{logId} */

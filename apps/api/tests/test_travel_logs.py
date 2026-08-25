@@ -1,8 +1,11 @@
 """여행기록 테스트.
 
-여기서 지키려는 것은 세 가지다 — **남의 기록이 열리지 않을 것**,
-필터가 실제로 좁힐 것, 그리고 **한 날짜에 대표가 하나만 남을 것**.
-마지막 것은 DB 제약이 없어서 서버가 지키지 않으면 아무도 안 지킨다.
+여기서 지키려는 것은 네 가지다 — **남의 기록이 열리지 않을 것**,
+필터가 실제로 좁힐 것, **한 날짜에 대표가 하나만 남을 것**, 그리고
+**이름·사진이 스냅샷으로 박제될 것**.
+
+대표는 DB 제약이 없어서 서버가 지키지 않으면 아무도 안 지킨다.
+스냅샷은 원본 프로필을 바꾼 뒤 기록이 따라 바뀌는지로 확인한다.
 """
 
 import uuid
@@ -10,10 +13,19 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Pet, Place, Route, TravelLog, TravelLogPet, User
-from app.db.models.enums import PetSpecies
+from app.api.v1.endpoints import travel_logs as travel_logs_endpoint
+from app.db.models import Notification, Pet, Place, Route, TravelLog, TravelLogPet, User
+from app.db.models.enums import (
+    PetSpecies,
+    RouteCreationType,
+    RouteStatus,
+    TransportType,
+    TripPace,
+)
+from app.integrations.llm.travel_log_image import ImageGenerationError
 
 KST = timezone(timedelta(hours=9))
 
@@ -383,3 +395,209 @@ def test_남의_기록은_그룹에도_없다(client: TestClient, db: Session, s
 
     assert body["total"] == 0
     assert body["items"] == []
+
+
+# ---------------------------------------------------------------------------
+# 생성 — "접수했습니다" 방식
+# ---------------------------------------------------------------------------
+
+
+def _create_body(**overrides: object) -> dict:
+    body = {
+        "recordedDate": "2026-08-11",
+        "originalImageUrl": "https://example.test/upload.jpg",
+        "writingStyle": "dog_diary",
+        "placeName": "함덕해수욕장",
+    }
+    body.update(overrides)
+    return body
+
+
+def test_생성하면_202_와_생성중_상태를_준다(client: TestClient) -> None:
+    response = client.post("/api/v1/travel-logs", json=_create_body())
+
+    assert response.status_code == 202
+    assert response.json()["generationStatus"] == "generating"
+
+
+def test_생성이_끝나면_completed_가_되고_목록에_뜬다(client: TestClient) -> None:
+    """TestClient 는 응답을 돌려준 뒤 뒷작업을 **동기로** 돌린다.
+
+    그래서 실제 서비스처럼 기다리지 않아도 다음 요청에서 결과를 볼 수 있다.
+    """
+    created = client.post("/api/v1/travel-logs", json=_create_body()).json()
+
+    status_body = client.get(f"/api/v1/travel-logs/{created['id']}/status").json()
+
+    assert status_body["generationStatus"] == "completed"
+    # 임시 생성기라 원본이 그대로 결과물이 된다.
+    assert status_body["generatedImageUrl"] == "https://example.test/upload.jpg"
+    assert client.get("/api/v1/travel-logs").json()["total"] == 1
+
+
+def test_장소를_id_로_보내면_그때_이름이_박제된다(
+    client: TestClient, db: Session, place: Place
+) -> None:
+    created = client.post(
+        "/api/v1/travel-logs", json=_create_body(placeId=str(place.id), placeName=None)
+    ).json()
+
+    # 장소 이름이 나중에 바뀌어도 기록은 따라 바뀌지 않는다.
+    place.name = "이름이 바뀐 해변"
+    db.flush()
+
+    body = client.get(f"/api/v1/travel-logs/{created['id']}").json()
+
+    assert body["placeNameSnapshot"] == "테스트 해변"
+
+
+def test_반려동물도_스냅샷으로_복사된다(
+    client: TestClient, db: Session, pet: Pet
+) -> None:
+    created = client.post(
+        "/api/v1/travel-logs", json=_create_body(petIds=[str(pet.id)])
+    ).json()
+
+    pet.name = "이름이 바뀐 몽이"
+    db.flush()
+
+    body = client.get(f"/api/v1/travel-logs/{created['id']}").json()
+
+    assert [c["nameSnapshot"] for c in body["companions"]] == ["몽이"]
+
+
+def test_장소를_아무것도_안_보내면_422(client: TestClient) -> None:
+    response = client.post("/api/v1/travel-logs", json=_create_body(placeName=None))
+
+    assert response.status_code == 422
+
+
+def test_미래_날짜로는_못_만든다(client: TestClient) -> None:
+    tomorrow = datetime.now(KST).date() + timedelta(days=1)
+
+    response = client.post(
+        "/api/v1/travel-logs", json=_create_body(recordedDate=tomorrow.isoformat())
+    )
+
+    assert response.status_code == 422
+
+
+def test_남의_여행에는_못_붙인다(
+    client: TestClient, db: Session, stranger: User
+) -> None:
+    others_route = Route(
+        id=uuid.uuid4(),
+        user_id=stranger.id,
+        title="남의 여행",
+        status=RouteStatus.GENERATED,
+        creation_type=RouteCreationType.MANUAL,
+        start_at=datetime(2026, 9, 11, 9, 0, tzinfo=KST),
+        end_at=datetime(2026, 9, 12, 9, 0, tzinfo=KST),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+    )
+    db.add(others_route)
+    db.flush()
+
+    response = client.post(
+        "/api/v1/travel-logs", json=_create_body(routeId=str(others_route.id))
+    )
+
+    assert response.status_code == 403
+
+
+def test_남의_반려동물은_못_붙인다(
+    client: TestClient, db: Session, stranger: User
+) -> None:
+    others = Pet(id=uuid.uuid4(), user_id=stranger.id, name="남의개", species=PetSpecies.DOG)
+    db.add(others)
+    db.flush()
+
+    response = client.post(
+        "/api/v1/travel-logs", json=_create_body(petIds=[str(others.id)])
+    )
+
+    assert response.status_code == 403
+
+
+def test_완성되면_알림이_쌓인다(client: TestClient, db: Session, owner: User) -> None:
+    client.post("/api/v1/travel-logs", json=_create_body())
+
+    notification = db.scalars(
+        select(Notification).where(Notification.user_id == owner.id)
+    ).one()
+
+    assert notification.type == "travel_log_ready"
+    assert "함덕해수욕장" in notification.content
+
+
+# ---------------------------------------------------------------------------
+# 생성 실패와 재생성
+# ---------------------------------------------------------------------------
+
+
+def test_그림을_못_만들면_failed_로_남고_알림은_없다(
+    client: TestClient, db: Session, owner: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """행을 지우지 않는 것이 핵심이다 — 지우면 다시 만들 대상이 사라진다."""
+
+    def boom(*args: object, **kwargs: object) -> str:
+        raise ImageGenerationError("생성기 고장")
+
+    monkeypatch.setattr(travel_logs_endpoint, "generate_log_image", boom)
+
+    created = client.post("/api/v1/travel-logs", json=_create_body()).json()
+
+    body = client.get(f"/api/v1/travel-logs/{created['id']}/status").json()
+    assert body["generationStatus"] == "failed"
+    assert body["generatedImageUrl"] is None
+    assert (
+        db.scalar(select(func.count()).select_from(Notification).where(
+            Notification.user_id == owner.id
+        ))
+        == 0
+    )
+
+
+def test_재생성하면_실패한_기록도_되살아난다(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(*args: object, **kwargs: object) -> str:
+        raise ImageGenerationError("생성기 고장")
+
+    monkeypatch.setattr(travel_logs_endpoint, "generate_log_image", boom)
+    created = client.post("/api/v1/travel-logs", json=_create_body()).json()
+    monkeypatch.undo()
+
+    response = client.post(f"/api/v1/travel-logs/{created['id']}/regenerate", json={})
+
+    assert response.status_code == 202
+    body = client.get(f"/api/v1/travel-logs/{created['id']}/status").json()
+    assert body["generationStatus"] == "completed"
+
+
+def test_재생성으로_말투를_바꿀_수_있다(client: TestClient) -> None:
+    created = client.post("/api/v1/travel-logs", json=_create_body()).json()
+
+    client.post(
+        f"/api/v1/travel-logs/{created['id']}/regenerate",
+        json={"writingStyle": "jeju_dialect", "mood": "excited"},
+    )
+
+    body = client.get(f"/api/v1/travel-logs/{created['id']}").json()
+    assert body["writingStyle"] == "jeju_dialect"
+    assert body["mood"] == "excited"
+    # 원본 사진은 그대로 둔다.
+    assert body["originalImageUrl"] == "https://example.test/upload.jpg"
+
+
+def test_남의_기록은_상태도_재생성도_막힌다(
+    client: TestClient, db: Session, stranger: User
+) -> None:
+    other = _make_log(db, stranger, recorded_date=date(2026, 9, 10))
+
+    assert client.get(f"/api/v1/travel-logs/{other.id}/status").status_code == 403
+    assert (
+        client.post(f"/api/v1/travel-logs/{other.id}/regenerate", json={}).status_code
+        == 403
+    )

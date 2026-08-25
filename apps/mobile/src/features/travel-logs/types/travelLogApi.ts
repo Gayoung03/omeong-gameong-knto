@@ -102,6 +102,45 @@ export type TravelLogGroupsResponse = {
   offset: number;
 };
 
+/**
+ * POST /travel-logs 로 보내는 것.
+ *
+ * `originalImageUrl` 은 `POST /uploads`(purpose=travel_log)로 먼저 올리고 받은 주소다.
+ * `generatedImageUrl` 은 앱이 보내지 않는다 — 서버가 만들어 채운다.
+ */
+export type TravelLogCreateRequest = {
+  routeId?: string | null;
+  placeId?: string;
+  /** placeId 가 없으면 필수 */
+  placeName?: string;
+  recordedDate: string;
+  visitedAt?: string | null;
+  originalImageUrl: string;
+  writingStyle: ServerWritingStyle;
+  mood?: ServerMomentMood | null;
+  personalMessage?: string | null;
+  petIds?: string[];
+};
+
+/** POST /travel-logs/{logId}/regenerate. 둘 다 생략하면 기존 값으로 다시 만든다 */
+export type TravelLogRegenerateRequest = {
+  writingStyle?: ServerWritingStyle;
+  mood?: ServerMomentMood | null;
+};
+
+/**
+ * POST /travel-logs 의 202 응답, 그리고 GET /travel-logs/{logId}/status.
+ *
+ * 생성은 오래 걸려서 서버가 "접수했다"고만 먼저 답한다.
+ * 앱은 완료될 때까지 status 를 반복해서 확인한다.
+ */
+export type TravelLogGenerationStatusResponse = {
+  id: string;
+  generationStatus: ServerGenerationStatus;
+  /** 완료됐을 때만 채워진다 */
+  generatedImageUrl: string | null;
+};
+
 /** PATCH /travel-logs/{logId} 로 보내는 것. 보낸 필드만 수정된다 */
 export type TravelLogUpdateRequest = {
   personalMessage?: string | null;

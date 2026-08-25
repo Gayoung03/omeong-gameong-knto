@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, Share, StyleSheet, Text, View } from 'react-native';
@@ -7,16 +8,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 
 import { MemoryFlipCard } from './components/MemoryFlipCard';
-import { mockLogService } from './services/mockLogService';
+import { travelLogQueryKey } from './hooks/useTravelLogItems';
 import { useLogDraftStore } from './stores/useLogDraftStore';
-import { useSavedLogStore } from './stores/useSavedLogStore';
 
 export function NewMomentCompleteScreen() {
   const router = useRouter();
   const generatedLog = useLogDraftStore((state) => state.generatedLog);
   const resetDraft = useLogDraftStore((state) => state.resetDraft);
-  const startGeneration = useLogDraftStore((state) => state.startGeneration);
-  const addSavedLog = useSavedLogStore((state) => state.addSavedLog);
+  const regenerate = useLogDraftStore((state) => state.regenerate);
+  const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = useState(false);
   const [isFlipped, setIsFlipped] = useState(false);
 
@@ -33,24 +33,29 @@ export function NewMomentCompleteScreen() {
     );
   }
 
+  // 같은 기록의 이미지만 새로 만든다. startGeneration 을 다시 부르면
+  // 기록이 하나 더 생긴다.
   const remake = () => {
-    void startGeneration();
+    void regenerate();
     router.replace('/travel-logs/new-moment/generating');
   };
   const share = () => {
     Share.share({ message: generatedLog.generatedImageUrl, title: '오멍가멍 여행 기록', url: generatedLog.generatedImageUrl }).catch(() => {});
   };
+  /**
+   * 기록은 만들어진 시점에 이미 서버에 저장돼 있다. 여기서는 목록이 새 기록을
+   * 알아보도록 캐시를 비우고 목록으로 돌아갈 뿐이다.
+   */
   const save = async () => {
     if (isSaving) return;
     setIsSaving(true);
     try {
-      const savedLog = await mockLogService.saveLog(generatedLog);
-      addSavedLog(savedLog);
+      await queryClient.invalidateQueries({ queryKey: travelLogQueryKey });
       resetDraft();
       router.dismissTo('/travel-logs');
     } catch {
       setIsSaving(false);
-      Alert.alert('저장하지 못했어요', '잠시 후 다시 시도해 주세요. 작성한 내용은 그대로 유지돼요.');
+      Alert.alert('목록을 새로 불러오지 못했어요', '기록은 저장돼 있어요. 잠시 후 다시 시도해 주세요.');
     }
   };
 
@@ -85,7 +90,8 @@ export function NewMomentCompleteScreen() {
       <View style={styles.footer}>
         <Pressable disabled={isSaving} onPress={() => void save()} style={[styles.saveButton, isSaving && styles.saveDisabled]}>
           <Ionicons color={colors.surface} name="download-outline" size={21} />
-          <Text style={styles.saveLabel}>{isSaving ? '앨범에 저장 중...' : '앨범에 저장하기'}</Text>
+          {/* 저장은 이미 끝났다. 이 버튼은 목록으로 돌아가는 길이다. */}
+          <Text style={styles.saveLabel}>{isSaving ? '불러오는 중...' : '기록 목록에서 보기'}</Text>
         </Pressable>
       </View>
     </SafeAreaView>

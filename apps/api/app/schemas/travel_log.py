@@ -60,6 +60,53 @@ class TravelLogListResponse(APISchema):
     offset: int
 
 
+class TravelLogCreate(APISchema):
+    """기록을 만들고 이미지 생성을 시작한다.
+
+    `originalImageUrl` 은 **필수**다. 앱이 `POST /uploads`(`purpose=travel_log`)로
+    먼저 올리고 받은 주소를 넣는다. 업로드가 끝나기 전에는 이 요청을 보낼 수 없다.
+
+    `generatedImageUrl` 은 앱이 올리지 않는다 — 생성 후 서버가 직접 채운다.
+
+    `placeId` 가 없으면 `placeName` 이 필수다. 둘 다 보내면 `placeId` 쪽 장소의
+    그 시점 이름을 스냅샷으로 쓴다.
+    """
+
+    route_id: uuid.UUID | None = None
+    place_id: uuid.UUID | None = None
+    place_name: str | None = None
+    recorded_date: date
+    visited_at: datetime | None = None
+    original_image_url: str = Field(min_length=1)
+    writing_style: WritingStyle
+    mood: MomentMood | None = None
+    personal_message: str | None = None
+    pet_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+class TravelLogRegenerate(APISchema):
+    """같은 원본 사진으로 이미지를 다시 만든다.
+
+    두 필드 모두 선택이다. 보내지 않으면 기존 값을 그대로 쓴다.
+    """
+
+    writing_style: WritingStyle | None = None
+    mood: MomentMood | None = None
+
+
+class TravelLogGenerationStatus(APISchema):
+    """생성 진행 상태만.
+
+    `travel_logs` 에 실패 사유 컬럼이 없어 사유는 내려주지 않는다.
+    앱은 `failed` 일 때 재생성 버튼만 보여준다.
+    """
+
+    id: uuid.UUID
+    generation_status: GenerationStatus
+    #: 완료 시에만 채워진다.
+    generated_image_url: str | None = None
+
+
 class TravelLogUpdate(APISchema):
     """보낸 필드만 수정한다.
 
