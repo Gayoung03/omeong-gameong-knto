@@ -11,6 +11,7 @@ import { colors, spacing, typography } from '@/src/theme';
 import { DayChips } from '../components/DayChips';
 import { ScheduleEditRow } from '../components/ScheduleEditRow';
 import { ScheduleItemActionSheet } from '../components/ScheduleItemActionSheet';
+import { ScheduleItemDetailModal } from '../components/ScheduleItemDetailModal';
 import { useSaveSchedule } from '../hooks/useSaveSchedule';
 import { useScheduleEdit } from '../hooks/useScheduleEdit';
 import { useTrip } from '../hooks/useTrips';
@@ -102,14 +103,17 @@ function TripScheduleEditContent({ trip }: TripScheduleEditContentProps) {
     selectSchedule,
     isDirty,
     reorderItems,
+    updateItemDetail,
     removeItem,
     moveItemToSchedule,
   } = useScheduleEdit(trip.schedules);
   const saveSchedule = useSaveSchedule(trip.id);
 
   const [actionItemId, setActionItemId] = useState<string | null>(null);
+  const [detailItemId, setDetailItemId] = useState<string | null>(null);
 
   const actionItem = selectedSchedule?.items.find((item) => item.id === actionItemId) ?? null;
+  const detailItem = selectedSchedule?.items.find((item) => item.id === detailItemId) ?? null;
 
   const handlePressCancel = () => {
     if (!isDirty) {
@@ -142,6 +146,23 @@ function TripScheduleEditContent({ trip }: TripScheduleEditContentProps) {
     }
     removeItem(selectedSchedule.id, actionItem.id);
     setActionItemId(null);
+  };
+
+  const handleEditDetail = () => {
+    if (!actionItem) {
+      return;
+    }
+    // 액션 시트를 먼저 닫고 수정 시트를 연다. 둘이 겹쳐 뜨면 iOS 에서 뒤엣것이 안 보인다.
+    setDetailItemId(actionItem.id);
+    setActionItemId(null);
+  };
+
+  const handleSubmitDetail = (patch: { startTime: string | null; memo: string }) => {
+    if (!selectedSchedule || !detailItem) {
+      return;
+    }
+    updateItemDetail(selectedSchedule.id, detailItem.id, patch);
+    setDetailItemId(null);
   };
 
   const handleMoveToSchedule = (toScheduleId: string) => {
@@ -178,8 +199,8 @@ function TripScheduleEditContent({ trip }: TripScheduleEditContentProps) {
       <View style={styles.hint}>
         <Ionicons color={colors.textTertiary} name="information-circle-outline" size={14} />
         <Text style={styles.hintText}>
-          왼쪽 손잡이를 길게 눌러 끌면 순서가 바뀌어요. 오른쪽 버튼으로 날짜를 옮기거나 삭제할 수
-          있어요.
+          왼쪽 손잡이를 길게 눌러 끌면 순서가 바뀌어요. 오른쪽 버튼으로 시각·메모를 고치거나 날짜를
+          옮기고 삭제할 수 있어요.
         </Text>
       </View>
 
@@ -205,10 +226,19 @@ function TripScheduleEditContent({ trip }: TripScheduleEditContentProps) {
         <ScheduleItemActionSheet
           currentScheduleId={selectedSchedule.id}
           onClose={() => setActionItemId(null)}
+          onEditDetail={handleEditDetail}
           onMoveToSchedule={handleMoveToSchedule}
           onRemove={handleRemove}
           placeName={actionItem.place.name}
           schedules={draftSchedules}
+        />
+      )}
+
+      {detailItem && (
+        <ScheduleItemDetailModal
+          item={detailItem}
+          onClose={() => setDetailItemId(null)}
+          onSubmit={handleSubmitDetail}
         />
       )}
     </SafeAreaView>

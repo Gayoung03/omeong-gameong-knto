@@ -1,7 +1,13 @@
-import type { PlaceCategory, Schedule } from '../types/trip';
-import type { ServerScheduleItemType } from '../types/routeApi';
+import type { Schedule } from '../types/trip';
 
-import { addRouteItem, getTripRaw, removeRouteItem, reorderRouteItems } from './tripsApi';
+import { toKstIso, toRouteItemCreateRequest } from './routeItemPayload';
+import {
+  addRouteItem,
+  getTripRaw,
+  removeRouteItem,
+  reorderRouteItems,
+  updateRouteItem,
+} from './tripsApi';
 
 /**
  * 편집 화면의 변경분을 서버에 반영한다.
@@ -9,16 +15,9 @@ import { addRouteItem, getTripRaw, removeRouteItem, reorderRouteItems } from './
  * 편집 화면은 저장을 누를 때까지 draft 만 고친다. 그래서 여기서 **원본과 draft 를
  * 비교해** 무엇이 바뀌었는지 알아내고, 필요한 호출만 보낸다.
  *
- * 화면이 할 수 있는 일은 세 가지다 — 순서 바꾸기, 지우기, 다른 날짜로 옮기기.
+ * 화면이 할 수 있는 일은 네 가지다 — 순서 바꾸기, 지우기, 다른 날짜로 옮기기,
+ * 그리고 방문 시각·메모 고치기.
  */
-
-const ITEM_TYPE_BY_CATEGORY: Record<PlaceCategory, ServerScheduleItemType> = {
-  accommodation: 'accommodation',
-  attraction: 'attraction',
-  cafe: 'cafe',
-  etc: 'custom',
-  restaurant: 'restaurant',
-};
 
 /** 항목 id → 그 항목이 속한 날짜 id */
 function dayOfItem(schedules: Schedule[]): Map<string, string> {
@@ -60,17 +59,66 @@ export async function saveScheduleChanges(
     for (const [index, item] of schedule.items.entries()) {
       if (!movedIdSet.has(item.id)) continue;
 
-      const created = await addRouteItem(schedule.id, {
-        itemType: ITEM_TYPE_BY_CATEGORY[item.place.category] ?? 'custom',
-        note: item.memo || undefined,
-        placeId: item.place.id,
-        sortOrder: index,
-      });
+      const created = await addRouteItem(
+        schedule.id,
+        toRouteItemCreateRequest({
+          category: item.place.category,
+          // 날짜가 바뀌었으니 시각도 새 날짜 기준으로 다시 만든다.
+          date: schedule.date,
+          memo: item.memo,
+          placeId: item.place.id,
+          sortOrder: index,
+          startTime: item.startTime,
+        }),
+      );
       serverIdOf.set(item.id, created.id);
     }
   }
 
+  await patchEditedItems(original, draft, movedIdSet);
   await reorderChangedDays(tripId, original, draft, serverIdOf);
+}
+
+/**
+ * 제자리에 남은 항목의 방문 시각·메모를 고친다.
+ *
+ * 옮긴 항목은 제외한다 — 이미 새로 만들면서 값을 넣었고, 서버 id 도 바뀌었다.
+ *
+ * `startsAt` 은 **날짜와 함께** 보내야 한다. 시각만으로는 어느 날인지 알 수 없고,
+ * `+09:00` 을 빼면 서버가 UTC 로 읽어 아침 일정이 전날로 밀린다.
+ * 시각을 지웠으면 `null` 을 보낸다 — 안 보내면 서버가 "안 고친 것"으로 본다.
+ */
+async function patchEditedItems(
+  original: Schedule[],
+  draft: Schedule[],
+  movedIds: Set<string>,
+): Promise<void> {
+  const before = new Map<string, { startTime: string | null; memo: string }>();
+  for (const schedule of original) {
+    for (const item of schedule.items) {
+      before.set(item.id, { memo: item.memo, startTime: item.startTime });
+    }
+  }
+
+  for (const schedule of draft) {
+    for (const item of schedule.items) {
+      if (movedIds.has(item.id)) continue;
+
+      const previous = before.get(item.id);
+      if (!previous) continue;
+
+      const timeChanged = previous.startTime !== item.startTime;
+      const memoChanged = previous.memo !== item.memo;
+      if (!timeChanged && !memoChanged) continue;
+
+      await updateRouteItem(item.id, {
+        ...(timeChanged
+          ? { startsAt: item.startTime ? toKstIso(schedule.date, item.startTime) : null }
+          : {}),
+        ...(memoChanged ? { note: item.memo || null } : {}),
+      });
+    }
+  }
 }
 
 /**

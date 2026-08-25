@@ -12,6 +12,7 @@ type ScheduleItemActionSheetProps = {
   currentScheduleId: string;
   schedules: Schedule[];
   onMoveToSchedule: (scheduleId: string) => void;
+  onEditDetail: () => void;
   onRemove: () => void;
   onClose: () => void;
 };
@@ -21,6 +22,7 @@ export function ScheduleItemActionSheet({
   currentScheduleId,
   schedules,
   onMoveToSchedule,
+  onEditDetail,
   onRemove,
   onClose,
 }: ScheduleItemActionSheetProps) {
@@ -42,6 +44,11 @@ export function ScheduleItemActionSheet({
           <Text numberOfLines={1} style={styles.title}>
             {placeName}
           </Text>
+
+          <Pressable accessibilityRole="button" onPress={onEditDetail} style={styles.editRow}>
+            <Ionicons color={colors.primary} name="time-outline" size={17} />
+            <Text style={styles.editText}>방문 시각·메모 수정</Text>
+          </Pressable>
 
           {otherSchedules.length > 0 ? (
             <>
@@ -135,6 +142,18 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: typography.caption.fontSize,
     fontWeight: '400',
+  },
+  editRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm + 4,
+  },
+  editText: {
+    color: colors.textPrimary,
+    fontSize: typography.label.fontSize + 1,
+    fontWeight: '600',
   },
   emptyText: {
     color: colors.textTertiary,
