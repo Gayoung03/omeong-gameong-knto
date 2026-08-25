@@ -30,6 +30,15 @@ export async function getPlaces(): Promise<Place[]> {
   return data.items.map(toPlace);
 }
 
+/** 장소명으로 검색한다. 서버가 좁혀 주므로 전체를 받아 거르지 않는다. */
+export async function searchPlaces(query: string, limit = 20): Promise<Place[]> {
+  const { data } = await apiClient.get<PlaceListResponse>('/places', {
+    params: { q: query, limit },
+  });
+
+  return data.items.map(toPlace);
+}
+
 const wait = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
