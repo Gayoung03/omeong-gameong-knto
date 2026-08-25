@@ -160,3 +160,36 @@ export type RouteItemCreateRequest = {
   stayMinutes?: number;
   note?: string;
 };
+
+/**
+ * PATCH /routes/{routeId} 요청. **보낸 필드만** 바뀐다.
+ *
+ * `status` 는 아무 값이나 못 넣는다. 서버가 허용하는 전이는
+ * `generated → saved → ongoing → completed` 한 방향뿐이고
+ * 어긋나면 422 다. 같은 상태를 다시 보내는 것은 통과한다.
+ *
+ * `isPublic` 을 false 로 보내는 것이 곧 **공유 해제**다(별도 엔드포인트가 없다).
+ */
+export type RouteUpdateRequest = {
+  title?: string;
+  status?: ServerRouteStatus;
+  styleKeywords?: string[] | null;
+  memo?: string | null;
+  coverImageUrl?: string | null;
+  isPublic?: boolean;
+};
+
+/**
+ * PATCH /route-items/{routeItemId} 요청. **보낸 필드만** 바뀐다.
+ *
+ * 순서(`sortOrder`)는 여기서 못 바꾼다 — UNIQUE 제약 때문에
+ * 그 날짜 전체를 순서 API 로 한 번에 보내야 한다.
+ * 날짜 이동도 없다 — 지웠다가 새 날짜에 다시 만든다(`api/scheduleSync.ts`).
+ */
+export type RouteItemUpdateRequest = {
+  startsAt?: string | null;
+  endsAt?: string | null;
+  stayMinutes?: number | null;
+  note?: string | null;
+  isSelected?: boolean;
+};

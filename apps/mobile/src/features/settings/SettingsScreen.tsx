@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ListItem } from '@/src/components/ui/ListItem';
@@ -12,7 +12,8 @@ import { settingsMenuItems, type SettingsMenuItem } from './constants/settingsMe
 
 export function SettingsScreen() {
   const router = useRouter();
-  const { isConfirmVisible, requestLogout, cancelLogout, confirmLogout } = useLogout();
+  const { isConfirmVisible, errorMessage, requestLogout, cancelLogout, confirmLogout } =
+    useLogout();
 
   // 아직 연결되지 않은 메뉴는 undefined를 돌려줘 눌러도 아무 일이 없다.
   const resolvePress = ({ route, action }: SettingsMenuItem) => {
@@ -35,6 +36,8 @@ export function SettingsScreen() {
         ))}
       </ScrollView>
 
+      {errorMessage && <Text style={styles.logoutError}>{errorMessage}</Text>}
+
       <LogoutConfirmModal
         onCancel={cancelLogout}
         onConfirm={confirmLogout}
@@ -48,6 +51,13 @@ const styles = StyleSheet.create({
   content: {
     paddingBottom: spacing.xl,
     paddingHorizontal: spacing.lg,
+  },
+  logoutError: {
+    color: colors.error,
+    fontSize: 13,
+    paddingBottom: spacing.md,
+    paddingHorizontal: spacing.lg,
+    textAlign: 'center',
   },
   safeArea: {
     backgroundColor: colors.background,

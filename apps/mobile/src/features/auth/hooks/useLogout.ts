@@ -1,7 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert } from 'react-native';
 
 import { signOut } from '../services/authStorage';
 
@@ -17,8 +16,12 @@ export function useLogout() {
   const queryClient = useQueryClient();
   const [isConfirmVisible, setConfirmVisible] = useState(false);
   const [isLoggingOut, setLoggingOut] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string>();
 
-  const requestLogout = () => setConfirmVisible(true);
+  const requestLogout = () => {
+    setErrorMessage(undefined);
+    setConfirmVisible(true);
+  };
   const cancelLogout = () => setConfirmVisible(false);
 
   const confirmLogout = () => {
@@ -34,18 +37,27 @@ export function useLogout() {
       })
       .catch((error: unknown) => {
         // 세션을 못 지운 채 로그인 화면으로 보내면 뒤로 가기로 다시 들어올 수 있다.
-        // 실패하면 이동하지 않고 원인을 그대로 드러낸다.
-        if (__DEV__) {
-          Alert.alert(
-            '로그아웃 실패',
-            error instanceof Error ? error.message : String(error),
-          );
-        }
+        // 실패하면 이동하지 않고 원인을 화면에 남긴다.
+        //
+        // `Alert` 을 쓰지 않는다 — 웹에서는 뜨지 않아 눌러도 아무 일이 없는 것처럼 보인다.
+        const detail = error instanceof Error ? error.message : String(error);
+        setErrorMessage(
+          __DEV__
+            ? `로그아웃하지 못했어요 (${detail})`
+            : '로그아웃하지 못했어요. 잠시 후 다시 시도해 주세요.',
+        );
       })
       .finally(() => {
         setLoggingOut(false);
       });
   };
 
-  return { isConfirmVisible, isLoggingOut, requestLogout, cancelLogout, confirmLogout };
+  return {
+    isConfirmVisible,
+    isLoggingOut,
+    errorMessage,
+    requestLogout,
+    cancelLogout,
+    confirmLogout,
+  };
 }

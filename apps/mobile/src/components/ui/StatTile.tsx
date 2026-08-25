@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { categoryColors, colors, radius, shadow, spacing } from '@/src/theme';
 
-type StatTileVariant = 'blue' | 'green' | 'orange' | 'yellow';
+type StatTileVariant = 'blue' | 'green' | 'orange' | 'purple' | 'yellow';
 
 type StatTileProps = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -24,6 +24,7 @@ const variantColors: Record<StatTileVariant, { background: string; icon: string 
   blue: { background: categoryColors.blue.bg, icon: categoryColors.blue.fg },
   green: { background: categoryColors.green.bg, icon: categoryColors.green.fg },
   orange: { background: categoryColors.orange.bg, icon: categoryColors.orange.fg },
+  purple: { background: categoryColors.purple.bg, icon: categoryColors.purple.fg },
   yellow: { background: categoryColors.yellow.bg, icon: categoryColors.yellow.fg },
 };
 
