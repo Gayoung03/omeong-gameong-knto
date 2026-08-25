@@ -4,7 +4,9 @@ import type {
   RouteDetailResponse,
   RouteItemCreateRequest,
   RouteItemResponse,
+  RouteItemUpdateRequest,
   RouteListResponse,
+  RouteUpdateRequest,
 } from '../types/routeApi';
 import type { Trip, TripListItem } from '../types/trip';
 import { toTrip, toTripListItem } from './routeAdapter';
@@ -56,10 +58,7 @@ export async function removeRouteItem(itemId: string): Promise<void> {
  * **그 날짜의 항목 전체를 순서대로** 보내야 한다. 하나씩 PATCH 하면
  * UNIQUE(route_day_id, sort_order) 때문에 중간 상태에서 충돌한다.
  */
-export async function reorderRouteItems(
-  scheduleId: string,
-  itemIds: string[],
-): Promise<void> {
+export async function reorderRouteItems(scheduleId: string, itemIds: string[]): Promise<void> {
   await apiClient.put(`/route-days/${scheduleId}/items/order`, { itemIds });
 }
 
@@ -71,5 +70,40 @@ export async function reorderRouteItems(
  */
 export async function getTripRaw(tripId: string): Promise<RouteDetailResponse> {
   const { data } = await apiClient.get<RouteDetailResponse>(`/routes/${tripId}`);
+  return data;
+}
+
+/**
+ * 여행 수정 — PATCH /routes/{routeId}
+ *
+ * 보낸 필드만 바뀐다. 제목·메모만 고치려고 전체를 보낼 필요가 없다.
+ */
+export async function updateTrip(tripId: string, payload: RouteUpdateRequest): Promise<Trip> {
+  const { data } = await apiClient.patch<RouteDetailResponse>(`/routes/${tripId}`, payload);
+  return toTrip(data);
+}
+
+/**
+ * 여행 삭제 — DELETE /routes/{routeId}
+ *
+ * **물리 삭제라 되돌릴 수 없다.** 날짜·일정·체크리스트·메모가 함께 사라진다.
+ * 다만 여행기록(travel_logs)은 `route_id` 만 비워지고 **남는다** — 사진과 기록은
+ * 여행과 별개로 사용자의 것이라서다.
+ */
+export async function deleteTrip(tripId: string): Promise<void> {
+  await apiClient.delete(`/routes/${tripId}`);
+}
+
+/**
+ * 일정 항목 수정 — PATCH /route-items/{routeItemId}
+ *
+ * 시각·체류시간·메모만 고친다. 순서와 날짜는 못 바꾼다
+ * (순서는 순서 API, 날짜 이동은 삭제 후 재생성 — `api/scheduleSync.ts`).
+ */
+export async function updateRouteItem(
+  itemId: string,
+  payload: RouteItemUpdateRequest,
+): Promise<RouteItemResponse> {
+  const { data } = await apiClient.patch<RouteItemResponse>(`/route-items/${itemId}`, payload);
   return data;
 }
