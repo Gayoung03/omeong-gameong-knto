@@ -22,6 +22,8 @@ export default function RootLayout() {
               <Stack.Screen name="places/[placeId]" />
             <Stack.Screen name="places/[placeId]/reviews/index" />
             <Stack.Screen name="places/[placeId]/reviews/new" />
+            <Stack.Screen name="places/[placeId]/reviews/[reviewId]/edit" />
+            <Stack.Screen name="reviews/my" />
               <Stack.Screen name="stories/[storyId]" />
 
               <Stack.Screen name="trips/[tripId]/index" />
