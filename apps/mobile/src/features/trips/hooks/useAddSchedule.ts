@@ -1,42 +1,20 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 
+import { getApiErrorMessage } from '@/src/services/apiError';
+
+import { toRouteItemCreateRequest } from '../api/routeItemPayload';
+import { addRouteItem } from '../api/tripsApi';
 import type {
   AddScheduleInput,
   PlaceCandidate,
   PlaceFilter,
   PlaceSourceTab,
   Schedule,
-  ScheduleItem,
-  Trip,
 } from '../types/trip';
 import { toDaySearchArea, toStaySearchArea } from '../utils/placeSearchArea';
 import { usePlaceCandidates, usePlaceSearchResults } from './usePlaceSearch';
 import { tripQueryKeys } from './useTrips';
-
-/** order 를 1부터 다시 매기고 마지막 항목의 이동 정보를 비운다 (useScheduleEdit 과 같은 규칙) */
-function normalizeItems(items: ScheduleItem[]): ScheduleItem[] {
-  return items.map((item, index) => ({
-    ...item,
-    order: index + 1,
-    moveToNext: index === items.length - 1 ? null : item.moveToNext,
-  }));
-}
-
-function appendItem(schedule: Schedule, input: AddScheduleInput): Schedule {
-  const newItem: ScheduleItem = {
-    // 같은 장소를 두 번 담을 수 있으므로 시각을 붙여 구분한다
-    id: `${input.place.id}-item-${Date.now()}`,
-    order: schedule.items.length + 1,
-    place: input.place,
-    isSaved: false,
-    startTime: input.startTime,
-    memo: input.memo,
-    moveToNext: null,
-  };
-
-  return { ...schedule, items: normalizeItems([...schedule.items, newItem]) };
-}
 
 type UseAddScheduleParams = {
   tripId: string;
@@ -49,8 +27,6 @@ type UseAddScheduleParams = {
  * 일정 추가 화면의 상태와 담기 동작.
  *
  * 여행 데이터를 다 불러온 뒤에 마운트해야 한다 (초기값을 한 번만 읽기 때문).
- * TODO: 백엔드 준비 후 담기를 TanStack Query mutation 으로 교체.
- *       지금은 캐시에 직접 넣어 화면에서만 반영된다.
  */
 export function useAddSchedule({ tripId, schedules, initialScheduleId }: UseAddScheduleParams) {
   const queryClient = useQueryClient();
@@ -66,6 +42,7 @@ export function useAddSchedule({ tripId, schedules, initialScheduleId }: UseAddS
   /** 시간·메모 입력 시트를 띄울 대상 */
   const [pendingPlace, setPendingPlace] = useState<PlaceCandidate | null>(null);
   const [addedPlaceIds, setAddedPlaceIds] = useState<string[]>([]);
+  const [addErrorMessage, setAddErrorMessage] = useState<string>();
 
   const isSearching = searchKeyword.trim().length > 0;
 
@@ -120,31 +97,59 @@ export function useAddSchedule({ tripId, schedules, initialScheduleId }: UseAddS
     setSelectedPlaceId(null);
   }, []);
 
-  /** 캐시에 담긴 여행 정보를 갱신해 뒤로 갔을 때 바로 보이게 한다 */
+  /**
+   * 담기 — POST /route-days/{routeDayId}/items
+   *
+   * 예전에는 `queryClient.setQueryData` 로 캐시만 바꿨다. 화면에는 담긴 것처럼
+   * 보였지만 **서버에는 아무것도 안 갔고, 앱을 껐다 켜면 사라졌다.**
+   *
+   * 성공하면 이 여행의 캐시를 버리고 다시 받는다 — 서버가 순번을 다시 매기고
+   * 이동 정보(route_moves)까지 새로 이어서, 앱이 흉내 내면 어긋난다.
+   */
+  const addMutation = useMutation({
+    mutationFn: (input: AddScheduleInput) => {
+      const schedule = schedules.find((item) => item.id === input.scheduleId);
+      if (!schedule) {
+        throw new Error(`담을 날짜를 찾을 수 없습니다: ${input.scheduleId}`);
+      }
+
+      return addRouteItem(
+        input.scheduleId,
+        toRouteItemCreateRequest({
+          category: input.place.category,
+          date: schedule.date,
+          memo: input.memo,
+          placeId: input.place.id,
+          startTime: input.startTime,
+        }),
+      );
+    },
+    onError: (error, input) => {
+      // 낙관적으로 표시해둔 '담김'을 되돌린다. 안 그러면 실패했는데
+      // 카드가 계속 '담김'으로 남아 사용자가 다시 담을 수 없다.
+      setAddedPlaceIds((previous) => {
+        const index = previous.lastIndexOf(input.place.id);
+        if (index === -1) return previous;
+        return [...previous.slice(0, index), ...previous.slice(index + 1)];
+      });
+      setAddErrorMessage(getApiErrorMessage(error).description);
+    },
+    onSuccess: () => {
+      setAddErrorMessage(undefined);
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.detail(tripId) });
+      queryClient.invalidateQueries({ queryKey: tripQueryKeys.list() });
+    },
+  });
+
   const addSchedule = useCallback(
     (input: AddScheduleInput) => {
-      const applyToTrip = (trip: Trip | null | undefined): Trip | null | undefined => {
-        if (!trip) {
-          return trip;
-        }
-
-        return {
-          ...trip,
-          schedules: trip.schedules.map((schedule) =>
-            schedule.id === input.scheduleId ? appendItem(schedule, input) : schedule,
-          ),
-        };
-      };
-
-      queryClient.setQueryData<Trip>(
-        tripQueryKeys.detail(tripId),
-        (trip) => applyToTrip(trip) ?? trip,
-      );
-
-      setAddedPlaceIds((previous) => [...previous, input.place.id]);
+      // 왕복을 기다리면 시트가 한 박자 늦게 닫혀 눌린 건지 알 수 없다.
+      // 먼저 닫고 표시한 뒤, 실패하면 onError 가 되돌린다.
       setPendingPlace(null);
+      setAddedPlaceIds((previous) => [...previous, input.place.id]);
+      addMutation.mutate(input);
     },
-    [queryClient, tripId],
+    [addMutation],
   );
 
   return {
@@ -180,5 +185,7 @@ export function useAddSchedule({ tripId, schedules, initialScheduleId }: UseAddS
     // 담기
     addSchedule,
     addedPlaceIds,
+    isAdding: addMutation.isPending,
+    addErrorMessage,
   };
 }

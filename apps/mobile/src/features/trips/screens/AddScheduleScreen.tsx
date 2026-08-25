@@ -118,6 +118,7 @@ function AddScheduleContent({ trip, initialScheduleId }: AddScheduleContentProps
     closeAddSheet,
     addSchedule,
     addedPlaceIds,
+    addErrorMessage,
   } = useAddSchedule({ tripId: trip.id, schedules: trip.schedules, initialScheduleId });
 
   const mapCandidates = places.slice(0, MAX_MAP_CANDIDATES);
@@ -248,6 +249,12 @@ function AddScheduleContent({ trip, initialScheduleId }: AddScheduleContentProps
           />
         )}
 
+        {addErrorMessage && (
+          <View style={[styles.addErrorBar, { paddingBottom: insets.bottom }]}>
+            <Text style={styles.addErrorText}>{addErrorMessage}</Text>
+          </View>
+        )}
+
         {addedPlaceIds.length > 0 && (
           <View style={[styles.addedBar, { paddingBottom: spacing.sm + 2 + insets.bottom }]}>
             <Text style={styles.addedBarText}>{addedPlaceIds.length}곳을 담았어요</Text>
@@ -276,6 +283,16 @@ function AddScheduleContent({ trip, initialScheduleId }: AddScheduleContentProps
 }
 
 const styles = StyleSheet.create({
+  addErrorBar: {
+    backgroundColor: colors.errorBg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
+  addErrorText: {
+    color: colors.error,
+    fontSize: typography.label.fontSize,
+    textAlign: 'center',
+  },
   safeArea: {
     backgroundColor: colors.background,
     flex: 1,
