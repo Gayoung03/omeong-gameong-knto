@@ -32,8 +32,8 @@ export function HomeScreen() {
       return;
     }
 
-    if (item.destination === 'travel-guides') {
-      router.push('/travel-guides');
+    if (item.destination === 'travel-preparation') {
+      router.push('/travel-guides/preparation');
       return;
     }
 
@@ -42,7 +42,9 @@ export function HomeScreen() {
       return;
     }
 
-    router.push({ pathname: '/coming-soon', params: { title: item.title } });
+    if (item.destination === 'saved-places') {
+      router.push('/saved/places');
+    }
   };
 
   const openStory = (story: EditorialStory) => {
