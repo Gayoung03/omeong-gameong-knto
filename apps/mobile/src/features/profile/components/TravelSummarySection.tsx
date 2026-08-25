@@ -22,7 +22,8 @@ export function TravelSummarySection({ summary }: TravelSummarySectionProps) {
   const { data: myReviews } = useMyReviews();
 
   // 색은 홈 빠른 메뉴와 성격을 맞춘다.
-  // 장소=주황, 로그=파랑, 가이드=초록 은 홈에서 쓰는 색과 같다.
+  // 장소=주황, 로그=파랑, 가이드=초록 은 홈에서 쓰는 색과 같고,
+  // 리뷰는 홈에 짝이 없어 남은 보라를 쓴다.
   return (
     <View style={styles.grid}>
       <StatTile
@@ -54,7 +55,7 @@ export function TravelSummarySection({ summary }: TravelSummarySectionProps) {
         variant="purple"
       />
       <StatTile
-        icon="bag-outline"
+        icon="book-outline"
         label="여행 준비 가이드"
         onPress={() => router.push('/travel-guides/preparation')}
         variant="green"

@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { categoryColors, colors, radius, shadow, spacing, typography } from '@/src/theme';
+import { categoryColors, colors, radius, shadow, spacing } from '@/src/theme';
 
 type StatTileVariant = 'blue' | 'green' | 'orange' | 'purple' | 'yellow';
 
@@ -16,8 +16,9 @@ type StatTileProps = {
 };
 
 /**
- * 홈 빠른 메뉴와 같은 `categoryColors` 를 쓴다.
- * 같은 성격의 메뉴가 앱 어디에 있든 같은 색을 갖도록 맞춘 것이다.
+ * 홈 빠른 메뉴(QuickMenu)와 색·글자 스타일을 맞춘다.
+ * 같은 성격의 메뉴가 앱 어디에 있든 같게 보이도록 한 것이라,
+ * 한쪽을 바꾸면 다른 쪽도 함께 바꿔야 한다.
  */
 const variantColors: Record<StatTileVariant, { background: string; icon: string }> = {
   blue: { background: categoryColors.blue.bg, icon: categoryColors.blue.fg },
@@ -62,8 +63,10 @@ const styles = StyleSheet.create({
     width: 36,
   },
   label: {
-    color: colors.textSecondary,
-    fontSize: typography.body.fontSize - 2,
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: -0.5,
   },
   textGroup: {
     flex: 1,
@@ -81,9 +84,8 @@ const styles = StyleSheet.create({
     ...shadow.sm,
   },
   value: {
-    color: colors.textPrimary,
-    fontSize: typography.body.fontSize,
-    fontWeight: '700',
-    marginTop: spacing.xs / 2,
+    marginTop: 3,
+    color: colors.textSecondary,
+    fontSize: 10,
   },
 });

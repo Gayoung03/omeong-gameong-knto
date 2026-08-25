@@ -45,7 +45,6 @@ export default function RootLayout() {
                 options={{ gestureEnabled: false }}
               />
 
-              <Stack.Screen name="travel-guides/index" />
               <Stack.Screen name="travel-guides/preparation" />
 
               <Stack.Screen name="saved/places" />
