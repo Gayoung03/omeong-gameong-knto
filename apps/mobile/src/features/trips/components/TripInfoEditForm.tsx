@@ -1,20 +1,9 @@
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { colors, radius, spacing, typography } from '@/src/theme';
 
 import type { useTripInfoForm } from '../hooks/useTripInfoForm';
-import type { TripTransport } from '../types/trip';
-import { DateRangeField } from './DateRangeField';
 import { KeywordEditor } from './KeywordEditor';
-import { PetEditRow } from './PetEditRow';
-import { SelectChips, type SelectChipOption } from './SelectChips';
-
-const TRANSPORT_OPTIONS: SelectChipOption<TripTransport>[] = [
-  { value: 'rentalCar', label: '렌터카' },
-  { value: 'ownCar', label: '자차' },
-  { value: 'publicTransport', label: '대중교통' },
-  { value: 'walk', label: '도보' },
-];
 
 type TripInfoForm = ReturnType<typeof useTripInfoForm>;
 
@@ -36,17 +25,15 @@ function Field({ label, children }: FieldProps) {
   );
 }
 
+/**
+ * 여행 정보 편집 폼.
+ *
+ * **서버 `PATCH /routes` 가 받는 세 가지만 있다.** 기간·이동수단·반려동물·숙소·
+ * 여행스타일 칸은 저장이 안 돼서 뺐다 — 자세한 사정은 `hooks/useTripInfoForm.ts` 주석에.
+ * 읽기 화면(`TripInfoView`)에서는 그대로 다 보인다.
+ */
 export function TripInfoEditForm({ form }: TripInfoEditFormProps) {
-  const {
-    draft,
-    updateField,
-    updateDateRange,
-    updatePet,
-    addPet,
-    removePet,
-    addKeyword,
-    removeKeyword,
-  } = form;
+  const { draft, updateField, addKeyword, removeKeyword } = form;
 
   return (
     <View style={styles.card}>
@@ -57,60 +44,6 @@ export function TripInfoEditForm({ form }: TripInfoEditFormProps) {
           placeholderTextColor={colors.textTertiary}
           style={styles.input}
           value={draft.title}
-        />
-      </Field>
-
-      <Field label="여행 기간">
-        <DateRangeField
-          endDate={draft.endDate}
-          onChangeRange={updateDateRange}
-          startDate={draft.startDate}
-        />
-      </Field>
-
-      <Field label="이동 수단">
-        <SelectChips
-          onSelect={(transport) => updateField('transport', transport)}
-          options={TRANSPORT_OPTIONS}
-          selectedValue={draft.transport}
-        />
-      </Field>
-
-      <Field label="반려동물">
-        <View style={styles.petList}>
-          {draft.pets.map((pet) => (
-            <PetEditRow
-              canRemove={draft.pets.length > 1}
-              key={pet.id}
-              onChange={updatePet}
-              onRemove={removePet}
-              pet={pet}
-            />
-          ))}
-
-          <Pressable accessibilityRole="button" onPress={addPet} style={styles.addPetButton}>
-            <Text style={styles.addPetText}>＋ 반려동물 추가</Text>
-          </Pressable>
-        </View>
-      </Field>
-
-      <Field label="숙소">
-        <TextInput
-          onChangeText={(value) => updateField('accommodationSummary', value)}
-          placeholder="예: 성산 숙소 2곳"
-          placeholderTextColor={colors.textTertiary}
-          style={styles.input}
-          value={draft.accommodationSummary}
-        />
-      </Field>
-
-      <Field label="여행 스타일">
-        <TextInput
-          onChangeText={(value) => updateField('travelStyle', value)}
-          placeholder="예: 여유로운 힐링 여행"
-          placeholderTextColor={colors.textTertiary}
-          style={styles.input}
-          value={draft.travelStyle}
         />
       </Field>
 
