@@ -18,8 +18,16 @@ const TRANSPORT_ICONS: Record<TransportType, 'boat-outline' | 'car-outline' | 'w
 type ScheduleTimelineItemProps = {
   item: ScheduleItem;
   isLast: boolean;
+  /**
+   * 이 장소를 저장했는지.
+   *
+   * `item.isSaved` 를 쓰지 않는다 — 저장 목록은 여행 응답이 아니라
+   * `features/saved` 가 들고 있어서 어댑터가 알 수 없다(늘 false 로 온다).
+   */
+  isSaved: boolean;
   onPressItem: (placeId: string) => void;
-  onToggleSave: (scheduleItemId: string) => void;
+  /** 저장은 **장소** 단위다. 같은 장소를 여러 날에 담아도 하나로 취급한다. */
+  onToggleSave: (placeId: string, isSaved: boolean) => void;
 };
 
 /**
@@ -32,6 +40,7 @@ type ScheduleTimelineItemProps = {
 export function ScheduleTimelineItem({
   isLast,
   item,
+  isSaved,
   onPressItem,
   onToggleSave,
 }: ScheduleTimelineItemProps) {
@@ -109,15 +118,15 @@ export function ScheduleTimelineItem({
           자식이 아니라 형제로 두고, 원래 자리에 겹쳐 놓는다.
         */}
         <Pressable
-          accessibilityLabel={item.isSaved ? '저장 해제' : '저장'}
+          accessibilityLabel={isSaved ? '저장 해제' : '저장'}
           accessibilityRole="button"
-          onPress={() => onToggleSave(item.id)}
+          onPress={() => onToggleSave(item.place.id, isSaved)}
           style={styles.saveButton}
         >
           {/* 장소 탐색 화면과 같은 하트 아이콘·색을 쓴다. */}
           <Ionicons
-            color={item.isSaved ? colors.primary : colors.textSecondary}
-            name={item.isSaved ? 'heart' : 'heart-outline'}
+            color={isSaved ? colors.primary : colors.textSecondary}
+            name={isSaved ? 'heart' : 'heart-outline'}
             size={16}
           />
         </Pressable>

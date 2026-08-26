@@ -1,18 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState } from '@/src/components/feedback/ErrorState';
+import { useSavedPlaceIds, useToggleSavedPlace } from '@/src/features/saved/hooks/useSavedPlaces';
 import { IconButton } from '@/src/components/ui/IconButton';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
@@ -47,6 +40,8 @@ function runAfterSheetClose(action: () => void) {
 
 export function TripDetailScreen({ tripId }: { tripId: string }) {
   const router = useRouter();
+  const savedPlaceIds = useSavedPlaceIds();
+  const toggleSaved = useToggleSavedPlace();
   const { data: trip, error, isLoading, isError, refetch } = useTrip(tripId);
 
   const [activeTab, setActiveTab] = useState<TripDetailTab>('schedule');
@@ -113,9 +108,15 @@ export function TripDetailScreen({ tripId }: { tripId: string }) {
     router.push({ pathname: '/places/[placeId]', params: { placeId } });
   };
 
-  const handleToggleSave = (scheduleItemId: string) => {
-    // TODO: 저장 토글 Mutation 연결
-    Alert.alert('저장', `저장 기능은 API 연동 후 동작해요. (${scheduleItemId})`);
+  /**
+   * 일정 카드의 하트.
+   *
+   * 저장은 **장소** 단위라 일정 id 가 아니라 `place.id` 를 넘긴다.
+   * 예전에는 여기가 "API 연동 후 동작해요" Alert 이었는데, 서버가 붙었고
+   * 그 Alert 은 웹에서 뜨지도 않아 눌러도 아무 일이 없었다.
+   */
+  const handleToggleSave = (placeId: string, isSaved: boolean) => {
+    toggleSaved.mutate({ isSaved, placeId });
   };
 
   const handlePressAddSchedule = () => {
@@ -239,6 +240,7 @@ export function TripDetailScreen({ tripId }: { tripId: string }) {
               <ScheduleTimeline
                 onPressItem={handlePressPlace}
                 onToggleSave={handleToggleSave}
+                savedPlaceIds={savedPlaceIds}
                 schedule={selectedSchedule}
               />
             </>

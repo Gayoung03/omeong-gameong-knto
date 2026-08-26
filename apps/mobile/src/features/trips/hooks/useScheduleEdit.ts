@@ -33,7 +33,8 @@ function replaceSchedule(
  * 저장을 누르기 전까지는 원본을 건드리지 않고 draft 만 수정한다.
  *
  * 여행 데이터를 다 불러온 뒤에 마운트해야 한다 (초기값을 한 번만 읽기 때문).
- * TODO: 백엔드 준비 후 저장을 TanStack Query mutation 으로 교체
+ * 저장은 `hooks/useSaveSchedule.ts` 가 맡고, 무엇이 바뀌었는지는
+ * `api/scheduleSync.ts` 가 원본과 draft 를 비교해 알아낸다.
  */
 export function useScheduleEdit(initialSchedules: Schedule[]) {
   const [draftSchedules, setDraftSchedules] = useState<Schedule[]>(initialSchedules);
@@ -49,7 +50,12 @@ export function useScheduleEdit(initialSchedules: Schedule[]) {
     [draftSchedules, selectedScheduleId],
   );
 
-  /** 원본과 달라진 곳이 있는지 */
+  /**
+   * 원본과 달라진 곳이 있는지.
+   *
+   * 순서·구성뿐 아니라 **시각과 메모까지 본다.** 항목이 제자리에 있어도
+   * 시각만 고쳤으면 저장 버튼이 살아나야 한다.
+   */
   const isDirty = useMemo(() => {
     return initialSchedules.some((original) => {
       const draft = draftSchedules.find((schedule) => schedule.id === original.id);
@@ -57,7 +63,12 @@ export function useScheduleEdit(initialSchedules: Schedule[]) {
       if (!draft || draft.items.length !== original.items.length) {
         return true;
       }
-      return draft.items.some((item, index) => item.id !== original.items[index].id);
+      return draft.items.some((item, index) => {
+        const before = original.items[index];
+        return (
+          item.id !== before.id || item.startTime !== before.startTime || item.memo !== before.memo
+        );
+      });
     });
   }, [draftSchedules, initialSchedules]);
 
@@ -65,6 +76,18 @@ export function useScheduleEdit(initialSchedules: Schedule[]) {
   const reorderItems = useCallback((scheduleId: string, items: ScheduleItem[]) => {
     setDraftSchedules((previous) => replaceSchedule(previous, scheduleId, () => items));
   }, []);
+
+  /** 방문 시각·메모만 고친다. 순서와 날짜는 건드리지 않는다. */
+  const updateItemDetail = useCallback(
+    (scheduleId: string, itemId: string, patch: { startTime: string | null; memo: string }) => {
+      setDraftSchedules((previous) =>
+        replaceSchedule(previous, scheduleId, (items) =>
+          items.map((item) => (item.id === itemId ? { ...item, ...patch } : item)),
+        ),
+      );
+    },
+    [],
+  );
 
   const removeItem = useCallback((scheduleId: string, itemId: string) => {
     setDraftSchedules((previous) =>
@@ -112,6 +135,7 @@ export function useScheduleEdit(initialSchedules: Schedule[]) {
     selectSchedule: setSelectedScheduleId,
     isDirty,
     reorderItems,
+    updateItemDetail,
     removeItem,
     moveItemToSchedule,
     reset,

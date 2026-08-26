@@ -41,14 +41,14 @@ export interface Pet {
   species: PetSpecies;
   /** species가 '기타'일 때만 채워진다. 사용자가 직접 적은 종 이름 */
   speciesDetail?: string;
-  breed: string;
-  age: number;
-  weight: number;
-  size: PetSize;
+  breed: string | null;
+  birthDate: string | null;
+  age: number | null;
+  weight: number | null;
+  size: PetSize | null;
   profileImage?: string;
+  isPrimary: boolean;
   status: PetStatus;
-  /** status가 'deleted'일 때만 채워진다. ISO datetime */
-  deletedAt?: string;
 }
 
 export function isActivePet(pet: Pet): boolean {

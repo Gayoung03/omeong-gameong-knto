@@ -1,7 +1,8 @@
 import { toPetPolicy } from '@/src/types/place';
 
-import type { PlaceListItemResponse } from '../types/placeApi';
+import type { PlaceDetailResponse, PlaceListItemResponse } from '../types/placeApi';
 import type { Place, PlaceRegion } from '../types/place';
+import type { PlaceDetail } from '../types/placeDetail';
 
 /**
  * 서버 장소 → 앱 장소.
@@ -21,20 +22,20 @@ import type { Place, PlaceRegion } from '../types/place';
  * 지역 값 통일은 회의 안건이다 — 서버 데이터에 손대야 해서 되돌리기가 비싸다.
  */
 const REGION_BY_SERVER_NAME: Record<string, PlaceRegion> = {
-  '제주시': '제주시/제주국제공항',
-  '제주국제공항': '제주시/제주국제공항',
-  '서귀포시': '서귀포시/모슬포',
-  '모슬포': '서귀포시/모슬포',
-  '애월': '애월/한림/협재',
-  '한림': '애월/한림/협재',
-  '한림읍': '애월/한림/협재',
-  '협재': '애월/한림/협재',
-  '중문': '중문',
-  '표선': '표선/성산',
-  '성산': '표선/성산',
-  '함덕': '함덕/김녕/세화',
-  '김녕': '함덕/김녕/세화',
-  '세화': '함덕/김녕/세화',
+  제주시: '제주시/제주국제공항',
+  제주국제공항: '제주시/제주국제공항',
+  서귀포시: '서귀포시/모슬포',
+  모슬포: '서귀포시/모슬포',
+  애월: '애월/한림/협재',
+  한림: '애월/한림/협재',
+  한림읍: '애월/한림/협재',
+  협재: '애월/한림/협재',
+  중문: '중문',
+  표선: '표선/성산',
+  성산: '표선/성산',
+  함덕: '함덕/김녕/세화',
+  김녕: '함덕/김녕/세화',
+  세화: '함덕/김녕/세화',
 };
 
 /**
@@ -62,20 +63,29 @@ function toRegion(serverRegion: string | null): PlaceRegion | null {
   return REGION_BY_SERVER_NAME[serverRegion] ?? null;
 }
 
+/** 목록·상세가 같은 라벨을 쓰도록 한곳에 둔다. */
+export function toCategoryLabel(serverCategory: string): string {
+  return CATEGORY_LABEL_BY_SERVER_CODE[serverCategory] ?? serverCategory;
+}
+
+/** 서버는 실내·야외·혼합 3종이고 화면은 두 글자 칩 두 개만 그린다. */
+function toEnvironmentLabel(
+  environment: PlaceListItemResponse['environment'],
+): '실내' | '야외' | null {
+  if (environment === 'indoor') return '실내';
+  if (environment === 'outdoor') return '야외';
+  return null;
+}
+
 export function toPlace(response: PlaceListItemResponse): Place {
   const petPolicy = toPetPolicy(response.petPolicyType);
 
   return {
     address: response.address ?? response.roadAddress ?? '',
-    category: CATEGORY_LABEL_BY_SERVER_CODE[response.category] ?? response.category,
+    category: toCategoryLabel(response.category),
     // 서버는 미터, 화면은 km. 좌표를 안 보내면 서버가 null 을 주고 화면은 거리를 그리지 않는다.
     distanceKm: response.distanceMeters === null ? null : response.distanceMeters / 1000,
-    environment:
-      response.environment === 'indoor'
-        ? '실내'
-        : response.environment === 'outdoor'
-          ? '야외'
-          : undefined,
+    environment: toEnvironmentLabel(response.environment) ?? undefined,
     id: response.id,
     imageUrl: response.primaryImageUrl,
     latitude: response.latitude,
@@ -83,8 +93,39 @@ export function toPlace(response: PlaceListItemResponse): Place {
     name: response.name,
     petPolicy,
     // 옛 boolean 필드. 배지가 5종을 그리므로 화면에서는 쓰지 않지만,
-    // 목데이터를 쓰는 장소 상세가 아직 참조해서 값을 맞춰 둔다.
+    // 목데이터를 보는 챗봇 지도 응답이 아직 참조해서 값을 맞춰 둔다.
     petFriendly: petPolicy !== 'notAllowed',
     region: toRegion(response.region),
+  };
+}
+
+/**
+ * 서버 장소 상세 → 화면 모델.
+ *
+ * 목록 어댑터와 두 가지가 다르다.
+ * - **지역은 서버 원문 그대로** 쓴다. 상세에는 필터가 없어 칩에 맞출 이유가 없고,
+ *   못 맞춘 값을 `null` 로 지우면 보여줄 수 있는 정보만 사라진다.
+ * - 상세 응답에는 거리가 없다. 좌표 파라미터를 받지 않는 엔드포인트라 아예 안 온다.
+ *
+ * 전화번호 · 영업시간 · 태그 · 편의시설도 함께 내려오지만 아직 그리는 화면이 없어
+ * 옮기지 않는다. 필요해지면 이 함수와 `PlaceDetail` 에 같이 추가한다.
+ */
+export function toPlaceDetail(response: PlaceDetailResponse): PlaceDetail {
+  return {
+    address: response.address ?? response.roadAddress ?? '',
+    categoryLabel: toCategoryLabel(response.category),
+    description: response.description,
+    environment: toEnvironmentLabel(response.environment),
+    id: response.id,
+    imageUrl: response.primaryImageUrl,
+    isReservable: response.reservationRequired,
+    latitude: response.latitude,
+    longitude: response.longitude,
+    name: response.name,
+    petPolicy: toPetPolicy(response.petPolicy.policyType),
+    rating: response.rating,
+    region: response.region,
+    reviewCount: response.reviewCount,
+    savedCount: response.savedCount,
   };
 }

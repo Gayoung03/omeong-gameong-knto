@@ -18,20 +18,21 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/src/components/ui/Button';
+import { LabeledField } from '@/src/components/ui/LabeledField';
+import { PhotoPicker } from '@/src/components/ui/PhotoPicker';
 import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
 import { DiscardChangesModal } from '@/src/features/profile/components/DiscardChangesModal';
 import { SaveCompleteModal } from '@/src/features/profile/components/SaveCompleteModal';
 import { colors, radius, spacing, typography } from '@/src/theme';
 import type { InquiryCategory } from '@/src/types/inquiry';
 
-import { LabeledField } from './components/LabeledField';
 import {
   InquiryCategorySheet,
   type InquiryCategorySheetHandle,
 } from './components/InquiryCategorySheet';
-import { InquiryPhotoPicker, MAX_INQUIRY_IMAGES } from './components/InquiryPhotoPicker';
 import { useCreateInquiry } from './hooks/useCreateInquiry';
 
+const MAX_INQUIRY_IMAGES = 3;
 const MAX_TITLE_LENGTH = 50;
 const MAX_CONTENT_LENGTH = 1000;
 
@@ -206,9 +207,10 @@ export function InquiryCreateScreen() {
           </LabeledField>
 
           <LabeledField label="사진 첨부">
-            <InquiryPhotoPicker
+            <PhotoPicker
               disabled={isSaving}
               imageUris={imageUris}
+              maxImages={MAX_INQUIRY_IMAGES}
               onAdd={() => void addPhotos()}
               onRemove={removePhoto}
             />

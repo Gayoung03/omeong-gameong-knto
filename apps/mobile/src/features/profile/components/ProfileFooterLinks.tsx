@@ -7,7 +7,8 @@ import { colors } from '@/src/theme';
 
 export function ProfileFooterLinks() {
   const router = useRouter();
-  const { isConfirmVisible, requestLogout, cancelLogout, confirmLogout } = useLogout();
+  const { isConfirmVisible, errorMessage, requestLogout, cancelLogout, confirmLogout } =
+    useLogout();
 
   return (
     <View style={styles.utilityMenu}>
@@ -28,6 +29,8 @@ export function ProfileFooterLinks() {
       >
         <Text style={styles.utilityText}>로그아웃</Text>
       </Pressable>
+
+      {errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
 
       <LogoutConfirmModal
         onCancel={cancelLogout}
@@ -63,6 +66,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     flexDirection: 'row',
     height: 46,
+  },
+  errorText: {
+    color: colors.error,
+    fontSize: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    textAlign: 'center',
+    width: '100%',
   },
   utilityText: {
     color: colors.textPrimary,

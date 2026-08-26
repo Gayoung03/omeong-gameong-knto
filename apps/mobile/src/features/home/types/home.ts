@@ -14,7 +14,7 @@ export type WeatherSummary = {
 };
 
 export type QuickMenuDestination =
-  'chatbot' | 'place-explorer' | 'travel-guides' | 'travel-log-new' | 'coming-soon';
+  'chatbot' | 'place-explorer' | 'travel-preparation' | 'travel-log-new' | 'saved-places';
 
 export type QuickMenuItem = {
   id: string;

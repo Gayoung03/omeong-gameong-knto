@@ -1,5 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
+
+import { useSafeBack } from '@/src/hooks/useSafeBack';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { IconButton } from '@/src/components/ui/IconButton';
@@ -7,16 +9,13 @@ import { colors, radius, spacing, typography } from '@/src/theme';
 
 export function TravelLogHeader() {
   const router = useRouter();
+  const goBack = useSafeBack('/travel-logs');
 
   return (
     <View style={styles.header}>
       <View style={styles.titleRow}>
         <View style={styles.titleGroup}>
-          <IconButton
-            accessibilityLabel="뒤로 가기"
-            icon="chevron-back"
-            onPress={() => router.back()}
-          />
+          <IconButton accessibilityLabel="뒤로 가기" icon="chevron-back" onPress={goBack} />
           <Text style={styles.title}>여행 기록</Text>
         </View>
         {/* 헤더 보조 액션이라 공통 Button 대신 이 화면 전용 pill 스타일을 쓴다. */}

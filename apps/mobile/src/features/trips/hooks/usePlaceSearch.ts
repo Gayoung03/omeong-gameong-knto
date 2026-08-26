@@ -1,21 +1,30 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
-import { getPlaceCandidates, searchPlaces } from '../api/placeSearchApi';
+import { getPlaceCandidates, searchPlaces, type PlaceSearchArea } from '../api/placeSearchApi';
 import type { PlaceFilter, PlaceSourceTab } from '../types/trip';
+
+/** 범위를 그대로 키에 넣으면 매번 새 객체라 캐시가 안 맞는다. 문자열로 눌러서 쓴다. */
+function areaKey(area: PlaceSearchArea | null): string {
+  return area ? `${area.latitude},${area.longitude}@${area.radius}` : 'none';
+}
 
 export const placeSearchQueryKeys = {
   all: ['places'] as const,
-  candidates: (tab: PlaceSourceTab, filter: PlaceFilter | null) =>
-    [...placeSearchQueryKeys.all, 'candidates', tab, filter] as const,
+  candidates: (tab: PlaceSourceTab, filter: PlaceFilter | null, area: PlaceSearchArea | null) =>
+    [...placeSearchQueryKeys.all, 'candidates', tab, filter, areaKey(area)] as const,
   search: (keyword: string, filter: PlaceFilter | null) =>
     [...placeSearchQueryKeys.all, 'search', keyword, filter] as const,
 };
 
 /** 탭별 추천 장소 목록 */
-export function usePlaceCandidates(tab: PlaceSourceTab, filter: PlaceFilter | null) {
+export function usePlaceCandidates(
+  tab: PlaceSourceTab,
+  filter: PlaceFilter | null,
+  area: PlaceSearchArea | null,
+) {
   return useQuery({
-    queryKey: placeSearchQueryKeys.candidates(tab, filter),
-    queryFn: () => getPlaceCandidates({ tab, filter }),
+    queryKey: placeSearchQueryKeys.candidates(tab, filter, area),
+    queryFn: () => getPlaceCandidates({ area, filter, tab }),
     // 탭·필터를 바꿀 때 목록이 잠깐 비면서 지도가 두 번 다시 그려지는 것을 막는다
     placeholderData: keepPreviousData,
   });

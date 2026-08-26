@@ -3,8 +3,7 @@ export type PetFormValues = {
   /** '기타'를 골랐을 때 입력한 종 이름. 그 외에는 검사하지 않는다. */
   speciesDetail?: string;
   breed: string;
-  /** 입력 원문. 검증 시점에 파싱한다. */
-  age: string;
+  birthDate: string;
   weight: string;
 };
 
@@ -12,14 +11,13 @@ export type PetFormErrors = {
   name?: string;
   speciesDetail?: string;
   breed?: string;
-  age?: string;
+  birthDate?: string;
   weight?: string;
 };
 
 const NAME_MAX = 10;
 const SPECIES_DETAIL_MAX = 20;
 const BREED_MAX = 20;
-const AGE_MAX = 30;
 const WEIGHT_MIN = 0.1;
 const WEIGHT_MAX = 100;
 
@@ -50,11 +48,24 @@ export function validatePetForm(values: PetFormValues): PetFormErrors {
     errors.breed = `품종은 ${BREED_MAX}자 이하로 입력해 주세요`;
   }
 
-  const age = Number(values.age.trim());
-  if (values.age.trim().length === 0) {
-    errors.age = '나이를 입력해 주세요';
-  } else if (!Number.isInteger(age) || age < 0 || age > AGE_MAX) {
-    errors.age = `나이는 0~${AGE_MAX}세 사이 정수로 입력해 주세요`;
+  const birthDate = values.birthDate.trim();
+  const parsedBirthDate = new Date(`${birthDate}T00:00:00Z`);
+  if (birthDate.length === 0) {
+    errors.birthDate = '생년월일을 입력해 주세요';
+  } else if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(birthDate) ||
+    Number.isNaN(parsedBirthDate.getTime()) ||
+    parsedBirthDate.toISOString().slice(0, 10) !== birthDate
+  ) {
+    errors.birthDate = 'YYYY-MM-DD 형식의 올바른 날짜를 입력해 주세요';
+  } else {
+    const today = new Date();
+    const todayText = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, '0'),
+      String(today.getDate()).padStart(2, '0'),
+    ].join('-');
+    if (birthDate > todayText) errors.birthDate = '미래 날짜는 입력할 수 없어요';
   }
 
   const weight = Number(values.weight.trim());

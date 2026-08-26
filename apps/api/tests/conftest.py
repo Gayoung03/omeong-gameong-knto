@@ -25,7 +25,8 @@ TEST_DATABASE_URL=postgresql+psycopg://omeong:omeong@localhost:5432/omeong uv ru
 
 import os
 import uuid
-from collections.abc import Generator
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -42,7 +43,7 @@ from app.db.models.enums import (
     TransportType,
     TripPace,
 )
-from app.db.session import get_db
+from app.db.session import get_background_session, get_db
 from app.main import app
 
 KST = timezone(timedelta(hours=9))
@@ -69,6 +70,21 @@ def db(engine: Engine) -> Generator[Session, None, None]:
     session.close()
     transaction.rollback()
     connection.close()
+
+
+def _joined_session(db: Session) -> Callable[[], Generator[Session, None, None]]:
+    """뒷작업에게 **테스트 세션을 그대로** 빌려주는 공장.
+
+    진짜 구현은 연결을 새로 열고 끝나면 닫는다. 여기서 그렇게 하면 테스트가
+    쓰던 세션이 닫혀 뒤따르는 단언이 전부 깨진다. 그래서 열지도 닫지도 않고
+    같은 세션을 넘긴다 — 뒷작업의 `commit()` 은 SAVEPOINT 로 잡혀 롤백된다.
+    """
+
+    @contextmanager
+    def factory() -> Generator[Session, None, None]:
+        yield db
+
+    return factory
 
 
 def _make_user(db: Session, nickname: str) -> User:
@@ -151,6 +167,10 @@ def client(db: Session, owner: User) -> Generator[TestClient, None, None]:
     """
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_user] = lambda: owner
+    # BackgroundTasks 가 여는 연결도 이 트랜잭션 안으로 끌어들인다. 갈아끼우지
+    # 않으면 뒷작업이 settings.database_url(공유 RDS)에 직접 붙어 테스트 데이터를
+    # 팀 DB 에 남긴다 — 그 값은 여기서 절대 쓰지 않기로 한 주소다(위 설명 참고).
+    app.dependency_overrides[get_background_session] = lambda: _joined_session(db)
     # 장소·리뷰 조회는 인증이 "선택"이라 별도 의존성을 쓴다. 이것도 갈아끼우지
     # 않으면 그 엔드포인트들만 개발용 고정 사용자로 동작해서, 즐겨찾기를 눌러도
     # isFavorite 가 false 로 나온다.

@@ -22,7 +22,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -66,6 +66,8 @@ class RouteRequest(Base):
     )
     companion_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     preferred_tags: Mapped[list[str] | None] = mapped_column(ARRAY(String))
+    priority_preset: Mapped[str | None] = mapped_column(String(30))
+    applied_weights: Mapped[dict[str, float] | None] = mapped_column(JSONB)
     request_text: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

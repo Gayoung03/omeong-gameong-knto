@@ -59,3 +59,7 @@ Thumbs.db
 
 # Expo
 .expo/
+
+# 디자인 원본 (시안·PSD 등). 저장소에 넣지 않고 각자 로컬에 둔다 —
+# 용량이 크고 코드 리뷰 대상이 아니다.
+design-assets/

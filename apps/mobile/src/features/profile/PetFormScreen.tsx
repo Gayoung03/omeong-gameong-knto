@@ -1,5 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, useRouter } from 'expo-router';
+
+import { useSafeBack } from '@/src/hooks/useSafeBack';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -16,6 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { EmptyState } from '@/src/components/feedback/EmptyState';
 import { Button } from '@/src/components/ui/Button';
 import { Chip, ChipRow } from '@/src/components/ui/Chip';
 import { colors, radius, spacing, typography } from '@/src/theme';
@@ -32,7 +35,10 @@ import {
 import { DiscardChangesModal } from './components/DiscardChangesModal';
 import { PetDeleteConfirmModal } from './components/PetDeleteConfirmModal';
 import { PetFormHeader } from './components/PetFormHeader';
-import { ProfileImageChangeBottomSheet, type ProfileImageChangeBottomSheetHandle } from './components/ProfileImageChangeBottomSheet';
+import {
+  ProfileImageChangeBottomSheet,
+  type ProfileImageChangeBottomSheetHandle,
+} from './components/ProfileImageChangeBottomSheet';
 import { ProfileImagePicker } from './components/ProfileImagePicker';
 import { SaveCompleteModal } from './components/SaveCompleteModal';
 import { useCreatePet } from './hooks/useCreatePet';
@@ -59,6 +65,7 @@ function showPermissionAlert() {
 
 export function PetFormScreen({ petId }: Props) {
   const router = useRouter();
+  const goBack = useSafeBack('/profile');
   const navigation = useNavigation();
   const isEditMode = petId !== undefined;
 
@@ -80,7 +87,7 @@ export function PetFormScreen({ petId }: Props) {
   const [species, setSpecies] = useState<PetSpecies>(PET_SPECIES_OPTIONS[0]);
   const [speciesDetail, setSpeciesDetail] = useState('');
   const [breed, setBreed] = useState('');
-  const [age, setAge] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [weight, setWeight] = useState('');
   const [size, setSize] = useState<PetSize>(PET_SIZE_OPTIONS[0]);
   /** 사용자가 크기를 직접 고른 뒤에는 몸무게가 바뀌어도 자동 추천이 덮어쓰지 않는다. */
@@ -105,24 +112,22 @@ export function PetFormScreen({ petId }: Props) {
       setName(editingPet.name);
       setSpecies(editingPet.species);
       setSpeciesDetail(editingPet.speciesDetail ?? '');
-      setBreed(editingPet.breed);
-      setAge(String(editingPet.age));
-      setWeight(String(editingPet.weight));
-      setSize(editingPet.size);
+      setBreed(editingPet.breed ?? '');
+      setBirthDate(editingPet.birthDate ?? '');
+      setWeight(editingPet.weight === null ? '' : String(editingPet.weight));
+      setSize(editingPet.size ?? PET_SIZE_OPTIONS[0]);
       // 저장된 값이 있으니 자동 추천이 끼어들지 않게 한다.
-      setIsSizeChosen(true);
+      setIsSizeChosen(editingPet.size !== null);
     }
   }, [editingPet]);
 
-  // 지워졌거나 존재하지 않는 프로필이면 안내 후 마이페이지로 돌려보낸다.
+  // 지워졌거나 존재하지 않는 프로필이면 나가기 확인 창을 띄우지 않는다.
+  // 안내는 화면 안에서 한다(아래 renderMissingPet) — 예전에는 `Alert` 로 물었는데
+  // **웹에서는 뜨지 않아 빈 폼에 갇혔다.**
   useEffect(() => {
     if (!isMissingPet) return;
-
     allowExitRef.current = true;
-    Alert.alert('프로필을 찾을 수 없어요', '이미 지웠거나 존재하지 않는 반려동물이에요.', [
-      { text: '확인', onPress: () => router.back() },
-    ]);
-  }, [isMissingPet, router]);
+  }, [isMissingPet]);
 
   const isOtherSpecies = species === OTHER_SPECIES;
 
@@ -148,7 +153,7 @@ export function PetFormScreen({ petId }: Props) {
     name,
     speciesDetail: isOtherSpecies ? speciesDetail : undefined,
     breed,
-    age,
+    birthDate,
     weight,
   });
   const displayImageUri = localImageUri ?? (imageReset ? undefined : editingPet?.profileImage);
@@ -156,17 +161,17 @@ export function PetFormScreen({ petId }: Props) {
   const isDirty = isEditMode
     ? Boolean(
         editingPet &&
-          (name.trim() !== editingPet.name ||
-            species !== editingPet.species ||
-            speciesDetail.trim() !== (editingPet.speciesDetail ?? '') ||
-            size !== editingPet.size ||
-            breed.trim() !== editingPet.breed ||
-            age.trim() !== String(editingPet.age) ||
-            weight.trim() !== String(editingPet.weight) ||
-            localImageUri !== undefined ||
-            imageReset),
+        (name.trim() !== editingPet.name ||
+          species !== editingPet.species ||
+          speciesDetail.trim() !== (editingPet.speciesDetail ?? '') ||
+          size !== (editingPet.size ?? PET_SIZE_OPTIONS[0]) ||
+          breed.trim() !== (editingPet.breed ?? '') ||
+          birthDate.trim() !== (editingPet.birthDate ?? '') ||
+          weight.trim() !== (editingPet.weight === null ? '' : String(editingPet.weight)) ||
+          localImageUri !== undefined ||
+          imageReset),
       )
-    : Boolean(name || speciesDetail || breed || age || weight || localImageUri);
+    : Boolean(name || speciesDetail || breed || birthDate || weight || localImageUri);
 
   const isSaveDisabled = !isDirty || hasPetFormError(errors) || isSaving;
 
@@ -221,7 +226,7 @@ export function PetFormScreen({ petId }: Props) {
       species,
       speciesDetail: isOtherSpecies ? speciesDetail.trim() : undefined,
       breed,
-      age: Number(age.trim()),
+      birthDate: birthDate.trim(),
       weight: Number(weight.trim()),
       size,
       localProfileImageUri: localImageUri,
@@ -229,8 +234,10 @@ export function PetFormScreen({ petId }: Props) {
     };
 
     // 이미지 업로드가 실패하면 mutation 전체가 실패해 저장이 완료 처리되지 않는다.
-    const onError = () =>
-      setErrorMessage('저장하지 못했어요. 잠시 후 다시 시도해 주세요.');
+    const onError = (error: unknown) =>
+      setErrorMessage(
+        error instanceof Error ? error.message : '저장하지 못했어요. 잠시 후 다시 시도해 주세요.',
+      );
 
     if (isEditMode && petId) {
       updateMutation.mutate(
@@ -295,12 +302,33 @@ export function PetFormScreen({ petId }: Props) {
     router.back();
   };
 
+  if (isMissingPet) {
+    return (
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
+        <PetFormHeader title="반려동물 수정" />
+        <EmptyState
+          actionLabel="마이페이지로"
+          description="이미 지웠거나 존재하지 않는 반려동물이에요."
+          icon="paw-outline"
+          onPressAction={goBack}
+          title="프로필을 찾을 수 없어요"
+        />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <PetFormHeader title={isEditMode ? '반려동물 수정' : '반려동물 등록'} />
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.flex}
+      >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <ProfileImagePicker imageUri={displayImageUri} onPress={() => imageChangeSheetRef.current?.open()} />
+          <ProfileImagePicker
+            imageUri={displayImageUri}
+            onPress={() => imageChangeSheetRef.current?.open()}
+          />
 
           <View style={styles.section}>
             <Text style={styles.label}>이름</Text>
@@ -366,18 +394,17 @@ export function PetFormScreen({ petId }: Props) {
 
           <View style={styles.row}>
             <View style={[styles.section, styles.flex]}>
-              <Text style={styles.label}>나이</Text>
+              <Text style={styles.label}>생년월일</Text>
               <TextInput
                 editable={!isSaving}
-                keyboardType="number-pad"
-                maxLength={2}
-                onChangeText={setAge}
-                placeholder="0"
+                maxLength={10}
+                onChangeText={setBirthDate}
+                placeholder="YYYY-MM-DD"
                 placeholderTextColor={colors.textSecondary}
-                style={[styles.input, errors.age && styles.inputError]}
-                value={age}
+                style={[styles.input, errors.birthDate && styles.inputError]}
+                value={birthDate}
               />
-              {errors.age && <Text style={styles.errorText}>{errors.age}</Text>}
+              {errors.birthDate && <Text style={styles.errorText}>{errors.birthDate}</Text>}
             </View>
 
             <View style={[styles.section, styles.flex]}>
@@ -408,7 +435,9 @@ export function PetFormScreen({ petId }: Props) {
                 />
               ))}
             </ChipRow>
-            <Text style={styles.sizeHint}>몸무게를 입력하면 자동으로 골라드려요. 직접 바꿔도 됩니다.</Text>
+            <Text style={styles.sizeHint}>
+              몸무게를 입력하면 자동으로 골라드려요. 직접 바꿔도 됩니다.
+            </Text>
           </View>
 
           {errorMessage && <Text style={styles.mutationError}>{errorMessage}</Text>}

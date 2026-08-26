@@ -6,6 +6,7 @@ import { PetPolicyBadge } from '@/src/components/domain/PetPolicyBadge';
 import { EmptyState } from '@/src/components/feedback/EmptyState';
 import { RemoteImage } from '@/src/components/ui/RemoteImage';
 import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
+import { ReviewPreviewSection } from '@/src/features/reviews/components/ReviewPreviewSection';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
 import { usePlaceDetail } from '../hooks/usePlaceDetail';
@@ -40,8 +41,8 @@ export function PlaceDetailScreen({ placeId }: PlaceDetailScreenProps) {
 }
 
 function PlaceDetailView({ place }: { place: PlaceDetail }) {
-  const chips = [place.region, place.environment, formatDistance(place.distanceKm)].filter(
-    (value): value is string => Boolean(value),
+  const chips = [place.region, place.environment].filter((value): value is string =>
+    Boolean(value),
   );
 
   return (
@@ -77,7 +78,10 @@ function PlaceDetailView({ place }: { place: PlaceDetail }) {
         )}
       </View>
 
-      <PetSection place={place} />
+      <View style={styles.card}>
+        <Text style={styles.cardLabel}>반려동물 동반</Text>
+        <PetPolicyBadge petPolicy={place.petPolicy} />
+      </View>
 
       <View style={styles.card}>
         <Text style={styles.cardLabel}>주소</Text>
@@ -110,42 +114,10 @@ function PlaceDetailView({ place }: { place: PlaceDetail }) {
           <Text style={styles.noticeText}>예약이 가능한 장소예요.</Text>
         </View>
       )}
+
+      <ReviewPreviewSection placeId={place.id} />
     </ScrollView>
   );
-}
-
-/** 동반 정책은 아는 만큼만 보여준다. 모르는 것을 아는 척하지 않는다. */
-function PetSection({ place }: { place: PlaceDetail }) {
-  if (place.petPolicy !== null) {
-    return (
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>반려동물 동반</Text>
-        <PetPolicyBadge petPolicy={place.petPolicy} />
-      </View>
-    );
-  }
-
-  if (place.petFriendly === null) {
-    return null;
-  }
-
-  return (
-    <View style={styles.card}>
-      <Text style={styles.cardLabel}>반려동물 동반</Text>
-      <View style={[styles.simpleBadge, !place.petFriendly && styles.simpleBadgeOff]}>
-        <Text style={[styles.simpleBadgeText, !place.petFriendly && styles.simpleBadgeTextOff]}>
-          🐾 {place.petFriendly ? '동반 가능' : '동반 불가'}
-        </Text>
-      </View>
-      {place.petFriendly && (
-        <Text style={styles.hint}>구역별 동반 조건은 방문 전에 한 번 더 확인하시는 걸 권해요.</Text>
-      )}
-    </View>
-  );
-}
-
-function formatDistance(distanceKm: number | null): string | null {
-  return distanceKm === null ? null : `현위치에서 ${distanceKm}km`;
 }
 
 const styles = StyleSheet.create({
@@ -219,11 +191,6 @@ const styles = StyleSheet.create({
     height: 200,
     width: '100%',
   },
-  hint: {
-    color: colors.textTertiary,
-    fontSize: typography.micro.fontSize,
-    lineHeight: 16,
-  },
   name: {
     color: colors.basalt,
     flexShrink: 1,
@@ -246,24 +213,6 @@ const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: colors.background,
     flex: 1,
-  },
-  simpleBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.leafSoft,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-  },
-  simpleBadgeOff: {
-    backgroundColor: colors.basaltSoft,
-  },
-  simpleBadgeText: {
-    color: colors.leaf,
-    fontSize: typography.micro.fontSize,
-    fontWeight: typography.micro.fontWeight,
-  },
-  simpleBadgeTextOff: {
-    color: colors.textSecondary,
   },
   stat: {
     alignItems: 'center',

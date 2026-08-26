@@ -207,6 +207,8 @@
 | `pace` | 이번 여행에 적용한 속도 |
 | `transport` | 이번 여행 이동수단 |
 | `preferred_tags` | 이번 여행 선호 태그 배열 |
+| `priority_preset` | 사용자가 선택한 추천 우선순위 프리셋 |
+| `applied_weights` | 추천 생성에 실제 적용한 6개 가중치 JSON 스냅샷 |
 | `request_text` | AI에게 전달할 추가 요청 |
 
 사용자 기본 취향을 사용했더라도 최종 적용값을 여기에 저장합니다.

@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { StatTile } from '@/src/components/ui/StatTile';
+import { useMyReviews } from '@/src/features/reviews/hooks/useMyReviews';
 import { useSavedPlaces } from '@/src/features/saved/hooks/useSavedPlaces';
 import { useSavedRoutes } from '@/src/features/saved/hooks/useSavedRoutes';
 import { spacing } from '@/src/theme';
@@ -17,9 +18,12 @@ export function TravelSummarySection({ summary }: TravelSummarySectionProps) {
   // summary 의 savedPlacesCount·savedCoursesCount 는 목데이터라 쓰지 않는다.
   const { data: savedPlaces = [] } = useSavedPlaces();
   const { data: savedRoutes = [] } = useSavedRoutes();
+  // 리뷰 개수는 서버가 센 total 을 쓴다. items 는 20건짜리 한 페이지다.
+  const { data: myReviews } = useMyReviews();
 
   // 색은 홈 빠른 메뉴와 성격을 맞춘다.
-  // 장소=주황, 로그=파랑, 가이드=초록 은 홈에서 쓰는 색과 같다.
+  // 장소=주황, 로그=파랑, 가이드=초록 은 홈에서 쓰는 색과 같고,
+  // 리뷰는 홈에 짝이 없어 남은 보라를 쓴다.
   return (
     <View style={styles.grid}>
       <StatTile
@@ -44,7 +48,14 @@ export function TravelSummarySection({ summary }: TravelSummarySectionProps) {
         variant="blue"
       />
       <StatTile
-        icon="bag-outline"
+        icon="star-outline"
+        label="내가 쓴 리뷰"
+        onPress={() => router.push('/reviews/my')}
+        value={myReviews?.total ?? 0}
+        variant="purple"
+      />
+      <StatTile
+        icon="book-outline"
         label="여행 준비 가이드"
         onPress={() => router.push('/travel-guides/preparation')}
         variant="green"

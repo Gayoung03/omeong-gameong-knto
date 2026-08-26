@@ -22,8 +22,15 @@ export const useNotificationPreferencesStore = create<NotificationPreferencesSta
 
   load: async () => {
     set({ isLoading: true });
-    const stored = await notificationPreferencesService.getPreferences();
-    set({ preferences: stored, isLoading: false, saveErrorMessage: undefined });
+    try {
+      const stored = await notificationPreferencesService.getPreferences();
+      set({ preferences: stored, isLoading: false, saveErrorMessage: undefined });
+    } catch {
+      set({
+        isLoading: false,
+        saveErrorMessage: '설정을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.',
+      });
+    }
   },
 
   setPreference: async (key, value) => {

@@ -131,6 +131,22 @@ const ERROR_MESSAGES: Record<ApiErrorKind, ApiErrorMessage> = {
   },
 };
 
+/**
+ * 서버가 보낸 원문 사유. **개발 중에만 쓴다.**
+ *
+ * 사용자 문구는 `getApiErrorMessage` 가 상태 코드로 만든다. 그런데 422 처럼
+ * "무엇이 잘못됐는지"가 본문에만 있는 경우, 화면에 일반 문구만 뜨면 개발자도
+ * 이유를 모른 채 추측하게 된다. `__DEV__` 에서만 함께 보여주기 위한 값이다.
+ *
+ * FastAPI 의 자동 검증 오류는 `detail` 이 배열이라 문자열일 때만 돌려준다.
+ */
+export function getApiErrorDetail(error: unknown): string | undefined {
+  if (!__DEV__ || !isAxiosError(error)) return undefined;
+
+  const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
+  return typeof detail === 'string' ? detail : undefined;
+}
+
 /** docs/api의 HTTP 상태 규약과 Axios 전송 오류를 사용자 안내 문구로 변환한다. */
 export function getApiErrorMessage(error: unknown): ApiErrorMessage {
   if (!isAxiosError(error)) return ERROR_MESSAGES.unknown;
