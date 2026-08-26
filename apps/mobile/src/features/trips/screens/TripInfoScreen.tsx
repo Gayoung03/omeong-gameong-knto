@@ -5,11 +5,14 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState } from '@/src/components/feedback/ErrorState';
+import { getApiErrorMessage } from '@/src/services/apiError';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
+import { TripDeleteConfirmModal } from '../components/TripDeleteConfirmModal';
 import { TripInfoEditForm } from '../components/TripInfoEditForm';
 import { TripInfoRow } from '../components/TripInfoRow';
 import { TripMemoEditModal } from '../components/TripMemoEditModal';
+import { useDeleteTrip } from '../hooks/useDeleteTrip';
 import { useTripInfoForm } from '../hooks/useTripInfoForm';
 import { useTrip } from '../hooks/useTrips';
 import type { Trip } from '../types/trip';
@@ -79,9 +82,36 @@ type TripInfoContentProps = {
   trip: Trip;
 };
 
-function TripInfoContent({ trip: initialTrip }: TripInfoContentProps) {
-  const form = useTripInfoForm(initialTrip);
-  const { trip, isEditing, canSubmit, startEditing, cancelEditing, submit, saveMemoOnly } = form;
+function TripInfoContent({ trip }: TripInfoContentProps) {
+  // 화면이 보여주는 여행은 useTrip 이 들고 있다. 저장에 성공하면 캐시가 버려지고
+  // 서버 값으로 다시 그려진다 — 훅이 사본을 들고 있으면 둘이 어긋난다.
+  const router = useRouter();
+  const form = useTripInfoForm(trip);
+  const {
+    isEditing,
+    canSubmit,
+    isSaving,
+    errorMessage,
+    startEditing,
+    cancelEditing,
+    submit,
+    saveMemoOnly,
+  } = form;
+
+  const deleteMutation = useDeleteTrip();
+  const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string>();
+
+  const confirmDelete = () => {
+    deleteMutation.mutate(trip.id, {
+      onError: (error) => {
+        setDeleteModalOpen(false);
+        setDeleteErrorMessage(getApiErrorMessage(error).description);
+      },
+      // 뒤로 가면 방금 지운 여행의 상세로 돌아간다. 목록으로 갈아끼운다.
+      onSuccess: () => router.replace('/trips'),
+    });
+  };
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -101,7 +131,9 @@ function TripInfoContent({ trip: initialTrip }: TripInfoContentProps) {
               hitSlop={spacing.sm}
               onPress={submit}
             >
-              <Text style={[styles.headerSubmitText, !canSubmit && styles.disabledText]}>완료</Text>
+              <Text style={[styles.headerSubmitText, !canSubmit && styles.disabledText]}>
+                {isSaving ? '저장 중' : '완료'}
+              </Text>
             </Pressable>
           ) : (
             <Pressable accessibilityRole="button" hitSlop={spacing.sm} onPress={startEditing}>
@@ -125,9 +157,34 @@ function TripInfoContent({ trip: initialTrip }: TripInfoContentProps) {
         </View>
 
         {isEditing ? <TripInfoEditForm form={form} /> : <TripInfoView trip={trip} />}
+
+        {errorMessage && <Text style={styles.saveError}>{errorMessage}</Text>}
+
+        {/* 되돌릴 수 없는 동작이라 시각적 무게를 낮춘다. 맨 아래 회색 작은 글씨. */}
+        {!isEditing && (
+          <>
+            <Pressable
+              accessibilityRole="button"
+              hitSlop={spacing.sm}
+              onPress={() => setDeleteModalOpen(true)}
+              style={({ pressed }) => [styles.deleteRow, pressed && styles.pressed]}
+            >
+              <Text style={styles.deleteText}>여행 삭제</Text>
+            </Pressable>
+            {deleteErrorMessage && <Text style={styles.saveError}>{deleteErrorMessage}</Text>}
+          </>
+        )}
       </ScrollView>
 
       {!isEditing && <MemoCard memo={trip.memo} onSaveMemo={saveMemoOnly} />}
+
+      <TripDeleteConfirmModal
+        isDeleting={deleteMutation.isPending}
+        onCancel={() => setDeleteModalOpen(false)}
+        onConfirm={confirmDelete}
+        tripTitle={trip.title}
+        visible={isDeleteModalOpen}
+      />
     </SafeAreaView>
   );
 }
@@ -380,5 +437,25 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: spacing.sm,
     justifyContent: 'center',
+  },
+  deleteRow: {
+    alignItems: 'center',
+    marginTop: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  deleteText: {
+    color: colors.textTertiary,
+    fontSize: typography.caption.fontSize,
+    textDecorationLine: 'underline',
+  },
+  pressed: {
+    opacity: 0.6,
+  },
+  saveError: {
+    color: colors.error,
+    fontSize: typography.label.fontSize,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    textAlign: 'center',
   },
 });
