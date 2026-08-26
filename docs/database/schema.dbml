@@ -255,6 +255,8 @@ Table route_requests {
   transport transport_type [not null]
   companion_count int [not null, default: 1]
   preferred_tags varchar[]
+  priority_preset varchar(30)
+  applied_weights jsonb
   request_text text
   created_at timestamptz [not null]
 }
