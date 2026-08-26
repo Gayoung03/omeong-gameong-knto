@@ -119,3 +119,30 @@ class MessageRole(StrEnum):
     USER = "user"
     ASSISTANT = "assistant"
     SYSTEM = "system"
+
+
+# 아래 셋은 travel_logs 의 CHECK 제약과 짝이다. 컬럼 타입은 문자열이라
+# db_enum() 을 쓰지 않지만, 값을 여기 모아두면 스키마·검증이 제약과 어긋나지 않는다.
+# 값을 고칠 때는 community.TravelLog 의 CheckConstraint 도 함께 고쳐야 한다.
+
+
+class WritingStyle(StrEnum):
+    """여행기록 이미지에 얹는 글 말투."""
+
+    DOG_DIARY = "dog_diary"
+    JEJU_DIALECT = "jeju_dialect"
+
+
+class MomentMood(StrEnum):
+    HAPPY = "happy"
+    EXCITED = "excited"
+    RELAXED = "relaxed"
+    BITTERSWEET = "bittersweet"
+
+
+class GenerationStatus(StrEnum):
+    IDLE = "idle"
+    UPLOADING = "uploading"
+    GENERATING = "generating"
+    COMPLETED = "completed"
+    FAILED = "failed"

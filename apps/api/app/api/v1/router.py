@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     reviews,
     route_items,
     routes,
+    travel_logs,
     uploads,
     users,
 )
@@ -25,4 +26,5 @@ api_router.include_router(places.router, tags=["places"])
 api_router.include_router(reviews.router, tags=["reviews"])
 api_router.include_router(users.router, tags=["users"])
 api_router.include_router(pets.router, tags=["pets"])
+api_router.include_router(travel_logs.router, tags=["travel-logs"])
 api_router.include_router(uploads.router, tags=["uploads"])

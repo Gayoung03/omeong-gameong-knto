@@ -17,14 +17,18 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import (
+    Pet,
     Route,
     RouteChecklistItem,
     RouteDay,
     RouteItem,
     RouteMemo,
+    RoutePet,
+    RouteRequestPet,
     TravelLog,
     User,
 )
+from app.db.models.enums import RouteCreationType
 
 
 def route_detail_options() -> tuple:
@@ -114,3 +118,44 @@ def log_counts_of(db: Session, route_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID
         .group_by(TravelLog.route_id)
     ).all()
     return {route_id: count for route_id, count in rows}
+
+
+def pets_of(db: Session, routes: Sequence[Route]) -> dict[uuid.UUID, list[Pet]]:
+    """여행별 **여행 자체의** 반려동물.
+
+    출처가 `creation_type` 에 따라 갈린다 — 추천 여행은 요청서에 적어낸
+    `route_request_pets`, 수동 여행은 직접 고른 `route_pets` 다
+    (docs/api/routes.md). `Route.pets` 관계는 `route_pets` 만 보기 때문에
+    추천 여행에서는 비어서 나온다. 그래서 두 경로를 여기서 함께 처리한다.
+
+    기록의 `companions`(`travel_log_pets`)와는 **다른 데이터**다.
+    이쪽은 스냅샷이 아니라 현재 프로필을 그대로 읽는다.
+    """
+    manual_ids = [route.id for route in routes if route.creation_type is RouteCreationType.MANUAL]
+    request_ids = {
+        route.route_request_id: route.id
+        for route in routes
+        if route.creation_type is RouteCreationType.RECOMMENDED and route.route_request_id
+    }
+
+    result: dict[uuid.UUID, list[Pet]] = {route.id: [] for route in routes}
+
+    if manual_ids:
+        rows = db.execute(
+            select(RoutePet.route_id, Pet)
+            .join(Pet, Pet.id == RoutePet.pet_id)
+            .where(RoutePet.route_id.in_(manual_ids))
+        ).all()
+        for route_id, pet in rows:
+            result[route_id].append(pet)
+
+    if request_ids:
+        rows = db.execute(
+            select(RouteRequestPet.route_request_id, Pet)
+            .join(Pet, Pet.id == RouteRequestPet.pet_id)
+            .where(RouteRequestPet.route_request_id.in_(request_ids))
+        ).all()
+        for request_id, pet in rows:
+            result[request_ids[request_id]].append(pet)
+
+    return result
