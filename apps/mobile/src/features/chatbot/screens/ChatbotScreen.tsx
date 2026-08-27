@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useRef, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -18,43 +19,23 @@ import { colors, spacing } from '@/src/theme';
 
 import { ChatMapResponse } from '../components/ChatMapResponse';
 import { chatbotAssets } from '../config/chatbotAssets';
-import { getMapPlacesForQuestion, needsMapResponse } from '../utils/chatbotMapResponse';
 import { chatbotSuggestions } from '../constants/chatbotSuggestions';
-import type { ChatMessage } from '../types/chatbot';
-
-const API_PLACEHOLDER_RESPONSE =
-  '현재는 화면 디자인 단계예요. AI API가 연결되면 혼디가 제주 여행 정보를 찾아 답변해드릴게요.';
+import { entryKey, useChatbot } from '../hooks/useChatbot';
+import type { ChatEntry } from '../types/chatbot';
 
 export function ChatbotScreen() {
   const scrollRef = useRef<ScrollView>(null);
-  const nextMessageId = useRef(1);
-  const pendingScrollMessageId = useRef<number | null>(null);
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const hasMessages = messages.length > 0;
+  const { entries, isAnswering, ask, retry } = useChatbot();
+  const hasMessages = entries.length > 0;
+  const canSend = Boolean(input.trim()) && !isAnswering;
 
   const sendMessage = (text: string) => {
     const normalizedText = text.trim();
-    if (!normalizedText) return;
-    const showMap = needsMapResponse(normalizedText);
+    if (!normalizedText || isAnswering) return;
 
-    const userMessage: ChatMessage = {
-      id: nextMessageId.current++,
-      role: 'user',
-      text: normalizedText,
-    };
-    const assistantMessage: ChatMessage = {
-      id: nextMessageId.current++,
-      role: 'assistant',
-      text: showMap
-        ? '요청하신 조건에 맞는 추천 장소를 지도에 정리했어요. 장소 데이터는 추후 API와 연결될 예정이에요.'
-        : API_PLACEHOLDER_RESPONSE,
-      mapPlaces: showMap ? getMapPlacesForQuestion(normalizedText) : undefined,
-    };
-
-    pendingScrollMessageId.current = userMessage.id;
-    setMessages((currentMessages) => [...currentMessages, userMessage, assistantMessage]);
     setInput('');
+    void ask(normalizedText);
   };
 
   const renderComposer = (showContext: boolean) => (
@@ -66,9 +47,14 @@ export function ChatbotScreen() {
         <TextInput
           accessibilityLabel="혼디에게 질문 입력"
           blurOnSubmit={false}
+          // 답변을 만드는 동안은 잠근다(설계 결정 F3). 두 질문이 겹치면
+          // 어느 답변이 어느 질문의 것인지 화면에서 구분할 수 없다.
+          editable={!isAnswering}
           onChangeText={setInput}
           onSubmitEditing={() => sendMessage(input)}
-          placeholder="제주 여행에 대해 궁금한 점을 입력해보세요"
+          placeholder={
+            isAnswering ? '혼디가 답변을 만들고 있어요…' : '제주 여행에 대해 궁금한 점을 입력해보세요'
+          }
           placeholderTextColor={colors.textTertiary}
           returnKeyType="send"
           style={styles.input}
@@ -76,69 +62,127 @@ export function ChatbotScreen() {
         />
         <Pressable
           accessibilityLabel="질문 보내기"
-          accessibilityState={{ disabled: !input.trim() }}
-          disabled={!input.trim()}
+          accessibilityState={{ disabled: !canSend }}
+          disabled={!canSend}
           onPress={() => sendMessage(input)}
           style={({ pressed }) => [
             styles.sendButton,
-            !input.trim() && styles.sendButtonDisabled,
+            !canSend && styles.sendButtonDisabled,
             pressed && styles.pressed,
           ]}
         >
-          <Ionicons color={colors.surface} name="paper-plane" size={20} />
+          {isAnswering ? (
+            <ActivityIndicator color={colors.surface} size="small" />
+          ) : (
+            <Ionicons color={colors.surface} name="paper-plane" size={20} />
+          )}
         </Pressable>
       </View>
-      {showContext ? (
-        <Text style={styles.apiHint}>AI 답변은 백엔드 API 연동 예정</Text>
-      ) : null}
     </View>
   );
 
+  const renderUserBubble = (content: string) => (
+    <View style={[styles.messageBubble, styles.userBubble]}>
+      <Text style={[styles.messageText, styles.userMessageText]}>{content}</Text>
+    </View>
+  );
+
+  const renderHondi = (body: ReactNode) => (
+    <View style={styles.assistantResponse}>
+      <View style={styles.assistantAvatar}>
+        <Image
+          accessibilityLabel="혼디 강아지 캐릭터 아바타"
+          resizeMode="cover"
+          source={chatbotAssets.avatar}
+          style={styles.assistantAvatarImage}
+        />
+      </View>
+      <View style={styles.assistantContent}>{body}</View>
+    </View>
+  );
+
+  const renderEntry = (entry: ChatEntry) => {
+    if (entry.kind === 'pending') {
+      return (
+        <>
+          <View style={[styles.messageGroup, styles.userMessageGroup]}>
+            {renderUserBubble(entry.content)}
+          </View>
+          <View style={styles.messageGroup}>
+            {renderHondi(
+              <View style={[styles.messageBubble, styles.assistantBubble, styles.pendingBubble]}>
+                <ActivityIndicator color={colors.primary} size="small" />
+                <Text style={styles.pendingText}>혼디가 장소를 찾고 있어요…</Text>
+              </View>,
+            )}
+          </View>
+        </>
+      );
+    }
+
+    if (entry.kind === 'failed') {
+      return (
+        <>
+          <View style={[styles.messageGroup, styles.userMessageGroup]}>
+            {renderUserBubble(entry.question)}
+          </View>
+          <View style={styles.messageGroup}>
+            {renderHondi(
+              <View style={[styles.messageBubble, styles.failedBubble]}>
+                <Text style={styles.failedText}>{entry.description}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => retry(entry.localId)}
+                  style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+                >
+                  <Ionicons color={colors.primary} name="refresh" size={14} />
+                  <Text style={styles.retryText}>다시 시도</Text>
+                </Pressable>
+              </View>,
+            )}
+          </View>
+        </>
+      );
+    }
+
+    const { message } = entry;
+    if (message.role === 'user') {
+      return (
+        <View style={[styles.messageGroup, styles.userMessageGroup]}>
+          {renderUserBubble(message.content)}
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.messageGroup}>
+        {renderHondi(
+          <>
+            <View style={[styles.messageBubble, styles.assistantBubble]}>
+              <View style={styles.assistantLabel}>
+                <Text style={styles.assistantLabelText}>혼디</Text>
+              </View>
+              <Text style={styles.messageText}>{message.content}</Text>
+            </View>
+            {/*
+              지도를 띄울지는 **서버가 정한다.** 답변이 언급한 장소만
+              referencedPlaces 로 오므로, 비어 있으면 글만 나간다(설계 결정 C5).
+              예전에는 앱이 '카페' 같은 단어를 보고 판단해서, 서버가 장소를
+              못 찾았는데도 빈 지도가 뜨는 일이 있었다.
+            */}
+            {message.referencedPlaces.length > 0 ? (
+              <ChatMapResponse places={message.referencedPlaces} />
+            ) : null}
+          </>,
+        )}
+      </View>
+    );
+  };
+
   const renderMessages = () => (
     <View accessibilityLiveRegion="polite" style={styles.messageList}>
-      {messages.map((message) => (
-        <View
-          key={message.id}
-          onLayout={(event) => {
-            if (pendingScrollMessageId.current !== message.id) return;
-
-            pendingScrollMessageId.current = null;
-            const messageOffset = event.nativeEvent.layout.y;
-            requestAnimationFrame(() =>
-              scrollRef.current?.scrollTo({
-                animated: true,
-                y: Math.max(0, messageOffset - 8),
-              }),
-            );
-          }}
-          style={[styles.messageGroup, message.role === 'user' && styles.userMessageGroup]}
-        >
-          {message.role === 'user' ? (
-            <View style={[styles.messageBubble, styles.userBubble]}>
-              <Text style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>
-            </View>
-          ) : (
-            <View style={styles.assistantResponse}>
-              <View style={styles.assistantAvatar}>
-                <Image
-                  accessibilityLabel="혼디 강아지 캐릭터 아바타"
-                  resizeMode="cover"
-                  source={chatbotAssets.avatar}
-                  style={styles.assistantAvatarImage}
-                />
-              </View>
-              <View style={styles.assistantContent}>
-                <View style={[styles.messageBubble, styles.assistantBubble]}>
-                  <View style={styles.assistantLabel}>
-                    <Text style={styles.assistantLabelText}>혼디</Text>
-                  </View>
-                  <Text style={styles.messageText}>{message.text}</Text>
-                </View>
-                {message.mapPlaces ? <ChatMapResponse places={message.mapPlaces} /> : null}
-              </View>
-            </View>
-          )}
-        </View>
+      {entries.map((entry) => (
+        <View key={entryKey(entry)}>{renderEntry(entry)}</View>
       ))}
     </View>
   );
@@ -157,6 +201,9 @@ export function ChatbotScreen() {
               <ScrollView
                 contentContainerStyle={styles.activeChatScrollContent}
                 keyboardShouldPersistTaps="handled"
+                // 말풍선이 늘어날 때마다 맨 아래로 붙인다. 대기 말풍선이 진짜
+                // 답변으로 바뀌면서 높이가 커지는 경우까지 이걸로 덮인다.
+                onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
                 ref={scrollRef}
                 showsVerticalScrollIndicator={false}
                 style={styles.activeChatScroll}
@@ -233,6 +280,38 @@ export function ChatbotScreen() {
 }
 
 const styles = StyleSheet.create({
+  pendingBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  pendingText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+  },
+  failedBubble: {
+    backgroundColor: colors.errorBg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.sm,
+  },
+  failedText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    paddingVertical: 4,
+  },
+  retryText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
   safeArea: {
     flex: 1,
     backgroundColor: colors.surface,
