@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
 import {
@@ -16,7 +17,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/src/components/ui/Avatar';
 import { RemoteImage } from '@/src/components/ui/RemoteImage';
+import { searchPlaces } from '@/src/features/places/api/placesApi';
 import { useAllPets, usePets } from '@/src/features/profile/hooks/usePets';
+import { getTrip, getTrips } from '@/src/features/trips/api/tripsApi';
 import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 import type { Trip } from '@/src/types/travelLog';
 
@@ -25,7 +28,6 @@ import {
   type MomentPetSelectionSheetHandle,
 } from './components/MomentPetSelectionSheet';
 import { MomentStepHeader } from './components/MomentStepHeader';
-import { mockLogs, mockTrips } from './mocks/travelLog.mock';
 import { useLogDraftStore } from './stores/useLogDraftStore';
 import { resolveCompanions, toPetsById } from './utils/resolveCompanionDisplay';
 
@@ -39,11 +41,6 @@ type CoursePlace = {
 
 const now = new Date();
 const TODAY = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-const DIRECT_PLACES: CoursePlace[] = [
-  { placeId: 'direct-1', name: '제주 반려동물 공원', date: TODAY, period: '오후', day: 1 },
-  { placeId: 'direct-2', name: '도두 무지개 해안도로', date: TODAY, period: '오전', day: 1 },
-  { placeId: 'direct-3', name: '함덕해수욕장', date: TODAY, period: '오후', day: 1 },
-];
 
 function minusOneMonth(isoDate: string): string {
   const date = new Date(`${isoDate}T00:00:00`);
@@ -55,31 +52,6 @@ function formatRange(trip: Trip): string {
   return `${trip.startDate.replaceAll('-', '.')} – ${trip.endDate.slice(5).replace('-', '.')}`;
 }
 
-function placesForTrip(trip: Trip): CoursePlace[] {
-  const seen = new Set<string>();
-  return mockLogs
-    .filter((log) => log.tripId === trip.tripId && log.placeId)
-    .sort((a, b) => a.recordedDate.localeCompare(b.recordedDate))
-    .filter((log) => {
-      if (!log.placeId || seen.has(log.placeId)) return false;
-      seen.add(log.placeId);
-      return true;
-    })
-    .slice(0, 5)
-    .map((log) => {
-      const hour = Number(log.visitedAt?.slice(11, 13) ?? 12);
-      const start = new Date(`${trip.startDate}T00:00:00`);
-      const visit = new Date(`${log.recordedDate}T00:00:00`);
-      return {
-        placeId: log.placeId!,
-        name: log.placeName,
-        date: log.recordedDate,
-        period: hour < 12 ? '오전' : '오후',
-        day: Math.max(1, Math.round((visit.getTime() - start.getTime()) / 86400000) + 1),
-      };
-    });
-}
-
 export function NewMomentStepTwoScreen() {
   const router = useRouter();
   // 새 기록에는 활성 프로필만 선택할 수 있다.
@@ -89,6 +61,7 @@ export function NewMomentStepTwoScreen() {
   const petsById = useMemo(() => toPetsById(allPets), [allPets]);
   const draft = useLogDraftStore((state) => state.draft);
   const updateDraft = useLogDraftStore((state) => state.updateDraft);
+  const queryClient = useQueryClient();
   const petSheetRef = useRef<MomentPetSelectionSheetHandle>(null);
   const [selectedPetIds, setSelectedPetIds] = useState<string[]>(draft.petIds);
   const [selectedTripId, setSelectedTripId] = useState<string | undefined>(draft.tripId);
@@ -100,9 +73,18 @@ export function NewMomentStepTwoScreen() {
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const { data: allTrips = [] } = useQuery({ queryKey: ['trips'], queryFn: getTrips });
+  // 여행을 고르면 그 여행의 일정을 받아 온다. 방문 장소는 기록이 아니라
+  // **일정**에서 나온다 — 아직 기록이 없는 여행에서도 장소를 고를 수 있어야 한다.
+  const { data: tripDetail } = useQuery({
+    queryKey: ['trips', selectedTripId],
+    queryFn: () => getTrip(selectedTripId!),
+    enabled: Boolean(selectedTripId),
+  });
+
   const recentTrips = useMemo(() => {
     const cutoff = minusOneMonth(TODAY);
-    return [...mockTrips]
+    return allTrips
       .filter((trip) => trip.endDate >= cutoff && trip.startDate <= TODAY)
       .sort((a, b) => {
         const aActive = a.startDate <= TODAY && a.endDate >= TODAY;
@@ -110,29 +92,91 @@ export function NewMomentStepTwoScreen() {
         if (aActive !== bActive) return aActive ? -1 : 1;
         return b.startDate.localeCompare(a.startDate);
       })
-      .slice(0, 5);
-  }, []);
+      .slice(0, 5)
+      // 목록 응답에는 반려동물이 없다. 화면이 쓰는 모양으로만 맞춰준다 —
+      // 실제 동행은 여행을 고른 뒤 상세에서 채운다.
+      .map<Trip>((trip) => ({
+        tripId: trip.id,
+        title: trip.title,
+        placeName: '',
+        startDate: trip.startDate,
+        endDate: trip.endDate,
+        companions: [],
+        logCount: 0,
+        previewLogs: [],
+      }));
+  }, [allTrips]);
+
   const selectedTrip = recentTrips.find((trip) => trip.tripId === selectedTripId);
-  const coursePlaces = selectedTrip ? placesForTrip(selectedTrip) : [];
+  const coursePlaces = useMemo<CoursePlace[]>(() => {
+    if (!tripDetail) return [];
+
+    const seen = new Set<string>();
+    return tripDetail.schedules
+      .flatMap((schedule) =>
+        schedule.items.map((item) => ({
+          placeId: item.place.id,
+          name: item.place.name,
+          date: schedule.date,
+          period: Number(item.startTime?.slice(0, 2) ?? 12) < 12 ? '오전' : '오후',
+          day: schedule.dayNumber,
+        })),
+      )
+      .filter((place) => {
+        if (seen.has(place.placeId)) return false;
+        seen.add(place.placeId);
+        return true;
+      })
+      .slice(0, 5);
+  }, [tripDetail]);
+
   const previewUri = draft.localPhotoUri ?? undefined;
-  const filteredDirectPlaces = useMemo(() => {
-    const query = searchQuery.trim().toLocaleLowerCase();
-    if (!query) return DIRECT_PLACES;
 
-    // TODO: 장소 검색 API 연결 시 이 필터를 검색 서비스 호출 결과로 교체한다.
-    return DIRECT_PLACES.filter((place) => place.name.toLocaleLowerCase().includes(query));
-  }, [searchQuery]);
+  const trimmedQuery = searchQuery.trim();
+  const { data: searchResults = [] } = useQuery({
+    queryKey: ['places', 'search', trimmedQuery],
+    queryFn: () => searchPlaces(trimmedQuery),
+    enabled: searchVisible && trimmedQuery.length > 0,
+  });
+  const filteredDirectPlaces = useMemo<CoursePlace[]>(
+    () =>
+      searchResults.map((place) => ({
+        placeId: place.id,
+        name: place.name,
+        // 여행 코스 밖에서 고른 장소는 날짜를 알 수 없어 오늘로 둔다.
+        date: TODAY,
+        period: '오후',
+        day: 1,
+      })),
+    [searchResults],
+  );
 
-  const selectTrip = (trip: Trip) => {
+  /**
+   * 여행을 고르면 그 여행의 동행 반려동물을 기본 선택으로 넣는다.
+   *
+   * 동행은 여행 **상세**에만 있어서 한 번 더 받아와야 한다. `fetchQuery` 는
+   * 위 `useQuery` 와 같은 키를 쓰므로 이미 받아둔 것이 있으면 그대로 쓴다.
+   */
+  const selectTrip = async (trip: Trip) => {
     setSelectedTripId(trip.tripId);
     setSelectedPlace(undefined);
-    // 여행 스냅샷에 지워진 반려동물이 섞여 있을 수 있어 활성 프로필만 남긴다.
-    const tripPetIds = trip.companions
-      .map((companion) => companion.petId)
+    updateDraft({ tripId: trip.tripId, placeId: undefined, placeName: null, recordedDate: null });
+
+    const detail = await queryClient
+      .fetchQuery({
+        queryKey: ['trips', trip.tripId],
+        queryFn: () => getTrip(trip.tripId),
+      })
+      .catch(() => null);
+
+    // 지워진 프로필이 섞여 있을 수 있어 활성 프로필만 남긴다.
+    const tripPetIds = (detail?.pets ?? [])
+      .map((tripPet) => tripPet.id)
       .filter((petId) => pets.some((pet) => pet.petId === petId));
     const nextPetIds = tripPetIds.length > 0 ? tripPetIds : pets[0] ? [pets[0].petId] : [];
+
     setSelectedPetIds(nextPetIds);
-    updateDraft({ tripId: trip.tripId, placeId: undefined, placeName: null, recordedDate: null, petIds: nextPetIds });
+    updateDraft({ petIds: nextPetIds });
   };
   const selectPlace = (place: CoursePlace) => {
     setSelectedPlace(place);

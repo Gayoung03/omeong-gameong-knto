@@ -152,6 +152,16 @@ class TravelLog(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
+    #: 함께한 반려동물의 **스냅샷**. 프로필을 지워도 이름·사진이 남으므로
+    #: Pet 이 아니라 TravelLogPet 을 그대로 들고 있는다.
+    #: delete-orphan 은 PATCH 가 petIds 를 통째로 갈아끼울 때 필요하다 —
+    #: 리스트에서 빼면 파이썬 쪽에서도 행이 지워진다.
+    companions: Mapped[list["TravelLogPet"]] = relationship(
+        "TravelLogPet",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
 
 class TravelLogPet(Base):
     __tablename__ = "travel_log_pets"
