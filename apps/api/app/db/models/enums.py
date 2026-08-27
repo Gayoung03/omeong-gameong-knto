@@ -146,3 +146,36 @@ class GenerationStatus(StrEnum):
     GENERATING = "generating"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class GuideCategory(StrEnum):
+    """여행 가이드 문서의 분류."""
+
+    AIRLINE = "airline"
+    FERRY = "ferry"
+    PREPARATION = "preparation"
+
+
+class CarrierType(StrEnum):
+    """반려동물 규정을 가진 운송사의 종류.
+
+    제주 안에서 어떻게 이동하는지를 뜻하는 TransportType과는 다른 축이다.
+    """
+
+    AIRLINE = "airline"
+    FERRY = "ferry"
+
+
+class BreedRestrictionType(StrEnum):
+    """견종이 제한되는 이유."""
+
+    DANGEROUS = "dangerous"
+    BRACHYCEPHALIC = "brachycephalic"
+
+
+class BreedRestrictionScope(StrEnum):
+    """제한이 적용되는 구간."""
+
+    CABIN = "cabin"
+    CARGO = "cargo"
+    BOTH = "both"
