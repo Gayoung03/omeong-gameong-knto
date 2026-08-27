@@ -20,17 +20,22 @@ def resolve_weights(
     사용자 기준의 오타는 조용히 무시하지 않고 계약 오류로 알린다.
     """
 
+    selected_preset = preset or "balanced"
+    selected_criteria = set(user_criteria or ())
+    if selected_preset != "balanced" and selected_criteria:
+        raise ValueError("프리셋과 직접 선택 기준은 동시에 적용할 수 없습니다")
+
     resolved = dict(INITIAL_WEIGHTS)
-    multipliers = PRESET_MULTIPLIERS.get(preset or "balanced", {})
+    multipliers = PRESET_MULTIPLIERS.get(selected_preset, {})
 
     for criterion, multiplier in multipliers.items():
         resolved[criterion] *= multiplier
 
-    invalid = set(user_criteria or ()) - set(resolved)
+    invalid = selected_criteria - set(resolved)
     if invalid:
         raise ValueError(f"알 수 없는 추천 기준: {', '.join(sorted(invalid))}")
 
-    for criterion in set(user_criteria or ()):
+    for criterion in selected_criteria:
         resolved[criterion] *= USER_CRITERIA_BOOST
 
     total = sum(resolved.values())

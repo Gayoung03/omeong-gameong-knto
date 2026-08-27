@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { recommendedDays } from '../mocks/routes.mock';
-import { PRIORITY_PRESETS } from '../personalization';
+import { PRIORITY_PRESETS, USER_CRITERIA_OPTIONS } from '../personalization';
 import type { RoutePlace } from '../types';
 import { formatRouteDate, formatTripDuration, getTripDates } from '../utils/tripDuration';
 
@@ -163,8 +163,15 @@ export function RouteRecommendationScreen() {
     params.startAt && params.endAt
       ? formatTripDuration(params.startAt, params.endAt)
       : `${recommendedDays.length - 1}박 ${recommendedDays.length}일`;
+  const selectedCriteria = (params.userCriteria ?? '').split(',').flatMap((value) => {
+    const label = USER_CRITERIA_OPTIONS.find((option) => option.value === value)?.label;
+    return label ? [label] : [];
+  });
   const priorityLabel =
-    PRIORITY_PRESETS.find((preset) => preset.value === params.priorityPreset)?.label ?? '균형 추천';
+    selectedCriteria.length > 0
+      ? selectedCriteria.join(', ')
+      : (PRIORITY_PRESETS.find((preset) => preset.value === params.priorityPreset)?.label ??
+        '골고루 추천');
 
   const activeDay = tripDays[selectedDay - 1];
   const activeIds = useMemo(() => activeDay.places.map((place) => place.id), [activeDay]);

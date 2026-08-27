@@ -23,6 +23,7 @@ import {
   PRIORITY_PRESETS,
   toPersonalizationPayload,
   USER_CRITERIA_OPTIONS,
+  type PriorityMode,
   type PriorityPreset,
   type UserCriterion,
 } from '../personalization';
@@ -66,6 +67,7 @@ type RouteDraft = {
   pet: Pet;
   places: string[];
   pace: string;
+  priorityMode: PriorityMode;
   priorityPreset: PriorityPreset;
   userCriteria: UserCriterion[];
 };
@@ -90,7 +92,7 @@ const LEGACY_PLACE_TYPE_MAP: Record<string, (typeof PLACE_TYPE_OPTIONS)[number]>
 };
 
 type StoredRouteDraft = {
-  version: 2;
+  version: 3;
   draft: RouteDraft;
   currentStep: number;
 };
@@ -107,6 +109,7 @@ const initialDraft: RouteDraft = {
   pet: { name: '몽이', species: '강아지', size: '소형', weight: '4.2kg' },
   places: [],
   pace: '여유롭게',
+  priorityMode: 'manual',
   priorityPreset: 'balanced',
   userCriteria: [],
 };
@@ -290,7 +293,7 @@ function AddRow({
 }
 
 function serializeDraft(draft: RouteDraft, currentStep: number): string {
-  const stored: StoredRouteDraft = { version: 2, draft, currentStep };
+  const stored: StoredRouteDraft = { version: 3, draft, currentStep };
   return JSON.stringify(stored);
 }
 
@@ -307,6 +310,12 @@ function restoreDraft(saved: string): { draft: RouteDraft; currentStep: number }
   const userCriteria = Array.isArray(savedDraft.userCriteria)
     ? savedDraft.userCriteria.filter(isUserCriterion)
     : initialDraft.userCriteria;
+  const priorityMode: PriorityMode =
+    savedDraft.priorityMode === 'manual' || savedDraft.priorityMode === 'preset'
+      ? savedDraft.priorityMode
+      : userCriteria.length > 0
+        ? 'manual'
+        : 'preset';
   const places = Array.isArray(savedDraft.places)
     ? [
         ...new Set(
@@ -327,8 +336,9 @@ function restoreDraft(saved: string): { draft: RouteDraft; currentStep: number }
       ...initialDraft,
       ...savedDraft,
       places,
-      priorityPreset,
-      userCriteria,
+      priorityMode,
+      priorityPreset: priorityMode === 'manual' ? 'balanced' : priorityPreset,
+      userCriteria: priorityMode === 'manual' ? userCriteria.slice(0, 3) : [],
       trip: savedTrip?.startAt && savedTrip?.endAt ? savedTrip : initialDraft.trip,
     },
     currentStep,
@@ -348,6 +358,9 @@ function validateStep(index: number, draft: RouteDraft): string | null {
   }
   if (index === 4 && draft.places.length === 0) {
     return '가고 싶은 장소 유형을 한 개 이상 선택해주세요.';
+  }
+  if (index === 6 && draft.priorityMode === 'manual' && draft.userCriteria.length === 0) {
+    return '중요한 기준을 하나 이상 고르거나 건너뛰어주세요.';
   }
   return null;
 }
@@ -398,7 +411,12 @@ export function RouteInputScreen() {
     if (openIndex === 2) updateDraft('stays', []);
     if (openIndex === 5) updateDraft('pace', initialDraft.pace);
     if (openIndex === 6) {
-      setDraft((current) => ({ ...current, priorityPreset: 'balanced', userCriteria: [] }));
+      setDraft((current) => ({
+        ...current,
+        priorityMode: 'manual',
+        priorityPreset: 'balanced',
+        userCriteria: [],
+      }));
     }
     setPageError('');
     setOpenIndex(returnToReview ? REVIEW_STEP : Math.min(REVIEW_STEP, openIndex + 1));
@@ -448,7 +466,18 @@ export function RouteInputScreen() {
     draft.pet.name || '미입력',
     draft.places.join(', ') || '미선택',
     draft.pace,
-    PRIORITY_PRESETS.find((preset) => preset.value === draft.priorityPreset)?.label ?? '균형 추천',
+    draft.priorityMode === 'manual'
+      ? draft.userCriteria.length > 0
+        ? draft.userCriteria
+            .map(
+              (criterion) =>
+                USER_CRITERIA_OPTIONS.find((option) => option.value === criterion)?.label,
+            )
+            .filter(Boolean)
+            .join(', ')
+        : '골고루 추천'
+      : (PRIORITY_PRESETS.find((preset) => preset.value === draft.priorityPreset)?.label ??
+        '골고루 추천'),
   ];
 
   const updateDraft = <K extends keyof RouteDraft>(key: K, value: RouteDraft[K]) => {
@@ -612,6 +641,31 @@ export function RouteInputScreen() {
     updateDraft('places', [...draft.places, place]);
   };
 
+  const switchPriorityMode = (mode: PriorityMode) => {
+    setDraft((current) => ({
+      ...current,
+      priorityMode: mode,
+      priorityPreset: 'balanced',
+      userCriteria: [],
+    }));
+    setPageError('');
+  };
+
+  const toggleUserCriterion = (criterion: UserCriterion) => {
+    if (draft.userCriteria.includes(criterion)) {
+      updateDraft(
+        'userCriteria',
+        draft.userCriteria.filter((item) => item !== criterion),
+      );
+      return;
+    }
+    if (draft.userCriteria.length >= 3) {
+      setPageError('중요한 기준은 최대 3개까지 선택할 수 있어요.');
+      return;
+    }
+    updateDraft('userCriteria', [...draft.userCriteria, criterion]);
+  };
+
   const closeFlow = async () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     try {
@@ -658,7 +712,11 @@ export function RouteInputScreen() {
       setPageError('가고 싶은 장소 유형을 한 개 이상 선택해주세요.');
       return;
     }
-    const personalization = toPersonalizationPayload(draft.priorityPreset, draft.userCriteria);
+    const personalization = toPersonalizationPayload(
+      draft.priorityMode,
+      draft.priorityPreset,
+      draft.userCriteria,
+    );
 
     try {
       await AsyncStorage.setItem(DRAFT_KEY, serializeDraft(draft, REVIEW_STEP));
@@ -865,60 +923,79 @@ export function RouteInputScreen() {
             {openIndex === 6 ? (
               <QuestionStep
                 accent={colors.deepMint}
-                description="루트를 추천할 때 가장 중요하게 볼 기준을 골라주세요."
+                description={
+                  draft.priorityMode === 'manual'
+                    ? '중요하게 생각하는 기준을 최대 3개까지 골라주세요.'
+                    : '원하는 여행 방식을 하나만 골라주세요.'
+                }
                 icon="options-outline"
-                title="추천 스타일"
+                title="이번 여행에서 무엇이 중요한가요?"
               >
-                <Text style={styles.personalizationHelper}>
-                  기본 스타일을 고르고, 이번 여행에서 더 중요한 기준이 있다면 추가로 선택해주세요.
-                </Text>
-                <View style={styles.presetList}>
-                  {PRIORITY_PRESETS.map((preset) => {
-                    const selected = draft.priorityPreset === preset.value;
-                    return (
-                      <Pressable
-                        accessibilityRole="radio"
-                        accessibilityState={{ selected }}
-                        key={preset.value}
-                        onPress={() => updateDraft('priorityPreset', preset.value)}
-                        style={[styles.presetCard, selected && styles.presetCardSelected]}
-                      >
-                        <View style={styles.presetTitleRow}>
-                          <Text
-                            style={[styles.presetTitle, selected && styles.presetTitleSelected]}
+                {draft.priorityMode === 'manual' ? (
+                  <>
+                    <View style={styles.chipRow}>
+                      {USER_CRITERIA_OPTIONS.map((criterion) => (
+                        <ChoiceChip
+                          key={criterion.value}
+                          label={criterion.label}
+                          onPress={() => toggleUserCriterion(criterion.value)}
+                          selected={draft.userCriteria.includes(criterion.value)}
+                        />
+                      ))}
+                    </View>
+                    <Pressable
+                      onPress={() => switchPriorityMode('preset')}
+                      style={styles.modeSwitchButton}
+                    >
+                      <Ionicons color={colors.deepMint} name="flash-outline" size={17} />
+                      <Text style={styles.modeSwitchText}>빠르게 고르기</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.presetList}>
+                      {PRIORITY_PRESETS.map((preset) => {
+                        const selected = draft.priorityPreset === preset.value;
+                        return (
+                          <Pressable
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected }}
+                            key={preset.value}
+                            onPress={() =>
+                              setDraft((current) => ({
+                                ...current,
+                                priorityPreset: preset.value,
+                                userCriteria: [],
+                              }))
+                            }
+                            style={[styles.presetCard, selected && styles.presetCardSelected]}
                           >
-                            {preset.label}
-                          </Text>
-                          <Ionicons
-                            color={selected ? colors.orange : theme.textTertiary}
-                            name={selected ? 'radio-button-on' : 'radio-button-off'}
-                            size={20}
-                          />
-                        </View>
-                        <Text style={styles.presetDescription}>{preset.description}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <Text style={styles.criteriaTitle}>추가로 중요한 기준 (선택)</Text>
-                <View style={styles.chipRow}>
-                  {USER_CRITERIA_OPTIONS.map((criterion) => (
-                    <ChoiceChip
-                      key={criterion.value}
-                      label={criterion.label}
-                      onPress={() =>
-                        updateDraft(
-                          'userCriteria',
-                          draft.userCriteria.includes(criterion.value)
-                            ? draft.userCriteria.filter((item) => item !== criterion.value)
-                            : [...draft.userCriteria, criterion.value],
-                        )
-                      }
-                      selected={draft.userCriteria.includes(criterion.value)}
-                    />
-                  ))}
-                </View>
+                            <View style={styles.presetTitleRow}>
+                              <Text
+                                style={[styles.presetTitle, selected && styles.presetTitleSelected]}
+                              >
+                                {preset.label}
+                              </Text>
+                              <Ionicons
+                                color={selected ? colors.orange : theme.textTertiary}
+                                name={selected ? 'radio-button-on' : 'radio-button-off'}
+                                size={20}
+                              />
+                            </View>
+                            <Text style={styles.presetDescription}>{preset.description}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    <Pressable
+                      onPress={() => switchPriorityMode('manual')}
+                      style={styles.modeSwitchButton}
+                    >
+                      <Ionicons color={colors.deepMint} name="options-outline" size={17} />
+                      <Text style={styles.modeSwitchText}>중요한 기준 직접 고르기</Text>
+                    </Pressable>
+                  </>
+                )}
               </QuestionStep>
             ) : null}
 
@@ -1590,12 +1667,6 @@ const styles = StyleSheet.create({
   },
   paceText: { color: colors.gray, fontSize: typography.subtitle.fontSize, fontWeight: '700' },
   paceTextSelected: { color: colors.deepMint },
-  personalizationHelper: {
-    color: colors.gray,
-    fontSize: typography.label.fontSize,
-    lineHeight: 20,
-    marginBottom: spacing.sm + 2,
-  },
   presetList: { gap: spacing.sm },
   presetCard: {
     borderColor: theme.divider,
@@ -1621,12 +1692,19 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: spacing.xs,
   },
-  criteriaTitle: {
-    color: colors.ink,
+  modeSwitchButton: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginTop: spacing.lg,
+    minHeight: 42,
+    paddingHorizontal: spacing.md,
+  },
+  modeSwitchText: {
+    color: colors.deepMint,
     fontSize: typography.label.fontSize,
     fontWeight: '800',
-    marginBottom: spacing.sm,
-    marginTop: spacing.md,
   },
   reviewSection: { flex: 1 },
   reviewEyebrow: {
