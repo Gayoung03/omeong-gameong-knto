@@ -122,3 +122,24 @@ class MessageListResponse(APISchema):
     total: int
     limit: int
     offset: int
+
+
+class MessageCreate(APISchema):
+    """질문 한 건."""
+
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class AnswerResponse(APISchema):
+    """질문 하나에 저장된 **두 행**을 함께 돌려준다.
+
+    명세는 이 엔드포인트를 SSE 스트림으로 정해뒀지만
+    (`start` → `delta` → `done`), 지금은 **JSON 한 번에** 준다.
+    앱에서 먼저 눌러볼 수 있게 하기 위해서다.
+
+    두 필드가 각각 SSE 의 `start`·`done` 이 싣는 것과 같은 모양이라,
+    스트리밍으로 옮길 때 **전달 방식만** 바뀌고 내용은 그대로다.
+    """
+
+    user_message: MessageItem
+    assistant_message: MessageItem

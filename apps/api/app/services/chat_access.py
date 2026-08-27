@@ -9,6 +9,8 @@
 
 import uuid
 from collections.abc import Sequence
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy import Select, func, select
@@ -19,6 +21,8 @@ from app.db.models import ChatConversation, ChatMessage, Place, User
 from app.db.models.enums import MessageRole, PetPolicyType
 from app.schemas.chat import ChatPlaceSummary, ConversationItem
 from app.services.place_query import policy_type_expr
+
+KST = ZoneInfo("Asia/Seoul")
 
 #: 대화 목록 한 줄에 보이는 미리보기 길이. 설계 결정 D4
 #: (docs/planning/chatbot-design-decisions.md).
@@ -107,6 +111,48 @@ def conversation_with_stats(db: Session, conversation_id: uuid.UUID) -> Conversa
         )
     ).one()
     return to_conversation_item(row[0], row.last_message_preview, row.message_count)
+
+
+def asked_today(db: Session, user: User) -> int:
+    """오늘 이 사용자가 보낸 질문 수. 하루 상한(설계 결정 E3)을 재는 데 쓴다.
+
+    **KST 자정 기준**이다. 서버가 어디서 돌든 사용자가 보는 날짜로 센다.
+    `func.now()` 를 쓰지 않는 이유는 그 값이 트랜잭션 시작 시각이라
+    "오늘"의 기준으로는 헷갈리기 때문이다.
+    """
+    midnight = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0)
+    return (
+        db.scalar(
+            select(func.count(ChatMessage.id))
+            .join(ChatConversation, ChatConversation.id == ChatMessage.conversation_id)
+            .where(
+                ChatConversation.user_id == user.id,
+                ChatMessage.role == MessageRole.USER,
+                ChatMessage.created_at >= midnight,
+            )
+        )
+        or 0
+    )
+
+
+def recent_history(db: Session, conversation_id: uuid.UUID, limit: int) -> list[ChatMessage]:
+    """모델에게 함께 보낼 지난 메시지. 오래된 순으로 돌려준다.
+
+    **최근 `limit` 개를 고른 뒤 다시 오래된 순으로 뒤집는다.** 앞에서부터
+    자르면 대화 초반만 남아 정작 방금 한 이야기를 모델이 못 본다.
+
+    `system` 은 제외한다 — 시스템 프롬프트는 매번 새로 만들어 넣는다.
+    """
+    newest = db.scalars(
+        select(ChatMessage)
+        .where(
+            ChatMessage.conversation_id == conversation_id,
+            ChatMessage.role != MessageRole.SYSTEM,
+        )
+        .order_by(ChatMessage.created_at.desc())
+        .limit(limit)
+    ).all()
+    return list(reversed(newest))
 
 
 def places_of(
