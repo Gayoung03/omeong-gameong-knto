@@ -37,6 +37,7 @@ from app.db.models.enums import (
     TripPace,
 )
 from app.db.session import SessionLocal
+from scripts.seed_guides import seed_guides
 
 KST = timezone(timedelta(hours=9))
 
@@ -407,6 +408,7 @@ def main() -> None:
         places = seed_places(db)
         route = seed_route(db, user, pet, places)
         seed_checklist_and_memos(db, route)
+        seed_guides(db)
         db.commit()
     print("완료")
 
