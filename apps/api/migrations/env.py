@@ -7,7 +7,9 @@ from app.db import models  # noqa: F401
 from app.db.base import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# configparser 는 값 안의 "%" 를 보간 문법으로 읽는다.
+# 비밀번호에 URL 인코딩 문자(%21 등)가 있으면 여기서 ValueError 가 나므로 이스케이프한다.
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
