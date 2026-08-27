@@ -2,7 +2,7 @@ import uuid
 
 import pytest
 
-from app.db.models.enums import PetPolicyType, PlaceEnvironment
+from app.db.models.enums import PetPolicyType, PlaceEnvironment, ScheduleItemType
 from app.recommend.schemas import Candidate, PetPolicy, Weights
 from app.recommend.scoring import (
     ScoringContext,
@@ -52,10 +52,14 @@ def test_preference_uses_standard_tag_jaccard(
     assert preference_score(user_tags, place_tags) == pytest.approx(expected)
 
 
+def test_preference_can_match_mobile_category_choice() -> None:
+    assert preference_score(
+        {"category:restaurant"}, set(), ScheduleItemType.RESTAURANT
+    ) == pytest.approx(1.0)
+
+
 def test_weather_has_no_sunny_day_indoor_bias() -> None:
-    assert weather_score(PlaceEnvironment.INDOOR, 0) == weather_score(
-        PlaceEnvironment.OUTDOOR, 0
-    )
+    assert weather_score(PlaceEnvironment.INDOOR, 0) == weather_score(PlaceEnvironment.OUTDOOR, 0)
     assert weather_score(PlaceEnvironment.INDOOR, 100) > weather_score(
         PlaceEnvironment.OUTDOOR, 100
     )
@@ -64,6 +68,11 @@ def test_weather_has_no_sunny_day_indoor_bias() -> None:
 def test_unknown_environment_gets_neutral_weather_score() -> None:
     assert weather_score(None, 0) == 0.5
     assert weather_score(None, 100) == 0.5
+
+
+def test_missing_forecast_gets_neutral_weather_score() -> None:
+    assert weather_score(PlaceEnvironment.INDOOR, None) == 0.5
+    assert weather_score(PlaceEnvironment.OUTDOOR, None) == 0.5
 
 
 def test_proximity_is_one_at_base_and_zero_beyond_limit() -> None:

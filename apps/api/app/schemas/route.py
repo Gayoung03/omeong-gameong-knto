@@ -347,3 +347,84 @@ class RouteCreate(APISchema):
         if self.end_at <= self.start_at:
             raise ValueError("endAt 은 startAt 보다 뒤여야 합니다")
         return self
+
+
+# ---------------------------------------------------------------------------
+# 추천 생성 (POST /route-requests)
+# ---------------------------------------------------------------------------
+
+
+class RouteRequestStayCreate(APISchema):
+    place_id: uuid.UUID | None = None
+    name: str = Field(min_length=1, max_length=200)
+    address: str | None = None
+    check_in_at: datetime | None = None
+    check_out_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _check_location_and_period(self) -> "RouteRequestStayCreate":
+        if self.place_id is None and not (self.address or "").strip():
+            raise ValueError("숙소는 placeId 또는 address 중 하나가 있어야 합니다")
+        if self.check_in_at and self.check_out_at and self.check_out_at <= self.check_in_at:
+            raise ValueError("숙소 checkOutAt은 checkInAt보다 뒤여야 합니다")
+        return self
+
+
+class RouteRequestCreate(APISchema):
+    title: str | None = Field(default=None, max_length=150)
+    start_at: datetime
+    end_at: datetime
+    departure_location: str | None = Field(default=None, max_length=100)
+    departure_place_id: uuid.UUID | None = None
+    pace: TripPace
+    transport: TransportType
+    companion_count: int = Field(default=1, ge=1)
+    preferred_tags: list[str] = Field(default_factory=list)
+    priority_preset: str = Field(default="balanced", max_length=30)
+    user_criteria: list[str] = Field(default_factory=list)
+    request_text: str | None = None
+    pet_ids: list[uuid.UUID] = Field(default_factory=list)
+    stays: list[RouteRequestStayCreate] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_request(self) -> "RouteRequestCreate":
+        if self.end_at <= self.start_at:
+            raise ValueError("endAt은 startAt보다 뒤여야 합니다")
+        has_departure = self.departure_place_id or (self.departure_location or "").strip()
+        if not has_departure and not self.stays:
+            raise ValueError("출발 장소나 숙소가 하나 이상 필요합니다")
+        return self
+
+
+class RouteRequestAccepted(APISchema):
+    route_id: uuid.UUID
+    route_request_id: uuid.UUID
+    status: RouteStatus
+    version: int
+
+
+class RouteGenerationStatus(APISchema):
+    route_id: uuid.UUID
+    status: RouteStatus
+    version: int
+    failure_reason: str | None = None
+
+
+class RouteEditSuggestionRequest(APISchema):
+    instruction: str = Field(min_length=1, max_length=500)
+
+
+class RouteReplacementSuggestion(APISchema):
+    place_id: uuid.UUID
+    name: str
+    category: str
+    address: str | None
+    primary_image_url: str | None
+    recommendation_score: float
+    recommendation_reason: str
+
+
+class RouteEditSuggestionResponse(APISchema):
+    target_item_id: uuid.UUID
+    interpretation: str
+    suggestions: list[RouteReplacementSuggestion]

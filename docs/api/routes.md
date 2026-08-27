@@ -163,6 +163,8 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
   "transport": "rental_car",
   "companionCount": 2,
   "preferredTags": ["바다", "카페"],
+  "priorityPreset": "balanced",
+  "userCriteria": ["pet", "proximity"],
   "requestText": "산책하기 좋은 곳 위주로 부탁해요",
   "petIds": ["550e8400-e29b-41d4-a716-446655440000"],
   "stays": [
@@ -185,6 +187,23 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 | `companionCount` | — | 기본 1. 1 이상 |
 | `petIds` | — | 본인 소유 반려동물 |
 | `stays[].checkOutAt` | — | `checkInAt`보다 뒤 |
+
+숙소 좌표는 두 방식으로 결정합니다.
+
+1. `stays[].placeId`가 있으면 `places.latitude/longitude`를 사용합니다.
+2. `placeId`가 없으면 `stays[].address`를 카카오 주소 검색 API로 변환합니다.
+
+둘 다 보내면 DB 장소 좌표가 우선입니다. 숙소에는 `placeId` 또는 `address` 중 하나가
+반드시 있어야 합니다. 현재 TMAP 일정 조립이 지원하는 이동수단은 `rental_car`,
+`own_car`, `taxi`, `walk`이며 나머지는 `422`를 반환합니다.
+
+`priorityPreset`에서 기본 가중치 배수를 적용한 다음 `userCriteria`로 사용자가 고른
+항목을 추가 부스트하고, 합계가 1이 되도록 정규화합니다. 최종값만
+`route_requests.applied_weights`에 저장합니다.
+
+추천 생성 시 출발지(없으면 첫 숙소) 좌표를 기상청 5km 격자로 변환해 단기예보를
+조회합니다. 여행 날짜들의 최대 강수확률을 `weather` 점수에 반영하며, 예보 범위를
+벗어난 날짜이거나 기상청 호출이 실패하면 날씨 점수는 중립값으로 처리합니다.
 
 `pace`와 `transport`, `preferredTags`는 **이번 여행 조건**입니다.
 값을 보내지 않으면 사용자 기본 취향(`user_travel_preferences`)을 씁니다.
@@ -264,6 +283,21 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 실패하면 사용자는 다시 시도하지 “왜 실패했는지”를 나중에 다시 찾아보지 않습니다.
 기록으로 남길 가치가 적어 스키마를 늘리지 않았습니다.
 서버 로그에는 남으므로 원인 추적에는 문제가 없습니다.
+
+---
+
+## POST /routes/{routeId}/edit-suggestions
+
+완성된 추천 루트에서 자연어로 교체 후보를 요청합니다.
+
+```json
+{ "instruction": "둘째 날 카페를 숙소에서 가까운 조용한 곳으로 바꿔줘" }
+```
+
+루트 수정 전용 LLM은 현재 일정에서 교체 대상과 조건만 해석합니다. 실제 후보는
+일반 챗봇이 아니라 기존 DB 하드 필터와 요청 당시의 `applied_weights`로 다시 계산합니다.
+응답의 `suggestions`에는 현재 일정과 겹치지 않는 상위 3개 장소가 담기며, 이 요청만으로
+일정은 변경되지 않습니다.
 
 ---
 
