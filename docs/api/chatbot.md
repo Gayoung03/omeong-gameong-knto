@@ -192,6 +192,7 @@ GET /api/v1/chat/conversations/{conversationId}/messages?limit=50&offset=0
           "id": "...",
           "name": "함덕 바다뷰 카페",
           "category": "cafe",
+          "address": "제주특별자치도 제주시 조천읍 조함해안로 525",
           "primaryImageUrl": "https://...",
           "latitude": 33.5432,
           "longitude": 126.6695,

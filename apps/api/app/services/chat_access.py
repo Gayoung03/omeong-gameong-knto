@@ -183,6 +183,7 @@ def places_of(
             id=row[0].id,
             name=row[0].name,
             category=row[0].category,
+            address=row[0].road_address or row[0].address,
             primary_image_url=row[0].primary_image_url,
             latitude=float(row[0].latitude),
             longitude=float(row[0].longitude),

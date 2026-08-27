@@ -90,6 +90,8 @@ class ChatPlaceSummary(APISchema):
     id: uuid.UUID
     name: str
     category: str
+    #: 지도 마커 카드가 이름 아래에 그린다. 없으면 빈 줄이 남는다.
+    address: str | None
     primary_image_url: str | None
     latitude: float
     longitude: float
