@@ -108,6 +108,22 @@
 
 `firstMessage`를 보냈으면 답변은 `POST .../messages`와 같은 방식으로 이어집니다.
 
+> **`firstMessage`는 아직 구현돼 있지 않습니다.** 답변 생성이 있어야 의미가 있는
+> 필드라 스트리밍 엔드포인트와 함께 붙입니다. 지금 보내면 무시됩니다.
+> `title`의 "없으면 서버가 첫 질문에서 생성"도 같은 시점에 들어옵니다.
+
+### 에러
+
+| 코드 | 상황 |
+| --- | --- |
+| 403 | 다른 사용자의 `routeId` |
+| 404 | 없는 `routeId` |
+| 409 | 대화 개수 상한(100개) 초과 |
+
+`409`는 **자동으로 지우지 않기 때문에** 필요합니다. 오래된 대화를 말없이 지우면
+사용자가 아껴둔 기록이 사라지므로, 만들지 못하게 막고 직접 지우도록 안내합니다
+([`chatbot-design-decisions.md`](../planning/chatbot-design-decisions.md) D2).
+
 ---
 
 ## GET /chat/conversations/{conversationId}
@@ -333,3 +349,4 @@ data: {"event":"error","code":"llm_failed","detail":"답변 생성에 실패했�
 | 2026-08-12 | 초안 작성. 확정 #6(`id`를 UUID 문자열로)과 앱 타입 정리 반영 |
 | 2026-08-18 | 답변을 **SSE 스트리밍**으로 확정. `POST /chat/conversations/{id}/messages` 전면 재작성 — `start`·`delta`·`done`·`error` 이벤트 정의, 중단 시 부분 답변 미저장, 중지 버튼은 범위 밖. 나머지 6개 엔드포인트는 변경 없음 |
 | 2026-08-12 | 목록에만 있고 본문이 없던 `GET /chat/conversations/{conversationId}` 명세 작성 |
+| 2026-08-27 | 대화 CRUD 6개 구현하며 보완 — `POST /chat/conversations`에 에러 표 신설(`409` 대화 개수 상한), `firstMessage` 미구현 명시 |
