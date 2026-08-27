@@ -1,6 +1,7 @@
 """Database metadata regression tests."""
 
 from sqlalchemy import CheckConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.db import models  # noqa: F401
 from app.db.base import Base
@@ -99,3 +100,12 @@ def test_unverifiable_place_scores_are_removed() -> None:
         "crowd_level",
         "weather_sensitivity",
     }.intersection(places.c.keys())
+
+
+def test_route_request_stores_applied_weight_snapshot() -> None:
+    route_requests = Base.metadata.tables["route_requests"]
+
+    assert route_requests.c.priority_preset.type.length == 30
+    assert isinstance(route_requests.c.applied_weights.type, JSONB)
+    assert route_requests.c.priority_preset.nullable is True
+    assert route_requests.c.applied_weights.nullable is True
