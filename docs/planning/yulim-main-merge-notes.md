@@ -127,12 +127,12 @@
 | `assets/images/pets/` (신규)                                          | 몽이·코코 프로필 일러스트 (각 256×256 JPG, 15~17KB)                                                                                                       | #32     |
 | `assets/images/profile/default-user.jpg` (신규)                       | 사용자 기본 프로필 일러스트 (256×256, 10KB)                                                                                                               | #32     |
 | `features/profile/services/profileService.ts`                         | `DEFAULT_PROFILE_IMAGE` 를 빈 문자열에서 기본 일러스트로. 사진을 지워도 회색 아이콘 대신 일러스트가 남는다                                                | #32     |
-| `src/components/ui/StatTile.tsx`                                      | `StatTileVariant` 에 `purple` 추가. 마이페이지 타일이 4개에서 5개('내가 쓴 리뷰')로 늘어 색이 하나 더 필요했다. **새 색 토큰은 만들지 않았다** — 이미 있는 `categoryColors.purple` 을 참조한다 | 예정    |
-| `app/_layout.tsx`                                                     | `Stack.Screen` 2개 추가 — `places/[placeId]/reviews/[reviewId]/edit`(리뷰 수정), `reviews/my`(내가 쓴 리뷰)                                               | 예정    |
-| `.gitignore`                                                          | `design-assets/` 추가. 디자인 원본은 저장소에 넣지 않는다 — 용량이 크고 리뷰 대상이 아니다. **계속 untracked 로 떠서 `git add .` 사고의 표적이었다** | 예정    |
-| `src/services/apiError.ts`                                            | `getApiErrorDetail()` 추가(신규 export, 기존 동작 변화 없음). `__DEV__` 에서만 서버가 보낸 `detail` 원문을 돌려준다 — 422 처럼 이유가 본문에만 있는 오류를 화면에서 바로 읽기 위해서다. 파일 소유는 lucky 님 | 예정    |
-| `src/components/feedback/ConfirmModal.tsx` (신규)                     | **예/아니오 확인 창 공용화.** 같은 생김새의 모달을 네 벌 따로 들고 있었다(`LogoutConfirmModal`·`DiscardChangesModal`·`ReviewDeleteConfirmModal`·`TripDeleteConfirmModal`). 넷을 얇은 래퍼로 바꿔 **호출부는 하나도 안 고쳤다** | 예정    |
-| `src/hooks/useSafeBack.ts` (신규)                                     | 뒤로 가되 갈 곳이 없으면 지정한 화면으로 보낸다. `router.back()` 만 부르면 **웹에서 히스토리가 없을 때 죽는다** | 예정    |
+| `src/components/ui/StatTile.tsx`                                      | `StatTileVariant` 에 `purple` 추가. 마이페이지 타일이 4개에서 5개('내가 쓴 리뷰')로 늘어 색이 하나 더 필요했다. **새 색 토큰은 만들지 않았다** — 이미 있는 `categoryColors.purple` 을 참조한다 | #86    |
+| `app/_layout.tsx`                                                     | `Stack.Screen` 2개 추가 — `places/[placeId]/reviews/[reviewId]/edit`(리뷰 수정), `reviews/my`(내가 쓴 리뷰)                                               | #86    |
+| `.gitignore`                                                          | `design-assets/` 추가. 디자인 원본은 저장소에 넣지 않는다 — 용량이 크고 리뷰 대상이 아니다. **계속 untracked 로 떠서 `git add .` 사고의 표적이었다** | #90    |
+| `src/services/apiError.ts`                                            | `getApiErrorDetail()` 추가(신규 export, 기존 동작 변화 없음). `__DEV__` 에서만 서버가 보낸 `detail` 원문을 돌려준다 — 422 처럼 이유가 본문에만 있는 오류를 화면에서 바로 읽기 위해서다. 파일 소유는 lucky 님 | #90    |
+| `src/components/feedback/ConfirmModal.tsx` (신규)                     | **예/아니오 확인 창 공용화.** 같은 생김새의 모달을 네 벌 따로 들고 있었다(`LogoutConfirmModal`·`DiscardChangesModal`·`ReviewDeleteConfirmModal`·`TripDeleteConfirmModal`). 넷을 얇은 래퍼로 바꿔 **호출부는 하나도 안 고쳤다** | #91    |
+| `src/hooks/useSafeBack.ts` (신규)                                     | 뒤로 가되 갈 곳이 없으면 지정한 화면으로 보낸다. `router.back()` 만 부르면 **웹에서 히스토리가 없을 때 죽는다** | #91    |
 
 > **`app/_layout.tsx`는 충돌 위험이 큰 파일이다.** 다른 팀원도 라우트를 추가하면서 건드리게 된다.
 > 변경 내용 자체는 기존 트리를 `GestureHandlerRootView`로 한 겹 감싼 것뿐이라

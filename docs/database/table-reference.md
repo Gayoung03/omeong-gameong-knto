@@ -1,6 +1,6 @@
 # 오멍가멍 테이블 명세
 
-이 문서는 [`schema.dbml`](./schema.dbml)에 정의된 공모전 MVP 테이블 30개를 설명합니다.
+이 문서는 [`schema.dbml`](./schema.dbml)에 정의된 공모전 MVP 테이블 36개를 설명합니다.
 
 ## 공통 규칙
 
@@ -535,3 +535,72 @@ Alembic migration에서 FK별 `ON DELETE`를 명시적으로 정의합니다.
 - 운송사별 반려동물 탑승 규정
 - 데이터 동기화 이력
 - RAG 문서·pgvector 임베딩
+
+---
+
+## 여행 가이드 콘텐츠
+
+항공사·여객선의 반려동물 규정과 여행 준비 안내를 담습니다.
+수집 과정과 판단 근거는 [`docs/planning/travel-guide-collection.md`](../planning/travel-guide-collection.md)에 있습니다.
+
+**한 덩어리가 아니라 두 종류로 나눴습니다.**
+
+| 테이블 | 담는 것 |
+| --- | --- |
+| `guide_documents` | 사람이 **읽는** 글 (마크다운 본문) |
+| `guide_document_sources` | 그 글의 **근거 출처** — 여러 건일 수 있음 |
+| `transport_pet_rules` | 챗봇이 **질의하는 값** — 무게·요금·위탁 가능 여부 |
+| `transport_restricted_breeds` | 운송사별 **제한 견종** |
+
+마크다운 본문만으로는 *"우리 애 12kg인데 어디 타요?"* 에 답할 수 없어서 값을 따로 뒀습니다.
+`transport_pet_rules.cabin_max_weight_kg` · `cargo_allowed` 로 걸러낸 뒤,
+해당 운송사의 `guide_documents.body` 를 함께 보여주는 방식입니다.
+
+### `guide_documents`
+
+- `slug` — 씨앗 데이터가 중복 삽입을 피하는 기준. `title` 은 바뀔 수 있으므로 여기에 의존하지 않습니다.
+- `category` — `airline` / `ferry` / `preparation`
+- `verified_at` — 본문의 *"2026년 8월 기준"* 문구의 근거. 규정은 바뀌므로 언제 확인했는지 남깁니다.
+- `is_active` — 규정이 바뀌어 내려야 할 때 지우지 않고 끕니다.
+
+### `guide_document_sources`
+
+`place_pet_policies` 는 `source` · `source_url` · `verified_at` 을 컬럼으로 갖지만,
+가이드 문서는 **출처가 여러 건**일 수 있어 테이블로 분리했습니다.
+(제주도 반입 규정 문서는 동물위생시험소 안내 + 고시 2건, 총 3건이 근거입니다.)
+
+`source_url` 이 없는 출처도 있습니다 — 유선 확인 등. 그때는 `source_note` 에 남깁니다.
+
+### ⚠️ `transport_pet_rules` — boolean은 전부 nullable입니다
+
+**`NOT NULL DEFAULT false` 로 바꾸지 마세요.**
+
+| 값 | 뜻 |
+| --- | --- |
+| `true` | 가능하다고 **명시됨** |
+| `false` | **불가라고 명시됨** |
+| `null` | **확인 안 됨** |
+
+원문이 「불가」라고 밝힌 것과 아무 언급이 없는 것은 다릅니다.
+`false` 로 뭉개면 확인되지 않은 항목이 불가로 바뀌고, **챗봇이 없는 규정을 만들어 답합니다.**
+
+> 실제 사례 — 에어부산은 온라인 체크인 제한 언급이 없습니다.
+> 다른 세 곳이 「불가」를 명시했다고 해서 에어부산도 `false` 로 넣으면,
+> 실제로는 가능한데 "안 된다"고 안내하게 됩니다.
+
+`null` 인 항목은 **"확인이 필요해요"** 로 답해야 합니다.
+
+- `cabin_max_weight_kg` · `cargo_max_weight_kg` — **케이지 포함** 무게입니다. 동물만의 무게가 아닙니다.
+- `route` — 여객선만 씁니다(`완도↔제주`). 항공사는 `null`.
+- `duration_minutes` — 여객선 소요 시간. 항공기는 노선별로 갈려 넣지 않습니다.
+
+### ⚠️ `transport_restricted_breeds` — 목록을 합치지 마세요
+
+운송사마다 목록이 다릅니다. 대한항공 8종 / 아시아나 12종 / 진에어 10종 / 제주항공 15종이고,
+**도베르만은 제주항공 목록에만** 있습니다. `transport_pet_rule_id` 로 운송사에 묶어 둡니다.
+
+`is_example_only` — 원문이 *"아메리칸 핏불테리어, 도베르만과 **같은** 투기견종"* 처럼
+**예시만 든 경우** `true` 입니다. 티웨이(3종)·이스타(4종)가 여기 해당합니다.
+
+이 값이 `true` 면 목록을 확정으로 보여주면 안 되고,
+**"지정 견종이 있으니 예약 시 확인하세요"** 로 답해야 합니다.

@@ -3,11 +3,20 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { KakaoPlaceMap } from '@/src/features/places/components/KakaoPlaceMap';
-import type { Place } from '@/src/features/places/types/place';
+
 import { colors } from '@/src/theme';
 
+import type { ChatPlace } from '../types/chatbot';
+
+/**
+ * 답변이 언급한 장소를 지도와 목록으로 보여준다.
+ *
+ * 장소 탐색의 `Place` 가 아니라 **챗봇 전용 `ChatPlace`** 를 받는다. 서버가
+ * `referencedPlaces` 로 주는 값이 그만큼뿐이라(거리·평점·즐겨찾기가 없다),
+ * `Place` 를 요구하면 없는 필드를 지어내 채워야 한다.
+ */
 type ChatMapResponseProps = {
-  places: Place[];
+  places: ChatPlace[];
 };
 
 const kakaoJavaScriptKey = process.env.EXPO_PUBLIC_KAKAO_JS_KEY?.trim();
