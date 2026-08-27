@@ -1,9 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -16,11 +16,20 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { CalendarPicker, WheelTimePicker } from '../components/InlineDateTimePicker';
+import { CalendarPicker } from '../components/InlineDateTimePicker';
+import {
+  isPriorityPreset,
+  isUserCriterion,
+  PRIORITY_PRESETS,
+  toPersonalizationPayload,
+  USER_CRITERIA_OPTIONS,
+  type PriorityPreset,
+  type UserCriterion,
+} from '../personalization';
 import { formatTripDuration } from '../utils/tripDuration';
 
-import { AppHeader } from '@/src/components/layout/AppHeader';
 import { ConfirmModal } from '@/src/components/feedback/ConfirmModal';
+import { brandAssets } from '@/src/config/brandAssets';
 import { colors as theme, overlayColors, radius, spacing, typography } from '@/src/theme';
 
 const DRAFT_KEY = 'route-input-draft';
@@ -47,8 +56,7 @@ type Trip = { title: string; startAt: string; endAt: string };
 type Stay = { id: string; name: string; period: string; address: string };
 type Pet = { name: string; species: string; size: string; weight: string };
 type EditTarget = 'trip' | 'pet' | 'stay' | null;
-type PickerTarget = 'start-date' | 'start-time' | 'end-date' | 'end-time' | null;
-type UtilityModal = 'later' | 'reset' | null;
+type PickerTarget = 'start-date' | 'end-date' | null;
 
 type RouteDraft = {
   trip: Trip;
@@ -57,8 +65,34 @@ type RouteDraft = {
   stays: Stay[];
   pet: Pet;
   places: string[];
-  placeOptions: string[];
   pace: string;
+  priorityPreset: PriorityPreset;
+  userCriteria: UserCriterion[];
+};
+
+const PLACE_TYPE_OPTIONS = [
+  '바다·해변',
+  '카페',
+  '산책·공원',
+  '실내 관광',
+  '오름·자연',
+  '체험',
+  '맛집',
+  '문화·전시',
+] as const;
+
+const LEGACY_PLACE_TYPE_MAP: Record<string, (typeof PLACE_TYPE_OPTIONS)[number]> = {
+  바다: '바다·해변',
+  카페: '카페',
+  산책로: '산책·공원',
+  '실내 관광지': '실내 관광',
+  오름: '오름·자연',
+};
+
+type StoredRouteDraft = {
+  version: 2;
+  draft: RouteDraft;
+  currentStep: number;
 };
 
 const initialDraft: RouteDraft = {
@@ -71,9 +105,10 @@ const initialDraft: RouteDraft = {
   transport: '렌터카',
   stays: [{ id: 'stay-1', name: '애월 오션펜션', period: '1~2일차', address: '제주시 애월읍' }],
   pet: { name: '몽이', species: '강아지', size: '소형', weight: '4.2kg' },
-  places: ['바다', '카페', '오름'],
-  placeOptions: ['바다', '카페', '산책로', '실내 관광지', '오름'],
+  places: [],
   pace: '여유롭게',
+  priorityPreset: 'balanced',
+  userCriteria: [],
 };
 
 /**
@@ -87,7 +122,10 @@ const STEPS = [
   { key: 'pet', optional: false },
   { key: 'places', optional: false },
   { key: 'pace', optional: true },
+  { key: 'priority', optional: true },
 ] as const;
+
+const REVIEW_STEP = STEPS.length;
 
 const formatDate = (iso: string) =>
   new Intl.DateTimeFormat('ko-KR', {
@@ -183,91 +221,32 @@ function ChoiceChip({
   );
 }
 
-type StepState = 'current' | 'done' | 'locked';
-
-/**
- * 입력 단계 하나.
- *
- * 한 번에 하나씩만 펼친다. 아직 차례가 아닌 단계는 잠금으로 두고,
- * 끝난 단계는 한 줄 요약으로 접어 지금 할 일이 화면에 하나만 보이게 한다.
- */
-function StepSection({
+function QuestionStep({
   icon,
   title,
+  description,
   children,
   onEdit,
-  onNext,
-  onOpen,
-  onSkip,
-  state,
-  summary,
-  nextLabel = '다음',
   actionLabel = '수정',
   accent = colors.orange,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
+  description: string;
   children: React.ReactNode;
   onEdit?: () => void;
-  /** 다음 단계로 넘어간다 */
-  onNext: () => void;
-  /** 접힌 단계를 다시 펼친다 */
-  onOpen: () => void;
-  /** 선택 단계에만 있다. 값을 비운 채 넘어간다 */
-  onSkip?: () => void;
-  state: StepState;
-  /** 접혔을 때 한 줄로 보여줄 내용 */
-  summary: string;
-  nextLabel?: string;
   actionLabel?: string;
   accent?: string;
 }) {
-  if (state === 'locked') {
-    return (
-      <View
-        accessibilityLabel={`${title} 단계 잠김`}
-        style={[styles.sectionCard, styles.lockedCard]}
-      >
-        <View style={styles.sectionTitleWrap}>
-          <View style={[styles.sectionIcon, styles.lockedIcon]}>
-            <Ionicons color={theme.textTertiary} name="lock-closed" size={16} />
-          </View>
-          <Text style={styles.lockedTitle}>{title}</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (state === 'done') {
-    return (
-      <Pressable
-        accessibilityLabel={`${title} 다시 열기`}
-        accessibilityRole="button"
-        onPress={onOpen}
-        style={({ pressed }) => [styles.sectionCard, styles.doneCard, pressed && styles.pressed]}
-      >
-        <View style={styles.sectionTitleWrap}>
-          <View style={[styles.sectionIcon, styles.doneIcon, { backgroundColor: `${accent}16` }]}>
-            <Ionicons color={accent} name={icon} size={16} />
-          </View>
-          <Text style={styles.doneTitle}>{title}</Text>
-          <Text numberOfLines={1} style={styles.doneSummary}>
-            {summary}
-          </Text>
-          <Ionicons color={colors.deepMint} name="checkmark-circle" size={19} />
-        </View>
-      </Pressable>
-    );
-  }
-
   return (
-    <View style={styles.sectionCard}>
-      <View style={styles.sectionHeading}>
-        <View style={styles.sectionTitleWrap}>
-          <View style={[styles.sectionIcon, { backgroundColor: `${accent}16` }]}>
-            <Ionicons color={accent} name={icon} size={19} />
-          </View>
-          <Text style={styles.sectionTitle}>{title}</Text>
+    <View style={styles.questionStep}>
+      <View style={[styles.questionIcon, { backgroundColor: `${accent}16` }]}>
+        <Ionicons color={accent} name={icon} size={24} />
+      </View>
+      <View style={styles.questionHeading}>
+        <View style={styles.questionCopy}>
+          <Text style={styles.questionTitle}>{title}</Text>
+          <Text style={styles.questionDescription}>{description}</Text>
         </View>
         {onEdit ? (
           <Pressable onPress={onEdit} style={styles.editButton}>
@@ -277,21 +256,6 @@ function StepSection({
         ) : null}
       </View>
       {children}
-
-      <Pressable
-        onPress={onNext}
-        style={({ pressed }) => [styles.stepNextButton, pressed && styles.pressed]}
-      >
-        <Text style={styles.stepNextText}>{nextLabel}</Text>
-      </Pressable>
-      {onSkip ? (
-        <Pressable
-          onPress={onSkip}
-          style={({ pressed }) => [styles.stepSkipButton, pressed && styles.pressed]}
-        >
-          <Text style={styles.stepSkipText}>건너뛰기</Text>
-        </Pressable>
-      ) : null}
     </View>
   );
 }
@@ -325,6 +289,69 @@ function AddRow({
   );
 }
 
+function serializeDraft(draft: RouteDraft, currentStep: number): string {
+  const stored: StoredRouteDraft = { version: 2, draft, currentStep };
+  return JSON.stringify(stored);
+}
+
+function restoreDraft(saved: string): { draft: RouteDraft; currentStep: number } {
+  const parsed = JSON.parse(saved) as Partial<RouteDraft> | Partial<StoredRouteDraft>;
+  const savedDraft: Partial<RouteDraft> =
+    'draft' in parsed && parsed.draft
+      ? (parsed.draft as Partial<RouteDraft>)
+      : (parsed as Partial<RouteDraft>);
+  const savedTrip = savedDraft.trip as Trip | undefined;
+  const priorityPreset = isPriorityPreset(savedDraft.priorityPreset)
+    ? savedDraft.priorityPreset
+    : initialDraft.priorityPreset;
+  const userCriteria = Array.isArray(savedDraft.userCriteria)
+    ? savedDraft.userCriteria.filter(isUserCriterion)
+    : initialDraft.userCriteria;
+  const places = Array.isArray(savedDraft.places)
+    ? [
+        ...new Set(
+          savedDraft.places
+            .map((place) => LEGACY_PLACE_TYPE_MAP[place] ?? place)
+            .filter((place) => PLACE_TYPE_OPTIONS.some((option) => option === place)),
+        ),
+      ].slice(0, 3)
+    : initialDraft.places;
+  const requestedStep = 'currentStep' in parsed ? parsed.currentStep : REVIEW_STEP;
+  const currentStep =
+    typeof requestedStep === 'number'
+      ? Math.max(0, Math.min(REVIEW_STEP, requestedStep))
+      : REVIEW_STEP;
+
+  return {
+    draft: {
+      ...initialDraft,
+      ...savedDraft,
+      places,
+      priorityPreset,
+      userCriteria,
+      trip: savedTrip?.startAt && savedTrip?.endAt ? savedTrip : initialDraft.trip,
+    },
+    currentStep,
+  };
+}
+
+function validateStep(index: number, draft: RouteDraft): string | null {
+  if (
+    index === 0 &&
+    (!draft.trip.title || new Date(draft.trip.endAt) <= new Date(draft.trip.startAt))
+  ) {
+    return '여행 일정을 다시 확인해주세요.';
+  }
+  if (index === 1 && !draft.transport) return '이동수단을 하나 선택해주세요.';
+  if (index === 3 && (!draft.pet.name || !draft.pet.species)) {
+    return '함께 여행할 반려동물 정보를 입력해주세요.';
+  }
+  if (index === 4 && draft.places.length === 0) {
+    return '가고 싶은 장소 유형을 한 개 이상 선택해주세요.';
+  }
+  return null;
+}
+
 export function RouteInputScreen() {
   const router = useRouter();
   const [draft, setDraft] = useState<RouteDraft>(initialDraft);
@@ -333,9 +360,10 @@ export function RouteInputScreen() {
   const [editingStayId, setEditingStayId] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [newTransport, setNewTransport] = useState('');
-  const [newPlace, setNewPlace] = useState('');
-  const [notice, setNotice] = useState('');
-  const [utilityModal, setUtilityModal] = useState<UtilityModal>(null);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [autoSaveError, setAutoSaveError] = useState('');
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /**
    * 삭제를 기다리는 숙소.
    *
@@ -345,51 +373,68 @@ export function RouteInputScreen() {
   const [pendingStayDelete, setPendingStayDelete] = useState<Stay | null>(null);
   const [formError, setFormError] = useState('');
   const [pageError, setPageError] = useState('');
-  /** 지금까지 열린 단계 수. 되돌아가도 줄지 않는다. */
-  const [unlockedCount, setUnlockedCount] = useState(1);
-  /** 지금 펼쳐 놓은 단계. STEPS.length 면 전부 접힌 상태다. */
+  /** 현재 표시하는 단계. STEPS.length 면 최종 확인 화면이다. */
   const [openIndex, setOpenIndex] = useState(0);
+  const [returnToReview, setReturnToReview] = useState(false);
 
-  const isAllUnlocked = unlockedCount >= STEPS.length;
-
-  const stepState = (index: number): StepState => {
-    if (index >= unlockedCount) return 'locked';
-    return index === openIndex ? 'current' : 'done';
-  };
+  const isReviewStep = openIndex === REVIEW_STEP;
 
   const goNextStep = (index: number) => {
-    // 이미 마지막까지 지났다면(=수정하러 되돌아온 경우) 다음을 펼치지 않고 그대로 접는다.
-    const isRevisiting = unlockedCount >= STEPS.length;
-    setUnlockedCount((current) => Math.max(current, index + 2));
-    setOpenIndex(isRevisiting ? STEPS.length : index + 1);
+    const error = validateStep(index, draft);
+    if (error) {
+      setPageError(error);
+      return;
+    }
+    setPageError('');
+    setOpenIndex(returnToReview ? REVIEW_STEP : Math.min(REVIEW_STEP, index + 1));
+    setReturnToReview(false);
   };
 
   const nextStepLabel = (index: number) => {
-    if (unlockedCount >= STEPS.length) return '확인';
-    return index === STEPS.length - 1 ? '완료' : '다음';
+    return index === STEPS.length - 1 ? '확인' : '다음';
+  };
+
+  const skipCurrentStep = () => {
+    if (openIndex === 2) updateDraft('stays', []);
+    if (openIndex === 5) updateDraft('pace', initialDraft.pace);
+    if (openIndex === 6) {
+      setDraft((current) => ({ ...current, priorityPreset: 'balanced', userCriteria: [] }));
+    }
+    setPageError('');
+    setOpenIndex(returnToReview ? REVIEW_STEP : Math.min(REVIEW_STEP, openIndex + 1));
+    setReturnToReview(false);
   };
   const stayNightOptions = getStayNightOptions(draft.trip);
 
   useEffect(() => {
-    void AsyncStorage.getItem(DRAFT_KEY).then((saved) => {
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved) as Partial<RouteDraft>;
-          const savedTrip = parsed.trip as Trip | undefined;
-          setDraft({
-            ...initialDraft,
-            ...parsed,
-            trip: savedTrip?.startAt && savedTrip?.endAt ? savedTrip : initialDraft.trip,
-          });
-          setUnlockedCount(STEPS.length);
-          setOpenIndex(STEPS.length);
-          setNotice('이전에 임시 저장한 정보를 불러왔어요.');
-        } catch {
-          setPageError('임시 저장 정보를 불러오지 못했어요. 새로 입력해주세요.');
+    void (async () => {
+      try {
+        const saved = await AsyncStorage.getItem(DRAFT_KEY);
+        if (saved) {
+          const restored = restoreDraft(saved);
+          setDraft(restored.draft);
+          setOpenIndex(restored.currentStep);
         }
+      } catch {
+        setPageError('저장한 입력 정보를 불러오지 못했어요. 새로 입력해주세요.');
+      } finally {
+        setHydrated(true);
       }
-    });
+    })();
   }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      void AsyncStorage.setItem(DRAFT_KEY, serializeDraft(draft, openIndex))
+        .then(() => setAutoSaveError(''))
+        .catch(() => setAutoSaveError('입력 내용을 자동 저장하지 못했어요.'));
+    }, 350);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [draft, hydrated, openIndex]);
 
   /** 접힌 카드에 한 줄로 보여줄 내용 */
   const stepSummaries = [
@@ -403,11 +448,11 @@ export function RouteInputScreen() {
     draft.pet.name || '미입력',
     draft.places.join(', ') || '미선택',
     draft.pace,
+    PRIORITY_PRESETS.find((preset) => preset.value === draft.priorityPreset)?.label ?? '균형 추천',
   ];
 
   const updateDraft = <K extends keyof RouteDraft>(key: K, value: RouteDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
-    setNotice('');
     setPageError('');
   };
 
@@ -444,18 +489,20 @@ export function RouteInputScreen() {
     const field = target.startsWith('start') ? 'startAt' : 'endAt';
     const current = new Date(formValues[field]);
 
-    if (target.endsWith('date')) {
-      current.setFullYear(
-        selectedDate.getFullYear(),
-        selectedDate.getMonth(),
-        selectedDate.getDate(),
-      );
-    } else {
-      current.setHours(selectedDate.getHours(), selectedDate.getMinutes(), 0, 0);
-    }
+    current.setFullYear(
+      selectedDate.getFullYear(),
+      selectedDate.getMonth(),
+      selectedDate.getDate(),
+    );
 
     setFormValues((values) => ({ ...values, [field]: current.toISOString() }));
     if (Platform.OS === 'android') setPickerTarget(null);
+  };
+
+  const updateTripTime = (field: 'startAt' | 'endAt', hour: number, minute: number) => {
+    const current = new Date(formValues[field]);
+    current.setHours(hour, minute, 0, 0);
+    setFormValues((values) => ({ ...values, [field]: current.toISOString() }));
   };
 
   const closeEditor = () => {
@@ -482,21 +529,16 @@ export function RouteInputScreen() {
         endAt: formValues.endAt,
       };
       const validPeriods = new Set(getStayNightOptions(nextTrip).map((option) => option.value));
-      let adjustedStayCount = 0;
       const nextStays = draft.stays.flatMap((stay) => {
         const nextPeriod = formatStayPeriods(
           parseStayPeriods(stay.period).filter((period) => validPeriods.has(period)),
         );
         if (nextPeriod === stay.period) return [stay];
-        adjustedStayCount += 1;
         return nextPeriod ? [{ ...stay, period: nextPeriod }] : [];
       });
 
       setDraft((current) => ({ ...current, stays: nextStays, trip: nextTrip }));
       setPageError('');
-      setNotice(
-        adjustedStayCount > 0 ? '여행 기간에 맞지 않는 숙박 일차를 자동으로 정리했어요.' : '',
-      );
     }
 
     if (editTarget === 'pet') {
@@ -529,7 +571,9 @@ export function RouteInputScreen() {
         return;
       }
       const nextStay: Stay = {
-        id: editingStayId ?? `stay-${Date.now()}`,
+        id:
+          editingStayId ??
+          `stay-${formValues.period.replace(/\s+/g, '-')}-${formValues.name.replace(/\s+/g, '-')}`,
         name: formValues.name,
         period: formValues.period,
         address: formValues.address,
@@ -553,25 +597,29 @@ export function RouteInputScreen() {
     setNewTransport('');
   };
 
-  const addPlace = () => {
-    const value = newPlace.trim();
-    if (!value) return;
-    const options = draft.placeOptions.includes(value)
-      ? draft.placeOptions
-      : [...draft.placeOptions, value];
-    updateDraft('placeOptions', options);
-    updateDraft('places', [...new Set([...draft.places, value])]);
-    setNewPlace('');
+  const togglePlaceType = (place: string) => {
+    if (draft.places.includes(place)) {
+      updateDraft(
+        'places',
+        draft.places.filter((selectedPlace) => selectedPlace !== place),
+      );
+      return;
+    }
+    if (draft.places.length >= 3) {
+      setPageError('가고 싶은 장소 유형은 최대 3개까지 선택할 수 있어요.');
+      return;
+    }
+    updateDraft('places', [...draft.places, place]);
   };
 
-  const saveDraft = async () => {
+  const closeFlow = async () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     try {
-      await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-      setPageError('');
-      setNotice('입력 정보를 이 기기에 임시 저장했어요.');
+      await AsyncStorage.setItem(DRAFT_KEY, serializeDraft(draft, openIndex));
     } catch {
-      setPageError('임시 저장에 실패했어요. 다시 시도해주세요.');
+      setAutoSaveError('입력 내용을 저장하지 못했어요.');
     }
+    router.back();
   };
 
   /**
@@ -581,16 +629,14 @@ export function RouteInputScreen() {
    * "초기화한 게 맞나" 싶어지기 때문이다.
    */
   const resetAll = async () => {
-    setUtilityModal(null);
+    setResetConfirmOpen(false);
     setDraft(initialDraft);
-    setUnlockedCount(1);
     setOpenIndex(0);
+    setReturnToReview(false);
     setPageError('');
     try {
       await AsyncStorage.removeItem(DRAFT_KEY);
-      setNotice('입력을 처음부터 다시 시작할게요.');
     } catch {
-      setNotice('');
       setPageError('임시 저장 정보를 지우지 못했어요.');
     }
   };
@@ -609,15 +655,15 @@ export function RouteInputScreen() {
       return;
     }
     if (draft.places.length === 0) {
-      setPageError('선호 장소를 한 개 이상 선택해주세요.');
+      setPageError('가고 싶은 장소 유형을 한 개 이상 선택해주세요.');
       return;
     }
+    const personalization = toPersonalizationPayload(draft.priorityPreset, draft.userCriteria);
 
     try {
-      await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      await AsyncStorage.setItem(DRAFT_KEY, serializeDraft(draft, REVIEW_STEP));
     } catch {
-      setPageError('입력 정보를 저장하지 못했어요. 다시 시도해주세요.');
-      return;
+      setAutoSaveError('입력 정보를 저장하지 못했어요.');
     }
 
     setPageError('');
@@ -629,6 +675,8 @@ export function RouteInputScreen() {
         startAt: draft.trip.startAt,
         endAt: draft.trip.endAt,
         pace: draft.pace,
+        priorityPreset: personalization.priorityPreset,
+        userCriteria: personalization.userCriteria.join(','),
         selectedPlaces: draft.places.join(','),
       },
     });
@@ -637,290 +685,340 @@ export function RouteInputScreen() {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <View style={styles.mobileFrame}>
-        <AppHeader notifications="popup" />
-
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <View style={styles.titleArea}>
-            <Text style={styles.pageTitle}>루트 추천 정보 입력</Text>
-            <Text style={styles.pageDescription}>
-              필수 정보만 입력하면 맞춤 루트를 추천해드려요.
-            </Text>
-            <View style={styles.progressRow}>
-              <View style={styles.quickBadge}>
-                <Ionicons color={colors.deepMint} name="flash" size={13} />
-                <Text style={styles.quickBadgeText}>간단 정보 입력</Text>
-              </View>
-            </View>
+        <View style={styles.flowHeader}>
+          <View accessibilityLabel="오멍가멍 로고" style={styles.flowBrand}>
+            <Image resizeMode="contain" source={brandAssets.symbol} style={styles.flowSymbol} />
+            <Text style={styles.flowBrandText}>오멍가멍</Text>
           </View>
-
-          <StepSection
-            icon="calendar-outline"
-            onEdit={openTripEditor}
-            nextLabel={nextStepLabel(0)}
-            onNext={() => goNextStep(0)}
-            onOpen={() => setOpenIndex(0)}
-            state={stepState(0)}
-            summary={stepSummaries[0]}
-            title="여행 일정"
-          >
-            <View style={styles.valueBox}>
-              <View style={styles.flexOne}>
-                <Text style={styles.valueLabel}>{draft.trip.title}</Text>
-                <Text numberOfLines={1} style={styles.valueText}>
-                  {formatShortDate(draft.trip.startAt)} {formatTime(draft.trip.startAt)} 도착 ~{' '}
-                  {formatShortDate(draft.trip.endAt)} {formatTime(draft.trip.endAt)} 출발
-                </Text>
-              </View>
-              <Text style={styles.durationText}>
-                {formatTripDuration(draft.trip.startAt, draft.trip.endAt)}
-              </Text>
-            </View>
-          </StepSection>
-
-          <StepSection
-            accent={colors.deepMint}
-            icon="car-outline"
-            nextLabel={nextStepLabel(1)}
-            onNext={() => goNextStep(1)}
-            onOpen={() => setOpenIndex(1)}
-            state={stepState(1)}
-            summary={stepSummaries[1]}
-            title="이동수단"
-          >
-            <View style={styles.chipRow}>
-              {draft.transportOptions.map((item, index) => (
-                <ChoiceChip
-                  key={item}
-                  label={item}
-                  onDelete={
-                    index > 2
-                      ? () => {
-                          const options = draft.transportOptions.filter(
-                            (option) => option !== item,
-                          );
-                          updateDraft('transportOptions', options);
-                          if (draft.transport === item) updateDraft('transport', options[0]);
-                        }
-                      : undefined
-                  }
-                  onPress={() => updateDraft('transport', item)}
-                  selected={draft.transport === item}
-                />
-              ))}
-            </View>
-            <AddRow
-              onAdd={addTransport}
-              onChangeText={setNewTransport}
-              placeholder="다른 이동수단 입력"
-              value={newTransport}
-            />
-          </StepSection>
-
-          <StepSection
-            icon="bed-outline"
-            nextLabel={nextStepLabel(2)}
-            onNext={() => goNextStep(2)}
-            onOpen={() => setOpenIndex(2)}
-            onSkip={() => {
-              updateDraft('stays', []);
-              goNextStep(2);
-            }}
-            state={stepState(2)}
-            summary={stepSummaries[2]}
-            title="숙소"
-          >
-            {draft.stays.map((stay) => (
-              <View key={stay.id} style={styles.stayRow}>
-                <View style={styles.stayDayBadge}>
-                  <Text style={styles.stayDayText}>{stay.period}</Text>
-                </View>
-                <Pressable onPress={() => openStayEditor(stay)} style={styles.stayCopy}>
-                  <Text style={styles.valueLabel}>{stay.name}</Text>
-                  <Text style={styles.valueText}>{stay.address || '주소 미입력'}</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityLabel={`${stay.name} 삭제`}
-                  onPress={() => setPendingStayDelete(stay)}
-                >
-                  <Ionicons color={colors.red} name="trash-outline" size={17} />
-                </Pressable>
-              </View>
-            ))}
-            <Pressable onPress={() => openStayEditor()} style={styles.dashedButton}>
-              <Ionicons color={colors.orange} name="add-circle" size={15} />
-              <Text style={styles.dashedButtonText}>숙소 추가</Text>
-            </Pressable>
-          </StepSection>
-
-          <StepSection
-            accent={colors.deepMint}
-            icon="paw-outline"
-            onEdit={openPetEditor}
-            nextLabel={nextStepLabel(3)}
-            onNext={() => goNextStep(3)}
-            onOpen={() => setOpenIndex(3)}
-            state={stepState(3)}
-            summary={stepSummaries[3]}
-            title="반려동물 정보"
-          >
-            <View style={styles.petRow}>
-              <View style={styles.petAvatar}>
-                <Text style={styles.petEmoji}>🐶</Text>
-              </View>
-              <View style={styles.flexOne}>
-                <Text style={styles.petName}>{draft.pet.name}</Text>
-                <Text style={styles.petDescription}>
-                  {draft.pet.species} · {draft.pet.size || '크기 미입력'} ·{' '}
-                  {draft.pet.weight || '체중 미입력'}
-                </Text>
-              </View>
-              <Ionicons color={colors.deepMint} name="checkmark-circle" size={18} />
-            </View>
-          </StepSection>
-
-          <StepSection
-            icon="location-outline"
-            nextLabel={nextStepLabel(4)}
-            onNext={() => goNextStep(4)}
-            onOpen={() => setOpenIndex(4)}
-            state={stepState(4)}
-            summary={stepSummaries[4]}
-            title="선호 장소"
-          >
-            <View style={styles.chipRow}>
-              {draft.placeOptions.map((item) => (
-                <ChoiceChip
-                  key={item}
-                  label={item}
-                  onDelete={
-                    initialDraft.placeOptions.includes(item)
-                      ? undefined
-                      : () => {
-                          updateDraft(
-                            'placeOptions',
-                            draft.placeOptions.filter((option) => option !== item),
-                          );
-                          updateDraft(
-                            'places',
-                            draft.places.filter((place) => place !== item),
-                          );
-                        }
-                  }
-                  onPress={() =>
-                    updateDraft(
-                      'places',
-                      draft.places.includes(item)
-                        ? draft.places.filter((place) => place !== item)
-                        : [...draft.places, item],
-                    )
-                  }
-                  selected={draft.places.includes(item)}
-                />
-              ))}
-            </View>
-            <AddRow
-              onAdd={addPlace}
-              onChangeText={setNewPlace}
-              placeholder="원하는 장소 유형 입력"
-              value={newPlace}
-            />
-          </StepSection>
-
-          <StepSection
-            accent={colors.deepMint}
-            icon="speedometer-outline"
-            nextLabel={nextStepLabel(5)}
-            onNext={() => goNextStep(5)}
-            onOpen={() => setOpenIndex(5)}
-            onSkip={() => goNextStep(5)}
-            state={stepState(5)}
-            summary={stepSummaries[5]}
-            title="여행 속도"
-          >
-            <View style={styles.paceRow}>
-              {['여유롭게', '적당히', '알차게'].map((item) => (
-                <Pressable
-                  key={item}
-                  onPress={() => updateDraft('pace', item)}
-                  style={[styles.paceButton, draft.pace === item && styles.paceButtonSelected]}
-                >
-                  <Text style={[styles.paceText, draft.pace === item && styles.paceTextSelected]}>
-                    {item}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </StepSection>
-
-          {isAllUnlocked ? (
-            <View style={styles.summaryCard}>
-              <View style={styles.summaryHeader}>
-                <View>
-                  <Text style={styles.summaryEyebrow}>입력 정보 요약</Text>
-                  <Text style={styles.summaryTitle}>
-                    {draft.pet.name}와 함께하는 {draft.trip.title}
-                  </Text>
-                </View>
-                <Text style={styles.summaryPet}>🐶</Text>
-              </View>
-              <Text style={styles.summaryLine}>
-                🚗 {draft.transport} · 🏡 숙소 {draft.stays.length}곳
-              </Text>
-              <Text style={styles.summaryLine}>
-                📍 {draft.places.join(', ') || '선호 장소 미선택'}
-              </Text>
-              <Text style={styles.summaryLine}>🌿 여행 속도 {draft.pace}</Text>
-            </View>
-          ) : null}
-
-          {notice ? (
-            <View accessibilityRole="alert" style={styles.notice}>
-              <Ionicons color={colors.deepMint} name="checkmark-circle" size={17} />
-              <Text style={styles.noticeText}>{notice}</Text>
-            </View>
-          ) : null}
-
-          {pageError ? (
-            <View accessibilityRole="alert" style={styles.pageErrorBox}>
-              <Ionicons color={colors.red} name="alert-circle" size={17} />
-              <Text style={styles.pageErrorText}>{pageError}</Text>
-            </View>
-          ) : null}
-
-          {isAllUnlocked ? (
-            <Pressable
-              onPress={() => void requestRecommendation()}
-              style={({ pressed }) => [styles.ctaButton, pressed && styles.pressed]}
-              testID="recommend-route-button"
-            >
-              <Ionicons color={colors.white} name="paw" size={18} />
-              <Text style={styles.ctaText}>저장하고 루트 추천받기</Text>
-            </Pressable>
-          ) : null}
-
-          <View style={styles.secondaryActions}>
-            <Pressable onPress={() => void saveDraft()} style={styles.secondaryAction}>
-              <Ionicons color={colors.gray} name="bookmark-outline" size={16} />
-              <Text style={styles.secondaryActionText}>임시 저장</Text>
-            </Pressable>
-            <View style={styles.actionDivider} />
-            <Pressable onPress={() => setUtilityModal('later')} style={styles.secondaryAction}>
-              <Ionicons color={colors.gray} name="time-outline" size={16} />
-              <Text style={styles.secondaryActionText}>나중에 입력하기</Text>
-            </Pressable>
-          </View>
-
-          {/*
-            되돌릴 수 없는 동작이라 무게를 낮춘다.
-            자주 쓰는 버튼과 섞지 않고 맨 아래에 작은 글씨로 둔다.
-          */}
           <Pressable
-            onPress={() => setUtilityModal('reset')}
-            style={({ pressed }) => [styles.resetButton, pressed && styles.pressed]}
+            accessibilityLabel="루트 추천 입력 닫기"
+            hitSlop={10}
+            onPress={() => void closeFlow()}
+            style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
           >
-            <Text style={styles.resetText}>입력 초기화</Text>
+            <Ionicons color={colors.ink} name="close" size={25} />
           </Pressable>
-        </ScrollView>
+        </View>
+
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.flowBody}
+        >
+          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+            {openIndex === 0 ? (
+              <QuestionStep
+                description="여행 기간과 도착·출발 시간을 확인해주세요."
+                icon="calendar-outline"
+                onEdit={openTripEditor}
+                title="여행 일정"
+              >
+                <View style={styles.valueBox}>
+                  <View style={styles.flexOne}>
+                    <Text style={styles.valueLabel}>{draft.trip.title}</Text>
+                    <Text numberOfLines={1} style={styles.valueText}>
+                      {formatShortDate(draft.trip.startAt)} {formatTime(draft.trip.startAt)} 도착 ~{' '}
+                      {formatShortDate(draft.trip.endAt)} {formatTime(draft.trip.endAt)} 출발
+                    </Text>
+                  </View>
+                  <Text style={styles.durationText}>
+                    {formatTripDuration(draft.trip.startAt, draft.trip.endAt)}
+                  </Text>
+                </View>
+              </QuestionStep>
+            ) : null}
+
+            {openIndex === 1 ? (
+              <QuestionStep
+                accent={colors.deepMint}
+                description="제주에서 주로 이용할 이동수단을 골라주세요."
+                icon="car-outline"
+                title="이동수단"
+              >
+                <View style={styles.chipRow}>
+                  {draft.transportOptions.map((item, index) => (
+                    <ChoiceChip
+                      key={item}
+                      label={item}
+                      onDelete={
+                        index > 2
+                          ? () => {
+                              const options = draft.transportOptions.filter(
+                                (option) => option !== item,
+                              );
+                              updateDraft('transportOptions', options);
+                              if (draft.transport === item) updateDraft('transport', options[0]);
+                            }
+                          : undefined
+                      }
+                      onPress={() => updateDraft('transport', item)}
+                      selected={draft.transport === item}
+                    />
+                  ))}
+                </View>
+                <AddRow
+                  onAdd={addTransport}
+                  onChangeText={setNewTransport}
+                  placeholder="다른 이동수단 입력"
+                  value={newTransport}
+                />
+              </QuestionStep>
+            ) : null}
+
+            {openIndex === 2 ? (
+              <QuestionStep
+                description="숙소를 알려주면 하루 동선을 더 편하게 정리할 수 있어요."
+                icon="bed-outline"
+                title="숙소"
+              >
+                {draft.stays.map((stay) => (
+                  <View key={stay.id} style={styles.stayRow}>
+                    <View style={styles.stayDayBadge}>
+                      <Text style={styles.stayDayText}>{stay.period}</Text>
+                    </View>
+                    <Pressable onPress={() => openStayEditor(stay)} style={styles.stayCopy}>
+                      <Text style={styles.valueLabel}>{stay.name}</Text>
+                      <Text style={styles.valueText}>{stay.address || '주소 미입력'}</Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityLabel={`${stay.name} 삭제`}
+                      onPress={() => setPendingStayDelete(stay)}
+                    >
+                      <Ionicons color={colors.red} name="trash-outline" size={17} />
+                    </Pressable>
+                  </View>
+                ))}
+                <Pressable onPress={() => openStayEditor()} style={styles.dashedButton}>
+                  <Ionicons color={colors.orange} name="add-circle" size={15} />
+                  <Text style={styles.dashedButtonText}>숙소 추가</Text>
+                </Pressable>
+              </QuestionStep>
+            ) : null}
+
+            {openIndex === 3 ? (
+              <QuestionStep
+                accent={colors.deepMint}
+                description="함께 여행할 반려동물의 정보를 확인해주세요."
+                icon="paw-outline"
+                onEdit={openPetEditor}
+                title="반려동물 정보"
+              >
+                <View style={styles.petRow}>
+                  <View style={styles.petAvatar}>
+                    <Text style={styles.petEmoji}>🐶</Text>
+                  </View>
+                  <View style={styles.flexOne}>
+                    <Text style={styles.petName}>{draft.pet.name}</Text>
+                    <Text style={styles.petDescription}>
+                      {draft.pet.species} · {draft.pet.size || '크기 미입력'} ·{' '}
+                      {draft.pet.weight || '체중 미입력'}
+                    </Text>
+                  </View>
+                  <Ionicons color={colors.deepMint} name="checkmark-circle" size={18} />
+                </View>
+              </QuestionStep>
+            ) : null}
+
+            {openIndex === 4 ? (
+              <QuestionStep
+                description="이번 여행에서 관심 있는 유형을 최대 3개까지 골라주세요."
+                icon="location-outline"
+                title="가고 싶은 장소 유형"
+              >
+                <View style={styles.chipRow}>
+                  {PLACE_TYPE_OPTIONS.map((item) => (
+                    <ChoiceChip
+                      key={item}
+                      label={item}
+                      onPress={() => togglePlaceType(item)}
+                      selected={draft.places.includes(item)}
+                    />
+                  ))}
+                </View>
+              </QuestionStep>
+            ) : null}
+
+            {openIndex === 5 ? (
+              <QuestionStep
+                accent={colors.deepMint}
+                description="하루를 어떤 템포로 여행하고 싶은지 골라주세요."
+                icon="speedometer-outline"
+                title="여행 속도"
+              >
+                <View style={styles.paceRow}>
+                  {['여유롭게', '적당히', '알차게'].map((item) => (
+                    <Pressable
+                      key={item}
+                      onPress={() => updateDraft('pace', item)}
+                      style={[styles.paceButton, draft.pace === item && styles.paceButtonSelected]}
+                    >
+                      <Text
+                        style={[styles.paceText, draft.pace === item && styles.paceTextSelected]}
+                      >
+                        {item}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </QuestionStep>
+            ) : null}
+
+            {openIndex === 6 ? (
+              <QuestionStep
+                accent={colors.deepMint}
+                description="루트를 추천할 때 가장 중요하게 볼 기준을 골라주세요."
+                icon="options-outline"
+                title="추천 스타일"
+              >
+                <Text style={styles.personalizationHelper}>
+                  기본 스타일을 고르고, 이번 여행에서 더 중요한 기준이 있다면 추가로 선택해주세요.
+                </Text>
+                <View style={styles.presetList}>
+                  {PRIORITY_PRESETS.map((preset) => {
+                    const selected = draft.priorityPreset === preset.value;
+                    return (
+                      <Pressable
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
+                        key={preset.value}
+                        onPress={() => updateDraft('priorityPreset', preset.value)}
+                        style={[styles.presetCard, selected && styles.presetCardSelected]}
+                      >
+                        <View style={styles.presetTitleRow}>
+                          <Text
+                            style={[styles.presetTitle, selected && styles.presetTitleSelected]}
+                          >
+                            {preset.label}
+                          </Text>
+                          <Ionicons
+                            color={selected ? colors.orange : theme.textTertiary}
+                            name={selected ? 'radio-button-on' : 'radio-button-off'}
+                            size={20}
+                          />
+                        </View>
+                        <Text style={styles.presetDescription}>{preset.description}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.criteriaTitle}>추가로 중요한 기준 (선택)</Text>
+                <View style={styles.chipRow}>
+                  {USER_CRITERIA_OPTIONS.map((criterion) => (
+                    <ChoiceChip
+                      key={criterion.value}
+                      label={criterion.label}
+                      onPress={() =>
+                        updateDraft(
+                          'userCriteria',
+                          draft.userCriteria.includes(criterion.value)
+                            ? draft.userCriteria.filter((item) => item !== criterion.value)
+                            : [...draft.userCriteria, criterion.value],
+                        )
+                      }
+                      selected={draft.userCriteria.includes(criterion.value)}
+                    />
+                  ))}
+                </View>
+              </QuestionStep>
+            ) : null}
+
+            {isReviewStep ? (
+              <View style={styles.reviewSection}>
+                <Text style={styles.reviewEyebrow}>입력 정보 확인</Text>
+                <Text style={styles.reviewTitle}>
+                  {draft.pet.name}와 함께하는 {draft.trip.title}
+                </Text>
+                <Text style={styles.reviewDescription}>
+                  추천 전에 입력한 내용을 한 번만 확인해주세요.
+                </Text>
+                <View style={styles.reviewList}>
+                  {STEPS.map((step, index) => (
+                    <Pressable
+                      key={step.key}
+                      onPress={() => {
+                        setReturnToReview(true);
+                        setOpenIndex(index);
+                      }}
+                      style={styles.reviewRow}
+                    >
+                      <View style={styles.reviewRowCopy}>
+                        <Text style={styles.reviewRowLabel}>
+                          {
+                            [
+                              '여행 일정',
+                              '이동수단',
+                              '숙소',
+                              '반려동물',
+                              '가고 싶은 장소 유형',
+                              '여행 속도',
+                              '추천 스타일',
+                            ][index]
+                          }
+                        </Text>
+                        <Text numberOfLines={1} style={styles.reviewRowValue}>
+                          {stepSummaries[index]}
+                        </Text>
+                      </View>
+                      <Text style={styles.reviewEditText}>수정</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {autoSaveError ? (
+              <View accessibilityRole="alert" style={styles.pageErrorBox}>
+                <Ionicons color={colors.red} name="alert-circle" size={17} />
+                <Text style={styles.pageErrorText}>{autoSaveError}</Text>
+              </View>
+            ) : null}
+
+            {pageError ? (
+              <View accessibilityRole="alert" style={styles.pageErrorBox}>
+                <Ionicons color={colors.red} name="alert-circle" size={17} />
+                <Text style={styles.pageErrorText}>{pageError}</Text>
+              </View>
+            ) : null}
+
+            {!isReviewStep && STEPS[openIndex]?.optional ? (
+              <Pressable onPress={skipCurrentStep} style={styles.inlineSkipButton}>
+                <Text style={styles.inlineSkipText}>건너뛰기</Text>
+              </Pressable>
+            ) : null}
+
+            {isReviewStep ? (
+              <Pressable onPress={() => setResetConfirmOpen(true)} style={styles.resetButton}>
+                <Text style={styles.resetText}>처음부터 다시 입력</Text>
+              </Pressable>
+            ) : null}
+          </ScrollView>
+
+          <View style={styles.footerNavigation}>
+            {!isReviewStep && openIndex > 0 ? (
+              <Pressable
+                accessibilityLabel="이전 단계"
+                onPress={() => {
+                  setPageError('');
+                  setOpenIndex((current) => Math.max(0, current - 1));
+                }}
+                style={({ pressed }) => [styles.footerBackButton, pressed && styles.pressed]}
+              >
+                <Ionicons color={colors.gray} name="chevron-back" size={18} />
+                <Text style={styles.footerBackText}>이전</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={() => (isReviewStep ? void requestRecommendation() : goNextStep(openIndex))}
+              style={({ pressed }) => [styles.footerNextButton, pressed && styles.pressed]}
+              testID={isReviewStep ? 'recommend-route-button' : 'route-next-button'}
+            >
+              {isReviewStep ? <Ionicons color={colors.white} name="paw" size={18} /> : null}
+              <Text style={styles.footerNextText}>
+                {isReviewStep ? '루트 추천받기' : nextStepLabel(openIndex)}
+              </Text>
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
       </View>
 
       <Modal
@@ -960,11 +1058,9 @@ export function RouteInputScreen() {
                     onPress={() => setPickerTarget('start-date')}
                     selected={pickerTarget === 'start-date'}
                   />
-                  <DateTimeButton
-                    icon="time-outline"
-                    label={formatTime(formValues.startAt)}
-                    onPress={() => setPickerTarget('start-time')}
-                    selected={pickerTarget === 'start-time'}
+                  <TimeNumberInput
+                    onChange={(hour, minute) => updateTripTime('startAt', hour, minute)}
+                    value={formValues.startAt}
                   />
                 </View>
 
@@ -976,47 +1072,28 @@ export function RouteInputScreen() {
                     onPress={() => setPickerTarget('end-date')}
                     selected={pickerTarget === 'end-date'}
                   />
-                  <DateTimeButton
-                    icon="time-outline"
-                    label={formatTime(formValues.endAt)}
-                    onPress={() => setPickerTarget('end-time')}
-                    selected={pickerTarget === 'end-time'}
+                  <TimeNumberInput
+                    onChange={(hour, minute) => updateTripTime('endAt', hour, minute)}
+                    value={formValues.endAt}
                   />
                 </View>
 
                 {pickerTarget ? (
                   <View style={styles.pickerPanel}>
                     <View style={styles.pickerHeader}>
-                      <Text style={styles.pickerTitle}>
-                        {pickerTarget.endsWith('date') ? '날짜 선택' : '시간 선택'}
-                      </Text>
+                      <Text style={styles.pickerTitle}>날짜 선택</Text>
                       <Pressable onPress={() => setPickerTarget(null)}>
                         <Text style={styles.pickerDoneText}>완료</Text>
                       </Pressable>
                     </View>
-                    {pickerTarget.endsWith('date') ? (
-                      <CalendarPicker
-                        onChange={(selectedDate) => updateTripDateTime(pickerTarget, selectedDate)}
-                        value={
-                          new Date(
-                            pickerTarget.startsWith('start')
-                              ? formValues.startAt
-                              : formValues.endAt,
-                          )
-                        }
-                      />
-                    ) : (
-                      <WheelTimePicker
-                        onChange={(selectedDate) => updateTripDateTime(pickerTarget, selectedDate)}
-                        value={
-                          new Date(
-                            pickerTarget.startsWith('start')
-                              ? formValues.startAt
-                              : formValues.endAt,
-                          )
-                        }
-                      />
-                    )}
+                    <CalendarPicker
+                      onChange={(selectedDate) => updateTripDateTime(pickerTarget, selectedDate)}
+                      value={
+                        new Date(
+                          pickerTarget.startsWith('start') ? formValues.startAt : formValues.endAt,
+                        )
+                      }
+                    />
                   </View>
                 ) : null}
               </>
@@ -1148,71 +1225,15 @@ export function RouteInputScreen() {
         visible={pendingStayDelete !== null}
       />
 
-      <Modal
-        animationType="fade"
-        onRequestClose={() => setUtilityModal(null)}
-        transparent
-        visible={utilityModal !== null}
-      >
-        <View style={styles.utilityBackdrop}>
-          <Pressable onPress={() => setUtilityModal(null)} style={styles.utilityDismissArea} />
-          <View style={styles.utilityModalCard}>
-            <View style={styles.utilityModalHeader}>
-              <Text style={styles.utilityModalTitle}>
-                {utilityModal === 'reset' ? '입력 초기화' : '나중에 입력하기'}
-              </Text>
-              <Pressable accessibilityLabel="닫기" onPress={() => setUtilityModal(null)}>
-                <Ionicons color={colors.gray} name="close" size={23} />
-              </Pressable>
-            </View>
-
-            {utilityModal === 'later' ? (
-              <View>
-                <Text style={styles.laterDescription}>
-                  현재 입력한 내용은 유지됩니다. 기본 정보로 바로 추천을 받거나 계속 입력할 수
-                  있어요.
-                </Text>
-                <Pressable
-                  onPress={() => {
-                    setUtilityModal(null);
-                    void requestRecommendation();
-                  }}
-                  style={styles.utilityPrimaryButton}
-                >
-                  <Text style={styles.utilityPrimaryText}>현재 정보로 추천받기</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setUtilityModal(null)}
-                  style={styles.utilitySecondaryButton}
-                >
-                  <Text style={styles.utilitySecondaryText}>계속 입력하기</Text>
-                </Pressable>
-              </View>
-            ) : null}
-
-            {utilityModal === 'reset' ? (
-              <View>
-                <Text style={styles.laterDescription}>
-                  입력을 처음부터 다시 하시겠어요?{'\n'}
-                  임시 저장해둔 내용도 함께 지워집니다.
-                </Text>
-                <Pressable
-                  onPress={() => void resetAll()}
-                  style={[styles.utilityPrimaryButton, styles.utilityDangerButton]}
-                >
-                  <Text style={styles.utilityPrimaryText}>초기화</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setUtilityModal(null)}
-                  style={styles.utilitySecondaryButton}
-                >
-                  <Text style={styles.utilitySecondaryText}>취소</Text>
-                </Pressable>
-              </View>
-            ) : null}
-          </View>
-        </View>
-      </Modal>
+      <ConfirmModal
+        confirmLabel="처음부터 입력"
+        description="자동 저장된 내용까지 지우고 처음 화면으로 돌아갈까요?"
+        onCancel={() => setResetConfirmOpen(false)}
+        onConfirm={() => void resetAll()}
+        title="입력 초기화"
+        tone="destructive"
+        visible={resetConfirmOpen}
+      />
     </SafeAreaView>
   );
 }
@@ -1244,6 +1265,57 @@ function DateTimeButton({
   );
 }
 
+function TimeNumberInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (hour: number, minute: number) => void;
+}) {
+  const currentValue = new Date(value);
+  const [hour, setHour] = useState(String(currentValue.getHours()).padStart(2, '0'));
+  const [minute, setMinute] = useState(String(currentValue.getMinutes()).padStart(2, '0'));
+
+  const commit = (nextHour = hour, nextMinute = minute) => {
+    const normalizedHour = Math.min(23, Math.max(0, Number(nextHour) || 0));
+    const normalizedMinute = Math.min(59, Math.max(0, Number(nextMinute) || 0));
+    setHour(String(normalizedHour).padStart(2, '0'));
+    setMinute(String(normalizedMinute).padStart(2, '0'));
+    onChange(normalizedHour, normalizedMinute);
+  };
+
+  return (
+    <View accessibilityLabel="시간 숫자 입력" style={styles.timeNumberGroup}>
+      <Ionicons color={colors.gray} name="time-outline" size={18} />
+      <TextInput
+        accessibilityLabel="시"
+        inputMode="numeric"
+        keyboardType="number-pad"
+        maxLength={2}
+        onBlur={() => commit()}
+        onChangeText={(text) => setHour(text.replace(/\D/g, ''))}
+        selectTextOnFocus
+        style={styles.timeNumberInput}
+        value={hour}
+      />
+      <Text style={styles.timeUnitText}>시</Text>
+      <Text style={styles.timeColon}>:</Text>
+      <TextInput
+        accessibilityLabel="분"
+        inputMode="numeric"
+        keyboardType="number-pad"
+        maxLength={2}
+        onBlur={() => commit()}
+        onChangeText={(text) => setMinute(text.replace(/\D/g, ''))}
+        selectTextOnFocus
+        style={styles.timeNumberInput}
+        value={minute}
+      />
+      <Text style={styles.timeUnitText}>분</Text>
+    </View>
+  );
+}
+
 function FormInput({
   label,
   name,
@@ -1270,107 +1342,118 @@ function FormInput({
 }
 
 const styles = StyleSheet.create({
-  // 다른 화면과 같이 화면 폭을 그대로 쓴다.
-  // 여기만 maxWidth 430 으로 묶여 있어 웹에서 혼자 좁게 보였다.
   safeArea: { backgroundColor: colors.white, flex: 1 },
   mobileFrame: { backgroundColor: colors.white, flex: 1 },
+  flowBody: { flex: 1 },
+  flowHeader: {
+    alignItems: 'center',
+    borderBottomColor: theme.divider,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    height: 56,
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+  },
+  flowBrand: { alignItems: 'center', flexDirection: 'row', gap: 7 },
+  flowSymbol: { height: 30, width: 27 },
+  flowBrandText: {
+    color: colors.orange,
+    fontSize: 19,
+    fontWeight: '900',
+    letterSpacing: -0.8,
+  },
+  closeButton: {
+    alignItems: 'center',
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
   content: {
     backgroundColor: colors.white,
-    paddingBottom: spacing.xl,
+    flexGrow: 1,
+    paddingBottom: spacing.lg,
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm + 4,
+    paddingTop: spacing.lg,
   },
-  titleArea: { marginBottom: 10 },
-  pageTitle: { color: theme.textPrimary, fontSize: typography.title.fontSize, fontWeight: '700' },
-  pageDescription: { color: colors.gray, fontSize: typography.label.fontSize, marginTop: 5 },
-  progressRow: {
+  questionStep: { flex: 1 },
+  questionIcon: {
     alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 11,
-  },
-  quickBadge: {
-    alignItems: 'center',
-    backgroundColor: theme.seaSoft,
-    borderRadius: 999,
-    flexDirection: 'row',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  quickBadgeText: {
-    color: colors.deepMint,
-    fontSize: typography.micro.fontSize,
-    fontWeight: '800',
-  },
-  sectionCard: {
-    backgroundColor: colors.white,
-    borderColor: theme.basaltSoft,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    elevation: 2,
-    marginBottom: spacing.sm + 4,
-    padding: spacing.md,
-    shadowColor: overlayColors.shadow,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.09,
-    shadowRadius: 8,
-  },
-  sectionHeading: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm + 4,
-  },
-  sectionTitleWrap: { alignItems: 'center', flexDirection: 'row', gap: 8 },
-  sectionIcon: {
-    alignItems: 'center',
-    borderRadius: radius.md,
-    height: 34,
+    borderRadius: 22,
+    height: 44,
     justifyContent: 'center',
-    width: 34,
+    marginBottom: spacing.md,
+    width: 44,
   },
-  sectionTitle: {
+  questionHeading: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.lg,
+  },
+  questionCopy: { flex: 1, paddingRight: spacing.sm },
+  questionTitle: {
     color: colors.ink,
-    fontSize: typography.sectionTitle.fontSize,
+    fontSize: typography.title.fontSize,
     fontWeight: '900',
   },
-  lockedCard: { alignItems: 'flex-start', opacity: 0.5 },
-  lockedIcon: { backgroundColor: theme.basaltSoft },
-  lockedTitle: {
-    color: theme.textTertiary,
-    fontSize: typography.subtitle.fontSize,
-    fontWeight: '800',
-  },
-  doneCard: { paddingVertical: spacing.sm + 4 },
-  doneIcon: { height: 30, width: 30 },
-  doneTitle: { color: colors.ink, fontSize: typography.label.fontSize, fontWeight: '800' },
-  doneSummary: {
+  questionDescription: {
     color: colors.gray,
-    flex: 1,
     fontSize: typography.label.fontSize,
-    textAlign: 'right',
+    lineHeight: 20,
+    marginTop: spacing.xs,
   },
-  stepNextButton: {
+  footerNavigation: {
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderTopColor: theme.divider,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  footerBackButton: {
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderColor: theme.divider,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    minHeight: 52,
+    width: 112,
+  },
+  footerBackText: { color: colors.gray, fontSize: typography.body.fontSize, fontWeight: '800' },
+  footerNextButton: {
     alignItems: 'center',
     backgroundColor: colors.orange,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
     justifyContent: 'center',
-    marginTop: spacing.md,
-    minHeight: 48,
+    minHeight: 52,
   },
-  stepNextText: {
+  footerNextText: {
     color: colors.white,
-    fontSize: typography.subtitle.fontSize,
+    fontSize: typography.body.fontSize,
     fontWeight: '800',
   },
-  stepSkipButton: {
+  inlineSkipButton: {
     alignItems: 'center',
+    alignSelf: 'center',
     justifyContent: 'center',
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
     minHeight: 40,
   },
-  stepSkipText: { color: colors.gray, fontSize: typography.label.fontSize, fontWeight: '700' },
+  inlineSkipText: {
+    color: theme.textTertiary,
+    fontSize: typography.label.fontSize,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
   editButton: { alignItems: 'center', flexDirection: 'row', gap: 3, padding: 5 },
   editText: { color: colors.gray, fontSize: typography.label.fontSize, fontWeight: '600' },
   valueBox: {
@@ -1507,47 +1590,85 @@ const styles = StyleSheet.create({
   },
   paceText: { color: colors.gray, fontSize: typography.subtitle.fontSize, fontWeight: '700' },
   paceTextSelected: { color: colors.deepMint },
-  summaryCard: {
-    backgroundColor: theme.seaSoftLight,
-    borderColor: theme.seaSoft,
-    borderRadius: radius.lg,
+  personalizationHelper: {
+    color: colors.gray,
+    fontSize: typography.label.fontSize,
+    lineHeight: 20,
+    marginBottom: spacing.sm + 2,
+  },
+  presetList: { gap: spacing.sm },
+  presetCard: {
+    borderColor: theme.divider,
+    borderRadius: radius.md,
     borderWidth: 1,
-    marginTop: spacing.xs,
-    padding: spacing.md,
+    padding: spacing.sm + 3,
   },
-  summaryHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  summaryEyebrow: {
-    color: colors.deepMint,
-    fontSize: typography.micro.fontSize,
-    fontWeight: '800',
+  presetCardSelected: {
+    backgroundColor: theme.primarySoft,
+    borderColor: colors.orange,
+    borderWidth: 1.5,
   },
-  summaryTitle: {
-    color: colors.ink,
-    fontSize: typography.subtitle.fontSize,
-    fontWeight: '800',
-    marginTop: 3,
-  },
-  summaryPet: { fontSize: 34 },
-  summaryLine: {
-    color: theme.textSecondary,
-    fontSize: typography.caption.fontSize,
-    fontWeight: '600',
-    marginTop: 6,
-  },
-  notice: {
+  presetTitleRow: {
     alignItems: 'center',
-    backgroundColor: theme.seaSoftLight,
-    borderRadius: 10,
     flexDirection: 'row',
-    gap: 6,
-    marginTop: 10,
-    padding: 10,
+    justifyContent: 'space-between',
   },
-  noticeText: {
-    color: colors.deepMint,
-    flex: 1,
+  presetTitle: { color: colors.ink, fontSize: typography.subtitle.fontSize, fontWeight: '800' },
+  presetTitleSelected: { color: colors.orange },
+  presetDescription: {
+    color: colors.gray,
     fontSize: typography.caption.fontSize,
-    fontWeight: '700',
+    lineHeight: 18,
+    marginTop: spacing.xs,
+  },
+  criteriaTitle: {
+    color: colors.ink,
+    fontSize: typography.label.fontSize,
+    fontWeight: '800',
+    marginBottom: spacing.sm,
+    marginTop: spacing.md,
+  },
+  reviewSection: { flex: 1 },
+  reviewEyebrow: {
+    color: colors.deepMint,
+    fontSize: typography.label.fontSize,
+    fontWeight: '800',
+  },
+  reviewTitle: {
+    color: colors.ink,
+    fontSize: typography.title.fontSize + 4,
+    fontWeight: '900',
+    lineHeight: typography.title.fontSize + 11,
+    marginTop: spacing.sm,
+  },
+  reviewDescription: {
+    color: colors.gray,
+    fontSize: typography.body.fontSize,
+    lineHeight: 24,
+    marginTop: spacing.sm,
+  },
+  reviewList: { borderTopColor: theme.divider, borderTopWidth: 1, marginTop: spacing.xl },
+  reviewRow: {
+    alignItems: 'center',
+    borderBottomColor: theme.divider,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 76,
+    paddingVertical: spacing.md,
+  },
+  reviewRowCopy: { flex: 1, paddingRight: spacing.sm },
+  reviewRowLabel: { color: colors.gray, fontSize: typography.label.fontSize },
+  reviewRowValue: {
+    color: colors.ink,
+    fontSize: typography.body.fontSize + 1,
+    fontWeight: '800',
+    marginTop: 5,
+  },
+  reviewEditText: {
+    color: colors.deepMint,
+    fontSize: typography.label.fontSize,
+    fontWeight: '800',
   },
   pageErrorBox: {
     alignItems: 'center',
@@ -1564,44 +1685,6 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     fontWeight: '700',
   },
-  ctaButton: {
-    alignItems: 'center',
-    backgroundColor: colors.orange,
-    borderRadius: radius.md,
-    elevation: 3,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    justifyContent: 'center',
-    marginTop: spacing.md,
-    minHeight: 54,
-    shadowColor: colors.orange,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-  },
-  ctaText: { color: colors.white, fontSize: typography.body.fontSize, fontWeight: '900' },
-  secondaryActions: {
-    alignItems: 'center',
-    borderColor: colors.line,
-    borderRadius: 11,
-    borderWidth: 1,
-    flexDirection: 'row',
-    marginTop: 9,
-    minHeight: 44,
-  },
-  secondaryAction: {
-    alignItems: 'center',
-    flex: 1,
-    flexDirection: 'row',
-    gap: 5,
-    justifyContent: 'center',
-  },
-  secondaryActionText: {
-    color: colors.gray,
-    fontSize: typography.label.fontSize,
-    fontWeight: '700',
-  },
-  actionDivider: { backgroundColor: colors.line, height: 20, width: 1 },
   resetButton: {
     alignItems: 'center',
     alignSelf: 'center',
@@ -1616,7 +1699,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textDecorationLine: 'underline',
   },
-  utilityDangerButton: { backgroundColor: colors.red },
   modalBackdrop: { backgroundColor: overlayColors.scrim, flex: 1, justifyContent: 'flex-end' },
   modalDismissArea: { flex: 1 },
   modalSheet: {
@@ -1727,6 +1809,34 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   dateTimeTextSelected: { color: colors.orange },
+  timeNumberGroup: {
+    alignItems: 'center',
+    borderColor: colors.line,
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: 8,
+  },
+  timeNumberInput: {
+    color: colors.ink,
+    fontSize: typography.body.fontSize,
+    fontWeight: '800',
+    minWidth: 28,
+    outlineStyle: 'none',
+    paddingHorizontal: 2,
+    paddingVertical: 8,
+    textAlign: 'center',
+  } as never,
+  timeUnitText: { color: colors.gray, fontSize: typography.caption.fontSize },
+  timeColon: {
+    color: colors.gray,
+    fontSize: typography.body.fontSize,
+    fontWeight: '800',
+    marginHorizontal: 2,
+  },
   pickerPanel: {
     backgroundColor: theme.surface,
     borderColor: colors.line,
@@ -1780,64 +1890,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: typography.caption.fontSize,
     fontWeight: '700',
-  },
-  utilityBackdrop: {
-    alignItems: 'center',
-    backgroundColor: overlayColors.scrim,
-    flex: 1,
-    justifyContent: 'center',
-    padding: 18,
-  },
-  utilityDismissArea: { bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 },
-  utilityModalCard: {
-    backgroundColor: colors.white,
-    borderRadius: 20,
-    maxWidth: 398,
-    padding: 18,
-    width: '100%',
-  },
-  utilityModalHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  utilityModalTitle: {
-    color: colors.ink,
-    fontSize: typography.sectionTitle.fontSize,
-    fontWeight: '900',
-  },
-  laterDescription: {
-    color: colors.gray,
-    fontSize: typography.label.fontSize,
-    lineHeight: 18,
-    marginBottom: 15,
-  },
-  utilityPrimaryButton: {
-    alignItems: 'center',
-    backgroundColor: colors.orange,
-    borderRadius: 11,
-    justifyContent: 'center',
-    minHeight: 46,
-  },
-  utilityPrimaryText: {
-    color: colors.white,
-    fontSize: typography.body.fontSize,
-    fontWeight: '900',
-  },
-  utilitySecondaryButton: {
-    alignItems: 'center',
-    borderColor: colors.line,
-    borderRadius: 11,
-    borderWidth: 1,
-    justifyContent: 'center',
-    marginTop: 8,
-    minHeight: 44,
-  },
-  utilitySecondaryText: {
-    color: colors.gray,
-    fontSize: typography.label.fontSize,
-    fontWeight: '800',
   },
   pressed: { opacity: 0.72 },
 });
