@@ -30,6 +30,15 @@ def test_candidate_contract_accepts_itinerary_fields() -> None:
     assert candidate.item_type.value == "attraction"
 
 
+def test_candidate_allows_unknown_environment_as_none() -> None:
+    data = _candidate_data()
+    data["environment"] = None
+
+    candidate = Candidate(**data)
+
+    assert candidate.environment is None
+
+
 def test_business_hour_requires_complete_time_pair() -> None:
     with pytest.raises(ValidationError, match="함께 설정"):
         BusinessHour(day_of_week=1, opens_at=time(9))
