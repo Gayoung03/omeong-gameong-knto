@@ -299,6 +299,9 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 응답의 `suggestions`에는 현재 일정과 겹치지 않는 상위 3개 장소가 담기며, 이 요청만으로
 일정은 변경되지 않습니다.
 
+후보를 고른 뒤에는 직접 장소를 선택했을 때와 동일하게
+`PUT /route-items/{routeItemId}/place`를 호출합니다.
+
 ---
 
 ## GET /routes
@@ -621,6 +624,18 @@ memo, shareToken, 체크리스트, 개인 메모
 시각·체류시간·메모·`isSelected`를 수정합니다. `sortOrder` 변경은 아래 순서 API를 씁니다.
 
 `endsAt`은 `startsAt`보다 뒤여야 하고, `stayMinutes`는 0 이상입니다.
+
+### PUT /route-items/{routeItemId}/place
+
+AI 추천 후보 또는 사용자가 직접 고른 DB 장소로 일정 항목을 교체합니다.
+
+```json
+{ "placeId": "550e8400-e29b-41d4-a716-446655440000" }
+```
+
+서버는 요청 당시의 반려동물·영업 조건을 다시 검사하고 추천 점수와 루트 종합 점수를
+갱신합니다. 같은 루트에 이미 있는 장소이거나 하드 필터를 통과하지 못한 장소는
+`422`로 거절합니다. 교체 항목 앞뒤의 TMAP 경로는 다시 계산해 캐시에 저장합니다.
 
 ### PUT /route-days/{routeDayId}/items/order
 

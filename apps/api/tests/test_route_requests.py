@@ -101,3 +101,119 @@ def test_route_request_generates_db_place_itinerary(
     status_response = client.get(f"/api/v1/routes/{route_id}/status")
     assert status_response.status_code == 200
     assert status_response.json()["status"] == "generated"
+
+
+def test_user_can_confirm_replacement_and_refresh_adjacent_routes(
+    client: TestClient,
+    db: Session,
+    place: Place,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    second = Place(
+        id=uuid.uuid4(),
+        name="기존 카페",
+        category="cafe",
+        latitude=33.40,
+        longitude=126.25,
+        average_stay_minutes=60,
+    )
+    db.add(second)
+    db.flush()
+    monkeypatch.setattr(routes, "run_route_generation", lambda _route_id, _open: None)
+    created = client.post("/api/v1/route-requests", json=_payload(place.id)).json()
+    route_id = uuid.UUID(created["routeId"])
+    route_calls: list[tuple] = []
+
+    def fake_route(*args, **_kwargs) -> RouteLeg:
+        route_calls.append(args)
+        return RouteLeg(distance_m=1000, duration_min=5, polyline=None)
+
+    monkeypatch.setattr(route_recommendation, "get_route", fake_route)
+    monkeypatch.setattr(
+        route_recommendation,
+        "get_precipitation_probabilities",
+        lambda *_args, **_kwargs: {},
+    )
+    route_recommendation.generate_route(db, route_id)
+
+    route = db.get(Route, route_id)
+    assert route is not None
+    items = [item for day in route.route_days for item in day.items]
+    assert len(items) >= 2
+
+    duplicate = client.put(
+        f"/api/v1/route-items/{items[0].id}/place",
+        json={"placeId": str(items[1].place_id)},
+    )
+    assert duplicate.status_code == 422
+
+    replacement = Place(
+        id=uuid.uuid4(),
+        name="새 산책 장소",
+        category="attraction",
+        latitude=33.41,
+        longitude=126.26,
+        average_stay_minutes=90,
+    )
+    db.add(replacement)
+    db.flush()
+    route_calls.clear()
+
+    response = client.put(
+        f"/api/v1/route-items/{items[0].id}/place",
+        json={"placeId": str(replacement.id)},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["place"]["id"] == str(replacement.id)
+    assert response.json()["customPlaceName"] is None
+    assert route_calls
+    db.refresh(route)
+    assert route.version == 2
+    assert route.total_score is not None
+
+
+def test_replacement_rejects_place_that_fails_hard_filter(
+    client: TestClient,
+    db: Session,
+    place: Place,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(routes, "run_route_generation", lambda _route_id, _open: None)
+    created = client.post("/api/v1/route-requests", json=_payload(place.id)).json()
+    route_id = uuid.UUID(created["routeId"])
+    monkeypatch.setattr(
+        route_recommendation,
+        "get_route",
+        lambda *_args, **_kwargs: RouteLeg(distance_m=0, duration_min=0, polyline=None),
+    )
+    monkeypatch.setattr(
+        route_recommendation,
+        "get_precipitation_probabilities",
+        lambda *_args, **_kwargs: {},
+    )
+    route_recommendation.generate_route(db, route_id)
+    route = db.get(Route, route_id)
+    assert route is not None
+    item = route.route_days[0].items[0]
+    original_place_id = item.place_id
+
+    inactive = Place(
+        id=uuid.uuid4(),
+        name="운영 중단 장소",
+        category="cafe",
+        latitude=33.42,
+        longitude=126.27,
+        is_active=False,
+    )
+    db.add(inactive)
+    db.flush()
+
+    response = client.put(
+        f"/api/v1/route-items/{item.id}/place",
+        json={"placeId": str(inactive.id)},
+    )
+
+    assert response.status_code == 422
+    db.refresh(item)
+    assert item.place_id == original_place_id

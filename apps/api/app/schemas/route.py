@@ -191,6 +191,12 @@ class RouteItemUpdate(APISchema):
     is_selected: bool | None = None
 
 
+class RouteItemPlaceReplace(APISchema):
+    """AI 추천과 직접 선택이 공통으로 보내는 장소 교체 요청."""
+
+    place_id: uuid.UUID
+
+
 class RouteItemOrderUpdate(APISchema):
     """드래그로 순서를 바꿨을 때. 그 날짜의 항목 전체를 순서대로 보낸다."""
 

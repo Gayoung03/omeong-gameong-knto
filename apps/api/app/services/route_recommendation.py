@@ -20,7 +20,7 @@ from app.db.models import (
     RouteRequestPet,
     RouteRequestStay,
 )
-from app.db.models.enums import RouteStatus
+from app.db.models.enums import RouteStatus, TransportType
 from app.integrations.llm.route_edit import RouteEditIntent
 from app.integrations.maps.kakao import GeocodedAddress, geocode_address
 from app.integrations.weather.kma import (
@@ -82,21 +82,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     if request is None:
         raise RecommendationGenerationError("추천 요청을 찾지 못했습니다")
 
-    pet_ids = list(
-        db.scalars(
-            select(RouteRequestPet.pet_id).where(RouteRequestPet.route_request_id == request.id)
-        ).all()
-    )
-    pets = list(db.scalars(select(Pet).where(Pet.id.in_(pet_ids))).all()) if pet_ids else []
-    stays = list(
-        db.scalars(
-            select(RouteRequestStay)
-            .where(RouteRequestStay.route_request_id == request.id)
-            .order_by(RouteRequestStay.check_in_at.nulls_last(), RouteRequestStay.id)
-        ).all()
-    )
-    stay_coords = [(stay, resolve_location(db, stay.place_id, stay.address)) for stay in stays]
-    start_coord = _start_coord(db, request, stay_coords)
+    pets, stay_coords, start_coord = _request_inputs(db, request)
     precipitation_probability = _precipitation_probability(request, start_coord)
 
     weights = (
@@ -193,19 +179,7 @@ def suggest_replacements(
             .where(RouteDay.route_id == route.id, RouteItem.place_id.is_not(None))
         ).all()
     )
-    pet_ids = list(
-        db.scalars(
-            select(RouteRequestPet.pet_id).where(RouteRequestPet.route_request_id == request.id)
-        ).all()
-    )
-    pets = list(db.scalars(select(Pet).where(Pet.id.in_(pet_ids))).all()) if pet_ids else []
-    stays = list(
-        db.scalars(
-            select(RouteRequestStay).where(RouteRequestStay.route_request_id == request.id)
-        ).all()
-    )
-    stay_coords = [(stay, resolve_location(db, stay.place_id, stay.address)) for stay in stays]
-    start_coord = _start_coord(db, request, stay_coords)
+    pets, stay_coords, start_coord = _request_inputs(db, request)
     if intent.location_anchor == "stay" and stay_coords:
         start_coord = stay_coords[0][1]
     elif target.place_id is not None:
@@ -236,6 +210,159 @@ def suggest_replacements(
             precipitation_probability=precipitation_probability,
         ),
     )[:limit]
+
+
+def replace_route_item(
+    db: Session,
+    route: Route,
+    day: RouteDay,
+    item: RouteItem,
+    place_id: uuid.UUID,
+) -> RouteItem:
+    """선택한 DB 장소를 다시 검증한 뒤 일정 항목과 인접 경로를 갱신한다."""
+
+    if route.route_request_id is None:
+        raise RecommendationGenerationError("추천으로 만든 여행의 장소만 교체할 수 있습니다")
+    request = db.get(RouteRequest, route.route_request_id)
+    if request is None:
+        raise RecommendationGenerationError("추천 요청을 찾지 못했습니다")
+
+    pets, stay_coords, start_coord = _request_inputs(db, request)
+    weights = (
+        Weights(**request.applied_weights)
+        if request.applied_weights is not None
+        else resolve_weights(request.priority_preset)
+    )
+    scored = score_candidates(
+        filter_candidates(db, request, pets),
+        ScoringContext(
+            weights=weights,
+            base_coord=start_coord,
+            additional_base_coords=tuple(dict.fromkeys(coord for _, coord in stay_coords)),
+            preferred_tags=frozenset(request.preferred_tags or []),
+            precipitation_probability=_precipitation_probability(request, start_coord),
+        ),
+    )
+    scored_by_id = {candidate.place_id: candidate for candidate in scored}
+    replacement = scored_by_id.get(place_id)
+    if replacement is None:
+        raise RecommendationGenerationError(
+            "선택한 장소가 현재 여행의 반려동물·영업 조건에 맞지 않습니다"
+        )
+
+    used_elsewhere = db.scalar(
+        select(RouteItem.id)
+        .join(RouteDay, RouteDay.id == RouteItem.route_day_id)
+        .where(
+            RouteDay.route_id == route.id,
+            RouteItem.place_id == place_id,
+            RouteItem.id != item.id,
+        )
+        .limit(1)
+    )
+    if used_elsewhere is not None:
+        raise RecommendationGenerationError("이미 일정에 포함된 장소입니다")
+
+    item.place_id = replacement.place_id
+    item.custom_place_name = None
+    item.item_type = replacement.item_type
+    item.recommendation_score = Decimal(str(round(replacement.total_score * 100, 2)))
+    item.recommendation_reason = replacement.reason
+    db.flush()
+
+    _refresh_adjacent_routes(db, day, item, route.transport)
+
+    route_items = list(
+        db.scalars(
+            select(RouteItem)
+            .join(RouteDay, RouteDay.id == RouteItem.route_day_id)
+            .where(RouteDay.route_id == route.id, RouteItem.place_id.is_not(None))
+        ).all()
+    )
+    recommendation_scores = [
+        float(route_item.recommendation_score)
+        for route_item in route_items
+        if route_item.recommendation_score is not None
+    ]
+    pet_scores = [
+        scored_by_id[route_item.place_id].sub_scores["pet"]
+        for route_item in route_items
+        if route_item.place_id in scored_by_id
+    ]
+    route.total_score = (
+        Decimal(str(round(sum(recommendation_scores) / len(recommendation_scores), 2)))
+        if recommendation_scores
+        else None
+    )
+    route.pet_safety_score = (
+        Decimal(str(round(sum(pet_scores) / len(pet_scores) * 100, 2)))
+        if pet_scores
+        else None
+    )
+    route.explanation = "사용자가 선택한 장소로 일정을 변경하고 추천 조건을 다시 확인했습니다."
+    route.version += 1
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+def _refresh_adjacent_routes(
+    db: Session,
+    day: RouteDay,
+    changed: RouteItem,
+    default_transport: TransportType,
+) -> None:
+    ordered = sorted(day.items, key=lambda route_item: route_item.sort_order)
+    position = next(
+        index for index, route_item in enumerate(ordered) if route_item.id == changed.id
+    )
+    pairs = []
+    if position > 0:
+        pairs.append((ordered[position - 1], changed))
+    if position + 1 < len(ordered):
+        pairs.append((changed, ordered[position + 1]))
+
+    for origin, destination in pairs:
+        if origin.place_id is None or destination.place_id is None:
+            continue
+        origin_place = db.get(Place, origin.place_id)
+        destination_place = db.get(Place, destination.place_id)
+        if origin_place is None or destination_place is None:
+            continue
+        move = db.scalar(
+            select(RouteMove).where(
+                RouteMove.from_item_id == origin.id,
+                RouteMove.to_item_id == destination.id,
+            )
+        )
+        get_route(
+            db,
+            (float(origin_place.latitude), float(origin_place.longitude)),
+            (float(destination_place.latitude), float(destination_place.longitude)),
+            move.transport if move is not None else default_transport,
+            origin.ends_at,
+        )
+
+
+def _request_inputs(
+    db: Session,
+    request: RouteRequest,
+) -> tuple[list[Pet], list[tuple[RouteRequestStay, Coordinate]], Coordinate]:
+    pet_ids = list(
+        db.scalars(
+            select(RouteRequestPet.pet_id).where(RouteRequestPet.route_request_id == request.id)
+        ).all()
+    )
+    pets = list(db.scalars(select(Pet).where(Pet.id.in_(pet_ids))).all()) if pet_ids else []
+    stays = list(
+        db.scalars(
+            select(RouteRequestStay)
+            .where(RouteRequestStay.route_request_id == request.id)
+            .order_by(RouteRequestStay.check_in_at.nulls_last(), RouteRequestStay.id)
+        ).all()
+    )
+    stay_coords = [(stay, resolve_location(db, stay.place_id, stay.address)) for stay in stays]
+    return pets, stay_coords, _start_coord(db, request, stay_coords)
 
 
 def _start_coord(
