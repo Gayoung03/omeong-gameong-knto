@@ -193,3 +193,58 @@ export type RouteItemUpdateRequest = {
   note?: string | null;
   isSelected?: boolean;
 };
+
+export type RouteRequestStayCreateRequest = {
+  placeId?: string;
+  name: string;
+  address?: string;
+  checkInAt?: string;
+  checkOutAt?: string;
+};
+
+export type RouteRequestCreateRequest = {
+  title?: string;
+  startAt: string;
+  endAt: string;
+  departureLocation?: string;
+  departurePlaceId?: string;
+  pace: ServerTripPace;
+  transport: ServerTransportType;
+  companionCount: number;
+  preferredTags: string[];
+  priorityPreset: string;
+  userCriteria: string[];
+  requestText?: string;
+  petIds: string[];
+  stays: RouteRequestStayCreateRequest[];
+};
+
+export type RouteRequestAcceptedResponse = {
+  routeId: string;
+  routeRequestId: string;
+  status: ServerRouteStatus;
+  version: number;
+};
+
+export type RouteGenerationStatusResponse = {
+  routeId: string;
+  status: ServerRouteStatus;
+  version: number;
+  failureReason: string | null;
+};
+
+export type RouteReplacementSuggestionResponse = {
+  placeId: string;
+  name: string;
+  category: string;
+  address: string | null;
+  primaryImageUrl: string | null;
+  recommendationScore: number;
+  recommendationReason: string;
+};
+
+export type RouteEditSuggestionResponse = {
+  targetItemId: string;
+  interpretation: string;
+  suggestions: RouteReplacementSuggestionResponse[];
+};

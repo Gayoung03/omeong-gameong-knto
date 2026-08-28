@@ -201,4 +201,8 @@ def _item_type_of(category: str) -> ScheduleItemType | None:
         item_type = ScheduleItemType(category)
     except ValueError:
         return None
-    return item_type if item_type != ScheduleItemType.CUSTOM else None
+    # 숙소는 사용자가 입력한 일자별 동선 기준점이다. 일반 방문 후보로 넘기면
+    # 일정 조립기가 숙소를 관광지처럼 배치하므로 추천 후보에서는 제외한다.
+    if item_type in {ScheduleItemType.ACCOMMODATION, ScheduleItemType.CUSTOM}:
+        return None
+    return item_type

@@ -2,10 +2,14 @@ import { apiClient } from '@/src/services/apiClient';
 
 import type {
   RouteDetailResponse,
+  RouteEditSuggestionResponse,
+  RouteGenerationStatusResponse,
   RouteItemCreateRequest,
   RouteItemResponse,
   RouteItemUpdateRequest,
   RouteListResponse,
+  RouteRequestAcceptedResponse,
+  RouteRequestCreateRequest,
   RouteUpdateRequest,
 } from '../types/routeApi';
 import type { Trip, TripListItem } from '../types/trip';
@@ -106,4 +110,34 @@ export async function updateRouteItem(
 ): Promise<RouteItemResponse> {
   const { data } = await apiClient.patch<RouteItemResponse>(`/route-items/${itemId}`, payload);
   return data;
+}
+
+export async function createRouteRecommendation(
+  payload: RouteRequestCreateRequest,
+): Promise<RouteRequestAcceptedResponse> {
+  const { data } = await apiClient.post<RouteRequestAcceptedResponse>('/route-requests', payload);
+  return data;
+}
+
+export async function getRouteGenerationStatus(
+  routeId: string,
+): Promise<RouteGenerationStatusResponse> {
+  const { data } = await apiClient.get<RouteGenerationStatusResponse>(`/routes/${routeId}/status`);
+  return data;
+}
+
+export async function requestRouteEditSuggestions(
+  routeId: string,
+  instruction: string,
+): Promise<RouteEditSuggestionResponse> {
+  const { data } = await apiClient.post<RouteEditSuggestionResponse>(
+    `/routes/${routeId}/edit-suggestions`,
+    { instruction },
+    { timeout: 65_000 },
+  );
+  return data;
+}
+
+export async function replaceRouteItemPlace(itemId: string, placeId: string): Promise<void> {
+  await apiClient.put(`/route-items/${itemId}/place`, { placeId });
 }

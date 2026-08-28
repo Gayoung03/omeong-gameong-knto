@@ -29,6 +29,9 @@ services:
       # 챗봇. 키가 없으면 답변 생성만 502 로 실패하고 나머지 API 는 정상 동작한다.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      TMAP_API: ${TMAP_API:-}
+      KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
+      WEATHER_API_KEY: ${WEATHER_API_KEY:-}
     ports:
       - "8000:8000"
     volumes:
