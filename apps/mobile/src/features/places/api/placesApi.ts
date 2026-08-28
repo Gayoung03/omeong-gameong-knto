@@ -35,6 +35,15 @@ export async function searchPlaces(query: string, limit = 20): Promise<Place[]> 
   return data.items.map(toPlace);
 }
 
+/** 루트 추천의 숙소 선택용 공식 숙박 장소 검색. */
+export async function searchAccommodations(query = '', limit = 30): Promise<Place[]> {
+  const { data } = await apiClient.get<PlaceListResponse>('/places', {
+    params: { category: 'accommodation', limit, q: query.trim() || undefined },
+  });
+
+  return data.items.map(toPlace);
+}
+
 /**
  * 장소 상세 조회.
  *

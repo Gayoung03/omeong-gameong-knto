@@ -65,14 +65,16 @@ export function MapPlaceCard({ item, onPressDetail, onClose }: MapPlaceCardProps
         </Text>
       )}
 
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => onPressDetail(item.place.id)}
-        style={styles.detailButton}
-      >
-        <Text style={styles.detailText}>장소 자세히 보기</Text>
-        <Ionicons color={colors.primary} name="chevron-forward" size={14} />
-      </Pressable>
+      {!item.place.isCustom ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => onPressDetail(item.place.id)}
+          style={styles.detailButton}
+        >
+          <Text style={styles.detailText}>장소 자세히 보기</Text>
+          <Ionicons color={colors.primary} name="chevron-forward" size={14} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
