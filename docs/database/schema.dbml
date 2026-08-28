@@ -549,3 +549,109 @@ Table chat_messages {
   model_name varchar(100)
   created_at timestamptz [not null]
 }
+
+// ─── 여행 가이드 콘텐츠 ────────────────────────────────
+// 읽는 글(guide_documents)과 질의하는 값(transport_pet_rules)을 나눈다.
+// 마크다운 본문만으로는 "12kg이면 어느 항공사?" 에 답할 수 없어서.
+
+Enum guide_category {
+  airline
+  ferry
+  preparation
+}
+
+Enum carrier_type {
+  airline
+  ferry
+}
+
+Enum breed_restriction_type {
+  dangerous
+  brachycephalic
+}
+
+Enum breed_restriction_scope {
+  cabin
+  cargo
+  both
+}
+
+Table guide_documents {
+  id uuid [pk]
+  slug varchar(100) [not null, unique]
+  title varchar(200) [not null]
+  category guide_category [not null]
+  body text [not null]
+  display_order smallint [not null, default: 0]
+  verified_at timestamptz
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  indexes {
+    category
+    is_active
+  }
+}
+
+Table guide_document_sources {
+  id uuid [pk]
+  guide_document_id uuid [not null, ref: > guide_documents.id]
+  source_name varchar(200) [not null]
+  source_url text
+  source_note varchar(200)
+  verified_at timestamptz
+  display_order smallint [not null, default: 0]
+}
+
+Table transport_pet_rules {
+  id uuid [pk]
+  guide_document_id uuid [not null, ref: > guide_documents.id]
+  carrier_name varchar(50) [not null]
+  carrier_type carrier_type [not null]
+  route varchar(50) [note: '여객선만. 항공사는 null']
+  cabin_allowed boolean [note: 'null = 확인 안 됨']
+  cabin_max_weight_kg decimal(5,2) [note: '케이지 포함']
+  cabin_fee_krw integer
+  min_age_weeks_cabin smallint
+  max_pets_per_person_cabin smallint
+  max_pets_per_trip smallint
+  cargo_allowed boolean
+  cargo_max_weight_kg decimal(5,2)
+  cargo_fee_threshold_kg decimal(5,2)
+  cargo_fee_light_krw integer
+  cargo_fee_heavy_krw integer
+  min_age_weeks_cargo smallint
+  pledge_required boolean
+  online_checkin_allowed boolean
+  same_day_request_allowed boolean
+  request_deadline_hours smallint
+  airport_cage_price_krw integer
+  duration_minutes smallint [note: '여객선 소요 시간']
+  notes text
+  source_url text
+  verified_at timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  indexes {
+    carrier_type
+    guide_document_id
+  }
+}
+
+Table transport_restricted_breeds {
+  id uuid [pk]
+  transport_pet_rule_id uuid [not null, ref: > transport_pet_rules.id]
+  breed_name_ko varchar(100) [not null]
+  breed_name_en varchar(100)
+  breed_aliases varchar[]
+  restriction_type breed_restriction_type [not null]
+  applies_to breed_restriction_scope [not null]
+  is_example_only boolean [not null, default: false, note: '원문이 예시만 든 경우']
+
+  indexes {
+    transport_pet_rule_id
+    breed_name_ko
+  }
+}

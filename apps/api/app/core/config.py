@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     aws_region: str = "ap-northeast-2"
     s3_bucket_name: str = ""
     s3_public_base_url: str = ""
+    tmap_api: str = ""
 
     # --- 챗봇 -------------------------------------------------------------
     openai_api_key: str = ""

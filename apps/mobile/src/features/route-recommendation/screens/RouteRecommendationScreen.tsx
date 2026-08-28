@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { recommendedDays } from '../mocks/routes.mock';
+import { PRIORITY_PRESETS } from '../personalization';
 import type { RoutePlace } from '../types';
 import { formatRouteDate, formatTripDuration, getTripDates } from '../utils/tripDuration';
 
@@ -130,6 +131,8 @@ export function RouteRecommendationScreen() {
     startAt?: string;
     endAt?: string;
     pace?: string;
+    priorityPreset?: string;
+    userCriteria?: string;
     selectedPlaces?: string;
   }>();
   const tripDays = useMemo(() => {
@@ -160,6 +163,8 @@ export function RouteRecommendationScreen() {
     params.startAt && params.endAt
       ? formatTripDuration(params.startAt, params.endAt)
       : `${recommendedDays.length - 1}박 ${recommendedDays.length}일`;
+  const priorityLabel =
+    PRIORITY_PRESETS.find((preset) => preset.value === params.priorityPreset)?.label ?? '균형 추천';
 
   const activeDay = tripDays[selectedDay - 1];
   const activeIds = useMemo(() => activeDay.places.map((place) => place.id), [activeDay]);
@@ -263,7 +268,7 @@ export function RouteRecommendationScreen() {
             <Ionicons color={palette.ink} name="chevron-back" size={24} />
           </Pressable>
           <View>
-            <Text style={styles.eyebrow}>AI 맞춤 여행 플래너</Text>
+            <Text style={styles.eyebrow}>맞춤 여행 플래너</Text>
             <Text style={styles.headerTitle}>추천 결과</Text>
           </View>
         </View>
@@ -287,7 +292,7 @@ export function RouteRecommendationScreen() {
               {params.petName ?? '몽이'}와 함께하는 {duration} {params.tripTitle ?? '제주 여행'}
             </Text>
             <Text style={styles.heroDescription}>
-              {params.pace ?? '여유롭게'} 여행하도록 날씨와 이동 동선을 고려했어요.
+              {priorityLabel}과 {params.pace ?? '여유롭게'} 속도를 반영했어요.
             </Text>
           </View>
           <View style={styles.petIllustration}>
@@ -429,7 +434,6 @@ export function RouteRecommendationScreen() {
             <Text style={styles.primaryButtonText}>코스 저장하기</Text>
           </Pressable>
         </View>
-
       </ScrollView>
 
       <Modal
@@ -506,7 +510,6 @@ export function RouteRecommendationScreen() {
                 </Pressable>
               </View>
             ) : null}
-
           </View>
         </View>
       </Modal>

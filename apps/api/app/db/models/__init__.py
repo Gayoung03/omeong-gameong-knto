@@ -12,6 +12,12 @@ from app.db.models.community import (
     TravelLog,
     TravelLogPet,
 )
+from app.db.models.guides import (
+    GuideDocument,
+    GuideDocumentSource,
+    TransportPetRule,
+    TransportRestrictedBreed,
+)
 from app.db.models.places import (
     Place,
     PlaceBusinessHour,
@@ -40,6 +46,8 @@ __all__ = [
     "ChatConversation",
     "ChatMessage",
     "Favorite",
+    "GuideDocument",
+    "GuideDocumentSource",
     "Inquiry",
     "Notice",
     "Notification",
@@ -65,6 +73,8 @@ __all__ = [
     "RouteRequestStay",
     "TravelLog",
     "TravelLogPet",
+    "TransportPetRule",
+    "TransportRestrictedBreed",
     "User",
     "UserConsent",
     "UserTravelPreference",

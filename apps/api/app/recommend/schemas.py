@@ -47,7 +47,7 @@ class PetPolicy(RecommendationSchema):
     policy_type: PetPolicyType
     allowed_species: list[str] = Field(default_factory=list)
     allowed_sizes: list[str] = Field(default_factory=list)
-    max_weight_kg: float | None = Field(default=None, gt=0)
+    max_weight_kg: float | None = Field(default=None, ge=0)
     carrier_required: bool | None = None
     leash_required: bool | None = None
     vaccination_required: bool | None = None
@@ -61,7 +61,7 @@ class Candidate(RecommendationSchema):
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     item_type: ScheduleItemType
-    environment: PlaceEnvironment
+    environment: PlaceEnvironment | None
     average_stay_minutes: int = Field(gt=0)
     tags: list[str] = Field(default_factory=list)
     amenities: list[str] = Field(default_factory=list)
