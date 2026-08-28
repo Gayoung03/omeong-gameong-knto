@@ -503,7 +503,9 @@ def _new_share_token(db: Session) -> str:
     낮지만 그때 500 을 내는 대신 몇 번 다시 뽑는다.
     """
     for _ in range(5):
-        token = secrets.token_hex(5)  # 10글자
+        # token_urlsafe(16) = 128비트. token_hex(5)(40비트)는 공유 링크를 무차별
+        # 대입으로 열어볼 여지가 있어 넓힌다. share_token 컬럼은 넉넉하다(길이 제한 확인 완료).
+        token = secrets.token_urlsafe(16)
         if db.scalar(select(Route.id).where(Route.share_token == token)) is None:
             return token
 

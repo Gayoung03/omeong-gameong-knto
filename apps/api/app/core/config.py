@@ -2,13 +2,23 @@
 
 from functools import lru_cache
 
+from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+#: SECRET_KEY 가 없을 때 기동 로그에 남길 안내. Pydantic 기본 메시지("Field
+#: required")는 무엇을 어디에 넣어야 하는지 알려주지 않아 사람이 읽을 수 있게 바꾼다.
+_MISSING_SECRET_KEY_MESSAGE = "SECRET_KEY가 .env에 없습니다 — .env.example 참고"
 
 
 class Settings(BaseSettings):
     app_name: str = "Omeong Gameong API"
     environment: str = "local"
     api_v1_prefix: str = "/api/v1"
+    #: JWT 서명 키. 기본값을 두지 않고 빈 문자열도 막는다 — 빈 키는 뻔한 키라
+    #: 서버마다 다른(혹은 예측 가능한) 서명으로 발급된 토큰이 통과할 수 있다.
+    #: `.env.example` 의 빈 `SECRET_KEY=` 를 그대로 복사하면 기동에서 즉시
+    #: 실패한다(아래 get_settings 의 안내 메시지 참고).
+    secret_key: str = Field(min_length=1)
     database_url: str = "postgresql+psycopg://omeong:omeong@localhost:5432/omeong"
     cors_origins: list[str] = ["http://localhost:8081", "http://localhost:19006"]
     aws_region: str = "ap-northeast-2"
@@ -45,7 +55,16 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    try:
+        return Settings()
+    except ValidationError as error:
+        # 누락(missing)이든 빈 문자열(too_short)이든 SECRET_KEY 문제면 같은 안내로.
+        secret_key_problem = any(
+            entry["loc"] == ("secret_key",) for entry in error.errors()
+        )
+        if secret_key_problem:
+            raise RuntimeError(_MISSING_SECRET_KEY_MESSAGE) from error
+        raise
 
 
 settings = get_settings()

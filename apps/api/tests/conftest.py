@@ -35,6 +35,7 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_optional_user
+from app.core.config import settings
 from app.db.models import Place, Route, RouteDay, RouteItem, User
 from app.db.models.enums import (
     RouteCreationType,
@@ -47,6 +48,23 @@ from app.db.session import get_background_session, get_db
 from app.main import app
 
 KST = timezone(timedelta(hours=9))
+
+
+@pytest.fixture(autouse=True)
+def _neutralize_image_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """이미지 URL 출처 검증을 테스트에서 통과 경로로 고정한다.
+
+    검증은 `settings.s3_public_base_url`(개발자 로컬 `.env` 값)에 좌우된다. 그
+    값이 있으면 그 호스트와 정확히 일치하는 URL 만 통과하는데, 대부분의 통합
+    테스트는 자리표시 이미지 URL 을 쓴다. 그대로 두면 로컬 `.env` 유무에 따라
+    같은 테스트가 붙었다 떨어졌다 한다. 여기서 S3 설정을 비우고 environment 를
+    local 로 고정해 "출처를 모르면 로컬에서는 통과" 경로로 만든다.
+
+    검증 로직 자체는 `test_image_url_validator.py` 가 호스트를 명시적으로 세팅해
+    직접 확인한다.
+    """
+    monkeypatch.setattr(settings, "s3_public_base_url", "")
+    monkeypatch.setattr(settings, "environment", "local")
 
 
 @pytest.fixture(scope="session")
