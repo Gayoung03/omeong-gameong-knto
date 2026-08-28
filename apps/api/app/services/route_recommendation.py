@@ -7,7 +7,7 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import (
     Pet,
@@ -20,16 +20,18 @@ from app.db.models import (
     RouteRequestPet,
     RouteRequestStay,
 )
-from app.db.models.enums import RouteStatus, TransportType
+from app.db.models.enums import RouteStatus, ScheduleItemType, TransportType
 from app.integrations.llm.route_edit import RouteEditIntent
 from app.integrations.maps.kakao import GeocodedAddress, geocode_address
+from app.integrations.tour_api.kto import TourAPIError, TourPlace, get_nearby_places
 from app.integrations.weather.kma import (
     WeatherForecastError,
     get_precipitation_probabilities,
 )
+from app.recommend.common.geo import haversine_m
 from app.recommend.filters import filter_candidates
-from app.recommend.itinerary import BuildRequest, Itinerary, build
-from app.recommend.schemas import ScoredCandidate, Weights
+from app.recommend.itinerary import BuildRequest, Itinerary, RouteAnchor, build
+from app.recommend.schemas import Candidate, ScoredCandidate, Weights
 from app.recommend.scoring import ScoringContext, score_candidates
 from app.recommend.tmap import get_route
 from app.recommend.weights import resolve_weights
@@ -91,6 +93,21 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
         else resolve_weights()
     )
     candidates = filter_candidates(db, request, pets)
+    tour_places: list[TourPlace] = []
+    tour_api_succeeded = False
+    try:
+        tour_places = _tour_api_places(start_coord, stay_coords)
+        tour_api_succeeded = True
+    except TourAPIError as error:
+        logger.warning("TourAPI lookup failed: %s", error)
+    candidate_names = dict(
+        db.execute(
+            select(Place.id, Place.name).where(
+                Place.id.in_([candidate.place_id for candidate in candidates])
+            )
+        ).all()
+    )
+    tour_matched_ids = _match_tour_places(candidates, candidate_names, tour_places)
     scored = score_candidates(
         candidates,
         ScoringContext(
@@ -103,7 +120,14 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     )
     if not scored:
         raise RecommendationGenerationError("추천할 장소를 찾지 못했습니다")
+    scored = [
+        item.model_copy(update={"reason": f"{item.reason} · 한국관광공사 TourAPI 실시간 정보 확인"})
+        if item.place_id in tour_matched_ids
+        else item
+        for item in scored
+    ]
 
+    day_start_anchors, day_end_anchors = _day_anchors(db, request, stay_coords)
     itinerary = build(
         scored,
         BuildRequest(
@@ -112,7 +136,8 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
             pace=request.pace,
             transport=request.transport,
             start_coord=start_coord,
-            day_start_coords=_day_start_coords(stay_coords),
+            day_start_anchors=day_start_anchors,
+            day_end_anchors=day_end_anchors,
         ),
         lambda origin, destination, transport, depart_at: get_route(
             db, origin, destination, transport, depart_at
@@ -120,6 +145,13 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     )
     if not any(day.items for day in itinerary.days):
         raise RecommendationGenerationError("일정에 배치할 수 있는 장소가 없습니다")
+    if any(
+        not day.items or day.items[-1].candidate.item_type != ScheduleItemType.RESTAURANT
+        for day in itinerary.days
+    ):
+        raise RecommendationGenerationError(
+            "모든 날짜에 배치할 수 있는 반려동물 동반 저녁 식당이 부족합니다"
+        )
 
     _save_itinerary(db, route, itinerary)
     selected = [item.candidate for day in itinerary.days for item in day.items]
@@ -129,9 +161,62 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     route.pet_safety_score = Decimal(
         str(round(sum(item.sub_scores["pet"] for item in selected) / len(selected) * 100, 2))
     )
-    route.explanation = "사용자가 선택한 취향과 우선순위, 숙소 기준 이동 거리를 반영했습니다."
+    tour_api_explanation = (
+        f"한국관광공사 TourAPI 실시간 관광정보 {len(tour_places)}건을 조회해 "
+        f"DB 장소 {len(tour_matched_ids)}건과 대조했습니다."
+        if tour_api_succeeded
+        else "한국관광공사 TourAPI 실시간 조회에 실패해 DB 장소로 추천했습니다."
+    )
+    route.explanation = (
+        "사용자가 선택한 취향과 우선순위, 숙소 기준 이동 거리를 반영했습니다. "
+        + tour_api_explanation
+    )
     route.status = RouteStatus.GENERATED
     db.commit()
+
+
+def _tour_api_places(
+    start_coord: Coordinate,
+    stays: list[tuple[RouteRequestStay, Coordinate]],
+) -> list[TourPlace]:
+    """출발지와 숙소 주변을 매번 조회하고 메모리에만 합친다."""
+
+    coordinates = dict.fromkeys([start_coord, *(coord for _, coord in stays)])
+    by_content_id: dict[str, TourPlace] = {}
+    for latitude, longitude in coordinates:
+        for place in get_nearby_places(latitude, longitude):
+            by_content_id[place.content_id] = place
+    return list(by_content_id.values())
+
+
+def _match_tour_places(
+    candidates: list[Candidate],
+    candidate_names: dict[uuid.UUID, str],
+    tour_places: list[TourPlace],
+) -> set[uuid.UUID]:
+    """원문을 저장하지 않고 제목과 좌표가 맞는 DB 장소 ID만 돌려준다."""
+
+    by_title: dict[str, list[TourPlace]] = {}
+    for place in tour_places:
+        by_title.setdefault(_normalized_title(place.title), []).append(place)
+
+    matched: set[uuid.UUID] = set()
+    for candidate in candidates:
+        title = _normalized_title(candidate_names.get(candidate.place_id, ""))
+        same_title = by_title.get(title, []) if title else []
+        if any(
+            haversine_m((candidate.lat, candidate.lng), (place.latitude, place.longitude)) <= 500
+            for place in same_title
+        ) or any(
+            haversine_m((candidate.lat, candidate.lng), (place.latitude, place.longitude)) <= 30
+            for place in tour_places
+        ):
+            matched.add(candidate.place_id)
+    return matched
+
+
+def _normalized_title(value: str) -> str:
+    return "".join(character.lower() for character in value if character.isalnum())
 
 
 def run_route_generation(route_id: uuid.UUID, open_session: Callable) -> None:
@@ -187,10 +272,12 @@ def suggest_replacements(
         if target_place is not None:
             start_coord = float(target_place.latitude), float(target_place.longitude)
 
+    replacing_stay = target.item_type == ScheduleItemType.ACCOMMODATION
     candidates = [
         candidate
-        for candidate in filter_candidates(db, request, pets)
+        for candidate in filter_candidates(db, request, pets, include_accommodation=replacing_stay)
         if candidate.place_id not in current_place_ids
+        and (not replacing_stay or candidate.item_type == ScheduleItemType.ACCOMMODATION)
         and (intent.requested_category is None or candidate.item_type == intent.requested_category)
     ]
     weights = (
@@ -221,6 +308,9 @@ def replace_route_item(
 ) -> RouteItem:
     """선택한 DB 장소를 다시 검증한 뒤 일정 항목과 인접 경로를 갱신한다."""
 
+    replacing_stay = item.item_type == ScheduleItemType.ACCOMMODATION
+    if item.recommendation_score is None and item.item_type == ScheduleItemType.CUSTOM:
+        raise RecommendationGenerationError("출발지는 장소 교체 대상이 아닙니다")
     if route.route_request_id is None:
         raise RecommendationGenerationError("추천으로 만든 여행의 장소만 교체할 수 있습니다")
     request = db.get(RouteRequest, route.route_request_id)
@@ -234,7 +324,7 @@ def replace_route_item(
         else resolve_weights(request.priority_preset)
     )
     scored = score_candidates(
-        filter_candidates(db, request, pets),
+        filter_candidates(db, request, pets, include_accommodation=replacing_stay),
         ScoringContext(
             weights=weights,
             base_coord=start_coord,
@@ -245,6 +335,9 @@ def replace_route_item(
     )
     scored_by_id = {candidate.place_id: candidate for candidate in scored}
     replacement = scored_by_id.get(place_id)
+    if replacing_stay and replacement is not None:
+        if replacement.item_type != ScheduleItemType.ACCOMMODATION:
+            replacement = None
     if replacement is None:
         raise RecommendationGenerationError(
             "선택한 장소가 현재 여행의 반려동물·영업 조건에 맞지 않습니다"
@@ -260,17 +353,32 @@ def replace_route_item(
         )
         .limit(1)
     )
-    if used_elsewhere is not None:
+    if used_elsewhere is not None and not replacing_stay:
         raise RecommendationGenerationError("이미 일정에 포함된 장소입니다")
 
-    item.place_id = replacement.place_id
-    item.custom_place_name = None
-    item.item_type = replacement.item_type
-    item.recommendation_score = Decimal(str(round(replacement.total_score * 100, 2)))
-    item.recommendation_reason = replacement.reason
+    changed_items = [(day, item)]
+    if replacing_stay:
+        paired = _paired_stay_anchor(db, route, day, item)
+        if paired is not None:
+            changed_items.append(paired)
+
+    for _changed_day, changed_item in changed_items:
+        changed_item.place_id = replacement.place_id
+        changed_item.custom_place_name = None
+        changed_item.custom_address = None
+        changed_item.latitude = Decimal(str(replacement.lat))
+        changed_item.longitude = Decimal(str(replacement.lng))
+        changed_item.item_type = replacement.item_type
+        changed_item.recommendation_score = (
+            None if replacing_stay else Decimal(str(round(replacement.total_score * 100, 2)))
+        )
+        changed_item.recommendation_reason = (
+            "사용자가 선택한 숙소입니다." if replacing_stay else replacement.reason
+        )
     db.flush()
 
-    _refresh_adjacent_routes(db, day, item, route.transport)
+    for changed_day, changed_item in changed_items:
+        _refresh_adjacent_routes(db, changed_day, changed_item, route.transport)
 
     route_items = list(
         db.scalars(
@@ -295,15 +403,40 @@ def replace_route_item(
         else None
     )
     route.pet_safety_score = (
-        Decimal(str(round(sum(pet_scores) / len(pet_scores) * 100, 2)))
-        if pet_scores
-        else None
+        Decimal(str(round(sum(pet_scores) / len(pet_scores) * 100, 2))) if pet_scores else None
     )
     route.explanation = "사용자가 선택한 장소로 일정을 변경하고 추천 조건을 다시 확인했습니다."
     route.version += 1
     db.commit()
     db.refresh(item)
     return item
+
+
+def _paired_stay_anchor(
+    db: Session, route: Route, day: RouteDay, item: RouteItem
+) -> tuple[RouteDay, RouteItem] | None:
+    """숙박일의 도착 숙소와 다음 날 출발 숙소를 함께 바꾼다."""
+
+    ordered = sorted(day.items, key=lambda route_item: route_item.sort_order)
+    if item.id == ordered[-1].id:
+        target_number = day.day_number + 1
+        take_first = True
+    elif item.id == ordered[0].id:
+        target_number = day.day_number - 1
+        take_first = False
+    else:
+        return None
+
+    adjacent = db.scalar(
+        select(RouteDay)
+        .where(RouteDay.route_id == route.id, RouteDay.day_number == target_number)
+        .options(selectinload(RouteDay.items))
+    )
+    if adjacent is None or not adjacent.items:
+        return None
+    adjacent_items = sorted(adjacent.items, key=lambda route_item: route_item.sort_order)
+    candidate = adjacent_items[0] if take_first else adjacent_items[-1]
+    return (adjacent, candidate) if candidate.item_type == ScheduleItemType.ACCOMMODATION else None
 
 
 def _refresh_adjacent_routes(
@@ -323,11 +456,9 @@ def _refresh_adjacent_routes(
         pairs.append((changed, ordered[position + 1]))
 
     for origin, destination in pairs:
-        if origin.place_id is None or destination.place_id is None:
-            continue
-        origin_place = db.get(Place, origin.place_id)
-        destination_place = db.get(Place, destination.place_id)
-        if origin_place is None or destination_place is None:
+        origin_coord = _route_item_coord(db, origin)
+        destination_coord = _route_item_coord(db, destination)
+        if origin_coord is None or destination_coord is None:
             continue
         move = db.scalar(
             select(RouteMove).where(
@@ -337,11 +468,20 @@ def _refresh_adjacent_routes(
         )
         get_route(
             db,
-            (float(origin_place.latitude), float(origin_place.longitude)),
-            (float(destination_place.latitude), float(destination_place.longitude)),
+            origin_coord,
+            destination_coord,
             move.transport if move is not None else default_transport,
             origin.ends_at,
         )
+
+
+def _route_item_coord(db: Session, item: RouteItem) -> Coordinate | None:
+    if item.latitude is not None and item.longitude is not None:
+        return float(item.latitude), float(item.longitude)
+    if item.place_id is None:
+        return None
+    place = db.get(Place, item.place_id)
+    return (float(place.latitude), float(place.longitude)) if place is not None else None
 
 
 def _request_inputs(
@@ -361,7 +501,28 @@ def _request_inputs(
             .order_by(RouteRequestStay.check_in_at.nulls_last(), RouteRequestStay.id)
         ).all()
     )
-    stay_coords = [(stay, resolve_location(db, stay.place_id, stay.address)) for stay in stays]
+    stay_coords = [
+        (
+            stay,
+            (
+                (float(stay.latitude), float(stay.longitude))
+                if stay.latitude is not None and stay.longitude is not None
+                else resolve_location(db, stay.place_id, stay.address)
+            ),
+        )
+        for stay in stays
+    ]
+    for stay, coord in stay_coords:
+        stay.latitude = Decimal(str(coord[0]))
+        stay.longitude = Decimal(str(coord[1]))
+    if (request.departure_latitude is None or request.departure_longitude is None) and (
+        request.departure_place_id is not None or request.departure_location
+    ):
+        departure_coord = resolve_location(
+            db, request.departure_place_id, request.departure_location
+        )
+        request.departure_latitude = Decimal(str(departure_coord[0]))
+        request.departure_longitude = Decimal(str(departure_coord[1]))
     return pets, stay_coords, _start_coord(db, request, stay_coords)
 
 
@@ -370,6 +531,8 @@ def _start_coord(
     request: RouteRequest,
     stay_coords: list[tuple[RouteRequestStay, Coordinate]],
 ) -> Coordinate:
+    if request.departure_latitude is not None and request.departure_longitude is not None:
+        return float(request.departure_latitude), float(request.departure_longitude)
     if request.departure_place_id is not None or request.departure_location:
         return resolve_location(db, request.departure_place_id, request.departure_location)
     if stay_coords:
@@ -393,22 +556,62 @@ def _precipitation_probability(
     return max(forecasts.values()) if forecasts else None
 
 
-def _day_start_coords(
+def _day_anchors(
+    db: Session,
+    request: RouteRequest,
     stays: list[tuple[RouteRequestStay, Coordinate]],
-) -> dict[date, Coordinate]:
-    result: dict[date, Coordinate] = {}
+) -> tuple[dict[date, RouteAnchor], dict[date, RouteAnchor]]:
+    starts: dict[date, RouteAnchor] = {}
+    ends: dict[date, RouteAnchor] = {}
     for stay, coord in stays:
         if stay.check_in_at is None or stay.check_out_at is None:
             continue
+        anchor = _stay_anchor(db, stay, coord)
         current = stay.check_in_at.date()
         while current < stay.check_out_at.date():
+            ends[current] = anchor
             current = date.fromordinal(current.toordinal() + 1)
-            result[current] = coord
-    return result
+            starts[current] = anchor
+
+    first_date = request.start_at.date()
+    last_date = request.end_at.date()
+    if request.departure_place_id is not None or request.departure_location:
+        starts[first_date] = _departure_anchor(db, request)
+    elif first_date in ends:
+        starts[first_date] = ends[first_date]
+    elif stays:
+        starts[first_date] = _stay_anchor(db, stays[0][0], stays[0][1])
+    ends.pop(last_date, None)
+    return starts, ends
+
+
+def _stay_anchor(
+    db: Session,
+    stay: RouteRequestStay,
+    coord: Coordinate,
+) -> RouteAnchor:
+    place = db.get(Place, stay.place_id) if stay.place_id is not None else None
+    return RouteAnchor(
+        name=stay.name,
+        coord=coord,
+        item_type=ScheduleItemType.ACCOMMODATION,
+        place_id=stay.place_id,
+        address=stay.address or (place.address if place is not None else None),
+    )
+
+
+def _departure_anchor(db: Session, request: RouteRequest) -> RouteAnchor:
+    place = db.get(Place, request.departure_place_id) if request.departure_place_id else None
+    return RouteAnchor(
+        name=place.name if place is not None else request.departure_location or "여행 출발지",
+        coord=_start_coord(db, request, []),
+        item_type=ScheduleItemType.CUSTOM,
+        place_id=request.departure_place_id,
+        address=(place.address if place is not None else request.departure_location),
+    )
 
 
 def _save_itinerary(db: Session, route: Route, itinerary: Itinerary) -> None:
-    item_ids: dict[uuid.UUID, uuid.UUID] = {}
     for day_number, day in enumerate(itinerary.days, start=1):
         route_day = RouteDay(
             route_id=route.id,
@@ -417,13 +620,22 @@ def _save_itinerary(db: Session, route: Route, itinerary: Itinerary) -> None:
         )
         db.add(route_day)
         db.flush()
-        for sort_order, scheduled in enumerate(day.items):
+        item_ids: list[uuid.UUID] = []
+        sort_order = 0
+        if day.start_anchor is not None:
+            item_ids.append(
+                _save_anchor(db, route_day.id, day.start_anchor, sort_order, day.day_start)
+            )
+            sort_order += 1
+        for scheduled in day.items:
             candidate = scheduled.candidate
             item = RouteItem(
                 route_day_id=route_day.id,
                 place_id=candidate.place_id,
                 item_type=candidate.item_type,
                 sort_order=sort_order,
+                latitude=Decimal(str(candidate.lat)),
+                longitude=Decimal(str(candidate.lng)),
                 starts_at=scheduled.starts_at,
                 ends_at=scheduled.ends_at,
                 stay_minutes=candidate.average_stay_minutes,
@@ -432,12 +644,43 @@ def _save_itinerary(db: Session, route: Route, itinerary: Itinerary) -> None:
             )
             db.add(item)
             db.flush()
-            item_ids[candidate.place_id] = item.id
-        for move in day.moves:
+            item_ids.append(item.id)
+            sort_order += 1
+        if day.end_anchor is not None:
+            item_ids.append(
+                _save_anchor(db, route_day.id, day.end_anchor, sort_order, day.end_arrival)
+            )
+        for (from_item_id, to_item_id), move in zip(
+            zip(item_ids, item_ids[1:], strict=False), day.moves, strict=True
+        ):
             db.add(
                 RouteMove(
-                    from_item_id=item_ids[move.from_place_id],
-                    to_item_id=item_ids[move.to_place_id],
+                    from_item_id=from_item_id,
+                    to_item_id=to_item_id,
                     transport=move.transport,
                 )
             )
+
+
+def _save_anchor(
+    db: Session,
+    route_day_id: uuid.UUID,
+    anchor: RouteAnchor,
+    sort_order: int,
+    starts_at,
+) -> uuid.UUID:
+    item = RouteItem(
+        route_day_id=route_day_id,
+        place_id=anchor.place_id,
+        custom_place_name=None if anchor.place_id else anchor.name,
+        custom_address=anchor.address,
+        latitude=Decimal(str(anchor.coord[0])),
+        longitude=Decimal(str(anchor.coord[1])),
+        item_type=anchor.item_type,
+        sort_order=sort_order,
+        starts_at=starts_at,
+        stay_minutes=0,
+    )
+    db.add(item)
+    db.flush()
+    return item.id

@@ -8,9 +8,16 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.endpoints import routes
 from app.db.models import Place, Route, RouteRequest
+from app.integrations.tour_api.kto import TourPlace
 from app.recommend.tmap import RouteLeg
 from app.recommend.weights import resolve_weights
 from app.services import route_recommendation
+
+
+@pytest.fixture(autouse=True)
+def _no_external_tour_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(route_recommendation, "_tour_api_places", lambda *_args: [])
+    monkeypatch.setattr(routes, "get_nearby_places", lambda *_args, **_kwargs: [])
 
 
 def _payload(place_id: uuid.UUID) -> dict:
@@ -49,9 +56,7 @@ def test_route_request_saves_resolved_weight_snapshot(
 
     request = db.get(RouteRequest, uuid.UUID(body["routeRequestId"]))
     assert request is not None
-    assert request.applied_weights == pytest.approx(
-        resolve_weights("pet", []).model_dump()
-    )
+    assert request.applied_weights == pytest.approx(resolve_weights("pet", []).model_dump())
 
 
 def test_route_request_rejects_transport_without_route_provider(
@@ -95,6 +100,18 @@ def test_route_request_generates_db_place_itinerary(
         "get_precipitation_probabilities",
         lambda *_args, **_kwargs: {},
     )
+    monkeypatch.setattr(
+        route_recommendation,
+        "_tour_api_places",
+        lambda *_args: [
+            TourPlace(
+                content_id="tour-1",
+                title=place.name,
+                latitude=float(place.latitude),
+                longitude=float(place.longitude),
+            )
+        ],
+    )
 
     route_recommendation.generate_route(db, route_id)
     db.expire_all()
@@ -102,13 +119,17 @@ def test_route_request_generates_db_place_itinerary(
     route = db.get(Route, route_id)
     assert route is not None
     assert route.status.value == "generated"
-    first_item = route.route_days[0].items[0]
-    assert first_item.place_id is not None
-    assert db.get(Place, first_item.place_id) is not None
-    assert first_item.recommendation_score is not None
-    assert all(
-        item.place_id != accommodation.id for day in route.route_days for item in day.items
-    )
+    recommended_items = [
+        item
+        for day in route.route_days
+        for item in day.items
+        if item.recommendation_score is not None
+    ]
+    assert recommended_items
+    assert recommended_items[0].place_id is not None
+    assert db.get(Place, recommended_items[0].place_id) is not None
+    assert all(item.place_id != accommodation.id for day in route.route_days for item in day.items)
+    assert "한국관광공사 TourAPI 실시간 관광정보 1건" in (route.explanation or "")
 
     status_response = client.get(f"/api/v1/routes/{route_id}/status")
     assert status_response.status_code == 200
@@ -150,7 +171,12 @@ def test_user_can_confirm_replacement_and_refresh_adjacent_routes(
 
     route = db.get(Route, route_id)
     assert route is not None
-    items = [item for day in route.route_days for item in day.items]
+    items = [
+        item
+        for day in route.route_days
+        for item in day.items
+        if item.recommendation_score is not None
+    ]
     assert len(items) >= 2
 
     duplicate = client.put(
@@ -179,6 +205,8 @@ def test_user_can_confirm_replacement_and_refresh_adjacent_routes(
     assert response.status_code == 200
     assert response.json()["place"]["id"] == str(replacement.id)
     assert response.json()["customPlaceName"] is None
+    assert response.json()["latitude"] == pytest.approx(float(replacement.latitude))
+    assert response.json()["longitude"] == pytest.approx(float(replacement.longitude))
     assert route_calls
     db.refresh(route)
     assert route.version == 2
@@ -207,7 +235,12 @@ def test_replacement_rejects_place_that_fails_hard_filter(
     route_recommendation.generate_route(db, route_id)
     route = db.get(Route, route_id)
     assert route is not None
-    item = route.route_days[0].items[0]
+    item = next(
+        item
+        for day in route.route_days
+        for item in day.items
+        if item.recommendation_score is not None
+    )
     original_place_id = item.place_id
 
     inactive = Place(

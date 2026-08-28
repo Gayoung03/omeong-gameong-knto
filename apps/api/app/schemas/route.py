@@ -65,8 +65,8 @@ class RouteListResponse(APISchema):
 # ---------------------------------------------------------------------------
 # 상세 (GET /routes/{routeId})
 # ---------------------------------------------------------------------------
-# 아직 못 넣은 명세 필드: weather · moveToNext · distanceSummary · stays.
-# 각각 기상청·TMAP·TMAP·추천 요청서가 있어야 채워진다.
+# 아직 못 넣은 명세 필드: weather · stays.
+# 각각 기상청·추천 요청서가 있어야 채워진다.
 #
 # logCount 와 place 의 rating/reviewCount/petPolicyType 은 2026-08-23 에 채웠다 —
 # 리뷰·즐겨찾기 API 를 만들면서 집계식(services/place_query.py)이 생겼기 때문이다.
@@ -96,6 +96,32 @@ class PlaceSummary(APISchema):
     pet_policy_type: PetPolicyType = PetPolicyType.UNKNOWN
 
 
+class RouteMoveResponse(APISchema):
+    """다음 일정까지의 이동 정보. TMAP 계산 캐시에서 채운다."""
+
+    transport: TransportType
+    distance_meters: int
+    duration_minutes: int
+
+
+class RouteDistanceSummary(APISchema):
+    """여행 전체 이동 구간의 합계."""
+
+    total_distance_meters: int = 0
+    total_duration_minutes: int = 0
+
+
+class TourAPIPlaceResponse(APISchema):
+    """DB에 저장하지 않고 상세 조회 시점에만 내려주는 관광공사 장소."""
+
+    content_id: str
+    title: str
+    address: str | None
+    latitude: float
+    longitude: float
+    image_url: str | None
+
+
 class RouteItemResponse(APISchema):
     """하루 안의 방문 한 건. DB 의 route_items 한 줄이다."""
 
@@ -110,7 +136,11 @@ class RouteItemResponse(APISchema):
     recommendation_score: float | None
     recommendation_reason: str | None
     custom_place_name: str | None
+    custom_address: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     place: PlaceSummary | None
+    move_to_next: RouteMoveResponse | None = None
 
 
 class RouteDayResponse(APISchema):
@@ -141,6 +171,8 @@ class RouteDetail(RouteListItem):
     memo: str | None
     share_token: str | None
     pets: list[RoutePetResponse]
+    distance_summary: RouteDistanceSummary = Field(default_factory=RouteDistanceSummary)
+    tour_api_places: list[TourAPIPlaceResponse] = Field(default_factory=list)
     route_days: list[RouteDayResponse]
 
 
@@ -241,6 +273,8 @@ class SharedRouteDetail(RouteListItem):
     explanation: str | None
     total_score: float | None
     pets: list[RoutePetResponse]
+    distance_summary: RouteDistanceSummary = Field(default_factory=RouteDistanceSummary)
+    tour_api_places: list[TourAPIPlaceResponse] = Field(default_factory=list)
     route_days: list[RouteDayResponse]
 
 
@@ -418,6 +452,7 @@ class RouteGenerationStatus(APISchema):
 
 class RouteEditSuggestionRequest(APISchema):
     instruction: str = Field(min_length=1, max_length=500)
+    target_item_id: uuid.UUID | None = None
 
 
 class RouteReplacementSuggestion(APISchema):

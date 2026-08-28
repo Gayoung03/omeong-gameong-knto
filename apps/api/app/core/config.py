@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     tmap_api: str = ""
     kakao_rest_api_key: str = ""
     weather_api_key: str = ""
+    tour_api_key: str = ""
 
     # --- 챗봇 -------------------------------------------------------------
     openai_api_key: str = ""

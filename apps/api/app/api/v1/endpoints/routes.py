@@ -1,5 +1,6 @@
 """여행(route) 조회·관리 엔드포인트."""
 
+import logging
 import secrets
 import uuid
 from datetime import timedelta, timezone
@@ -16,6 +17,7 @@ from app.db.models import (
     Route,
     RouteDay,
     RouteItem,
+    RouteMove,
     RoutePet,
     RouteRequest,
     RouteRequestPet,
@@ -29,23 +31,28 @@ from app.integrations.llm.route_edit import (
     RouteItemContext,
     interpret_route_edit,
 )
+from app.integrations.tour_api.kto import TourAPIError, get_nearby_places
 from app.recommend.config.tags import normalize_preferred_tags
 from app.recommend.itinerary import SUPPORTED_TRANSPORTS
+from app.recommend.tmap import get_cached_route
 from app.recommend.weights import resolve_weights
 from app.schemas.route import (
     RouteCreate,
     RouteDetail,
+    RouteDistanceSummary,
     RouteEditSuggestionRequest,
     RouteEditSuggestionResponse,
     RouteGenerationStatus,
     RouteListItem,
     RouteListResponse,
+    RouteMoveResponse,
     RouteReplacementSuggestion,
     RouteRequestAccepted,
     RouteRequestCreate,
     RouteShareResponse,
     RouteUpdate,
     SharedRouteDetail,
+    TourAPIPlaceResponse,
 )
 from app.services.place_query import place_stats
 from app.services.route_access import (
@@ -61,6 +68,7 @@ from app.services.route_recommendation import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 DbSession = Annotated[Session, Depends(get_db)]
 OpenSession = Annotated[BackgroundSessionFactory, Depends(get_background_session)]
@@ -371,6 +379,10 @@ def create_route_edit_suggestions(
         )
         for row in rows
     ]
+    if payload.target_item_id is not None:
+        contexts = [context for context in contexts if context.item_id == payload.target_item_id]
+        if not contexts:
+            raise HTTPException(status_code=404, detail="교체할 일정 항목을 찾을 수 없습니다")
     try:
         intent = interpret_route_edit(contexts, payload.instruction)
         candidates = suggest_replacements(db, route, intent)
@@ -501,13 +513,13 @@ def _new_share_token(db: Session) -> str:
 def _fill_computed(
     db: Session, route: Route, detail: RouteDetail | SharedRouteDetail
 ) -> RouteDetail | SharedRouteDetail:
-    """DB 컬럼이 아닌 값들을 채운다 — 여행기록 개수, 그리고 장소의 평점·리뷰수·동반정책.
+    """DB 컬럼이 아닌 값들을 채운다.
 
     `model_validate(route)` 는 ORM 객체에 있는 것만 옮겨온다. 이 값들은 세어야
     나오는 것이라 만들어진 응답에 나중에 넣는다.
 
-    **아직 못 채우는 것** — weather(기상청), moveToNext·distanceSummary(TMAP),
-    stays(추천 요청서). 데이터 소스가 생기면 여기에 같이 붙인다.
+    **아직 못 채우는 것** — weather(기상청), stays(추천 요청서).
+    데이터 소스가 생기면 여기에 같이 붙인다.
     """
     detail.log_count = log_counts_of(db, [route.id]).get(route.id, 0)
 
@@ -523,4 +535,76 @@ def _fill_computed(
         place.review_count = stat.review_count
         place.pet_policy_type = stat.pet_policy_type
 
+    orm_items = {item.id: item for day in route.route_days for item in day.items}
+    response_items = {item.id: item for day in detail.route_days for item in day.items}
+    item_ids = list(orm_items)
+    moves = (
+        list(db.scalars(select(RouteMove).where(RouteMove.from_item_id.in_(item_ids))).all())
+        if item_ids
+        else []
+    )
+    total_distance_meters = 0
+    total_duration_minutes = 0
+    for move in moves:
+        source = orm_items.get(move.from_item_id)
+        destination = orm_items.get(move.to_item_id)
+        if source is None or destination is None:
+            continue
+        source_coord = _item_coord(source)
+        destination_coord = _item_coord(destination)
+        if source_coord is None or destination_coord is None:
+            continue
+        leg = get_cached_route(
+            db,
+            source_coord,
+            destination_coord,
+            move.transport,
+        )
+        if leg is None:
+            continue
+        response_items[move.from_item_id].move_to_next = RouteMoveResponse(
+            transport=move.transport,
+            distance_meters=leg.distance_m,
+            duration_minutes=leg.duration_min,
+        )
+        total_distance_meters += leg.distance_m
+        total_duration_minutes += leg.duration_min
+
+    detail.distance_summary = RouteDistanceSummary(
+        total_distance_meters=total_distance_meters,
+        total_duration_minutes=total_duration_minutes,
+    )
+    center = next(
+        (
+            coord
+            for day in route.route_days
+            for item in sorted(day.items, key=lambda route_item: route_item.sort_order)
+            if (coord := _item_coord(item)) is not None
+        ),
+        None,
+    )
+    if center is not None:
+        try:
+            detail.tour_api_places = [
+                TourAPIPlaceResponse(
+                    content_id=place.content_id,
+                    title=place.title,
+                    address=place.address,
+                    latitude=place.latitude,
+                    longitude=place.longitude,
+                    image_url=place.image_url,
+                )
+                for place in get_nearby_places(*center, limit=3)
+            ]
+        except TourAPIError as error:
+            logger.warning("TourAPI route highlights lookup failed: %s", error)
+
     return detail
+
+
+def _item_coord(item: RouteItem) -> tuple[float, float] | None:
+    if item.latitude is not None and item.longitude is not None:
+        return float(item.latitude), float(item.longitude)
+    if item.place is not None:
+        return float(item.place.latitude), float(item.place.longitude)
+    return None

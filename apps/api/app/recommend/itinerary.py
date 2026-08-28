@@ -7,13 +7,14 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from app.db.models.enums import TransportType, TripPace
+from app.db.models.enums import ScheduleItemType, TransportType, TripPace
 from app.recommend.common.geo import haversine_m
 from app.recommend.config.pace import PACE
 from app.recommend.schemas import BusinessHour, ScoredCandidate
 from app.recommend.tmap import RouteLeg
 
 KST = ZoneInfo("Asia/Seoul")
+DINNER_START = time(17)
 Coordinate = tuple[float, float]
 RouteProvider = Callable[[Coordinate, Coordinate, TransportType, datetime | None], RouteLeg]
 
@@ -34,7 +35,19 @@ class BuildRequest:
     pace: TripPace
     transport: TransportType
     start_coord: Coordinate
-    day_start_coords: dict[date, Coordinate] = field(default_factory=dict)
+    day_start_anchors: dict[date, "RouteAnchor"] = field(default_factory=dict)
+    day_end_anchors: dict[date, "RouteAnchor"] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RouteAnchor:
+    """사용자가 지정한 출발지 또는 숙소."""
+
+    name: str
+    coord: Coordinate
+    item_type: ScheduleItemType
+    place_id: uuid.UUID | None = None
+    address: str | None = None
 
 
 @dataclass(frozen=True)
@@ -46,8 +59,6 @@ class ScheduledItem:
 
 @dataclass(frozen=True)
 class ScheduledMove:
-    from_place_id: uuid.UUID
-    to_place_id: uuid.UUID
     transport: TransportType
     route: RouteLeg
 
@@ -57,6 +68,10 @@ class ItineraryDay:
     route_date: date
     items: tuple[ScheduledItem, ...]
     moves: tuple[ScheduledMove, ...]
+    start_anchor: RouteAnchor | None = None
+    end_anchor: RouteAnchor | None = None
+    day_start: datetime | None = None
+    end_arrival: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -87,19 +102,51 @@ def build(
         items: list[ScheduledItem] = []
         moves: list[ScheduledMove] = []
         rejected_today: set[uuid.UUID] = set()
-        current_coord = request.day_start_coords.get(route_date, request.start_coord)
+        start_anchor = request.day_start_anchors.get(route_date)
+        end_anchor = request.day_end_anchors.get(route_date)
+        current_coord = start_anchor.coord if start_anchor else request.start_coord
         current_time = day_start
 
         while remaining and len(items) < rule["places_per_day"] and current_time < day_end:
+            dinner_slot = len(items) == rule["places_per_day"] - 1
+            blocked_types = (
+                {ScheduleItemType.CAFE}
+                if any(item.candidate.item_type == ScheduleItemType.CAFE for item in items)
+                else set()
+            )
+            if not dinner_slot:
+                blocked_types.add(ScheduleItemType.RESTAURANT)
+            not_before = datetime.combine(route_date, DINNER_START, KST) if dinner_slot else None
             choice = _best_candidate(
                 remaining,
                 rejected_today,
+                blocked_types,
+                ScheduleItemType.RESTAURANT if dinner_slot else None,
+                not_before,
                 current_coord,
                 current_time,
                 day_end,
                 request.transport,
                 rule["rest_min"] if items else 0,
+                end_anchor.coord if end_anchor else None,
             )
+            # 낮 일정이 부족해도 저녁 식사는 마지막 일정으로 시도한다.
+            if choice is None and not dinner_slot:
+                dinner_slot = True
+                not_before = datetime.combine(route_date, DINNER_START, KST)
+                choice = _best_candidate(
+                    remaining,
+                    rejected_today,
+                    set(),
+                    ScheduleItemType.RESTAURANT,
+                    not_before,
+                    current_coord,
+                    current_time,
+                    day_end,
+                    request.transport,
+                    rule["rest_min"] if items else 0,
+                    end_anchor.coord if end_anchor else None,
+                )
             if choice is None:
                 break
 
@@ -111,17 +158,20 @@ def build(
                 request.transport,
                 depart_at,
             )
-            visit = _fit_visit(choice, depart_at + timedelta(minutes=route.duration_min), day_end)
+            arrival = depart_at + timedelta(minutes=route.duration_min)
+            visit = _fit_visit(
+                choice,
+                max(arrival, not_before) if not_before is not None else arrival,
+                day_end,
+            )
             if visit is None:
                 rejected_today.add(choice.place_id)
                 continue
 
             starts_at, ends_at = visit
-            if items:
+            if items or start_anchor:
                 moves.append(
                     ScheduledMove(
-                        from_place_id=items[-1].candidate.place_id,
-                        to_place_id=choice.place_id,
                         transport=request.transport,
                         route=route,
                     )
@@ -130,8 +180,31 @@ def build(
             remaining.remove(choice)
             current_coord = (choice.lat, choice.lng)
             current_time = ends_at
+            if dinner_slot:
+                break
 
-        days.append(ItineraryDay(route_date, tuple(items), tuple(moves)))
+        end_arrival = None
+        if items and end_anchor is not None:
+            return_route = get_route(
+                current_coord,
+                end_anchor.coord,
+                request.transport,
+                current_time,
+            )
+            moves.append(ScheduledMove(transport=request.transport, route=return_route))
+            end_arrival = current_time + timedelta(minutes=return_route.duration_min)
+
+        days.append(
+            ItineraryDay(
+                route_date,
+                tuple(items),
+                tuple(moves),
+                start_anchor=start_anchor if items else None,
+                end_anchor=end_anchor if items else None,
+                day_start=day_start if items and start_anchor else None,
+                end_arrival=end_arrival,
+            )
+        )
 
     return Itinerary(tuple(days))
 
@@ -139,24 +212,42 @@ def build(
 def _best_candidate(
     candidates: list[ScoredCandidate],
     rejected: set[uuid.UUID],
+    blocked_types: set[ScheduleItemType],
+    required_type: ScheduleItemType | None,
+    not_before: datetime | None,
     current_coord: Coordinate,
     current_time: datetime,
     day_end: datetime,
     transport: TransportType,
     rest_min: int,
+    end_coord: Coordinate | None,
 ) -> ScoredCandidate | None:
     choices: list[tuple[float, float, ScoredCandidate]] = []
     for candidate in candidates:
-        if candidate.place_id in rejected:
+        if (
+            candidate.place_id in rejected
+            or candidate.item_type in blocked_types
+            or (required_type is not None and candidate.item_type != required_type)
+        ):
             continue
         travel_min = math.ceil(
             haversine_m(current_coord, (candidate.lat, candidate.lng))
             / SPEED_METERS_PER_MINUTE[transport]
         )
+        return_min = (
+            math.ceil(
+                haversine_m((candidate.lat, candidate.lng), end_coord)
+                / SPEED_METERS_PER_MINUTE[transport]
+            )
+            if end_coord is not None
+            else 0
+        )
         visit = _fit_visit(
             candidate,
-            current_time + timedelta(minutes=rest_min + travel_min),
-            day_end,
+            max(current_time + timedelta(minutes=rest_min + travel_min), not_before)
+            if not_before is not None
+            else current_time + timedelta(minutes=rest_min + travel_min),
+            day_end - timedelta(minutes=return_min),
         )
         if visit is None:
             continue

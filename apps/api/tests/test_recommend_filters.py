@@ -156,17 +156,28 @@ def test_filter_candidates_excludes_accommodations_from_visit_candidates(
         longitude=Decimal("126.5312000"),
         is_active=True,
     )
-    db.add_all([request, accommodation])
+    dinner = Place(
+        id=uuid.uuid4(),
+        name="저녁 식당",
+        category="restaurant_cafe",
+        latitude=Decimal("33.5000000"),
+        longitude=Decimal("126.5300000"),
+        is_active=True,
+    )
+    db.add_all([request, accommodation, dinner])
     db.flush()
 
     result = filter_candidates(db, request, [])
+    stay_results = filter_candidates(db, request, [], include_accommodation=True)
 
     assert all(candidate.place_id != accommodation.id for candidate in result)
+    assert next(
+        candidate for candidate in result if candidate.place_id == dinner.id
+    ).item_type.value == ("restaurant")
+    assert any(candidate.place_id == accommodation.id for candidate in stay_results)
 
 
-def test_filter_candidates_excludes_place_closed_for_whole_trip(
-    db: Session, owner: User
-) -> None:
+def test_filter_candidates_excludes_place_closed_for_whole_trip(db: Session, owner: User) -> None:
     start = datetime(2026, 9, 7, 9, tzinfo=timezone(timedelta(hours=9)))  # 월요일
     request = RouteRequest(
         id=uuid.uuid4(),

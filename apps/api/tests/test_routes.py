@@ -9,24 +9,42 @@ DB 가 필요한 테스트는 TEST_DATABASE_URL 이 없으면 통째로 건너�
 """
 
 import uuid
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.api.v1.endpoints import routes
 from app.db.models import (
     Pet,
     Place,
     PlacePetPolicy,
     Review,
     Route,
+    RouteCalculationCache,
     RouteDay,
+    RouteMove,
     TravelLog,
     User,
 )
-from app.db.models.enums import DataProvider, PetPolicyType, PetSpecies, RouteStatus
+from app.db.models.enums import (
+    DataProvider,
+    PetPolicyType,
+    PetSpecies,
+    RouteStatus,
+    TransportType,
+)
+from app.integrations.llm.route_edit import RouteEditIntent
+from app.integrations.tour_api.kto import TourPlace
 from app.schemas.route import RouteItemCreate
+
+
+@pytest.fixture(autouse=True)
+def _no_live_tour_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(routes, "get_nearby_places", lambda *_args, **_kwargs: [])
 
 
 def _day_of(trip: Route) -> RouteDay:
@@ -62,6 +80,136 @@ def test_없는_여행은_404(client: TestClient) -> None:
     assert response.status_code == 404
 
 
+def test_ai_교체는_사용자가_선택한_일정만_대상으로_해석한다(
+    client: TestClient,
+    trip: Route,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selected_id = _day_of(trip).items[1].id
+    captured_ids: list[uuid.UUID] = []
+
+    def fake_interpret(contexts, _instruction):
+        captured_ids.extend(context.item_id for context in contexts)
+        return RouteEditIntent(
+            target_item_id=selected_id,
+            requested_category=None,
+            preferred_tags=(),
+            location_anchor="current",
+            interpretation="선택한 장소를 교체",
+        )
+
+    monkeypatch.setattr(routes, "interpret_route_edit", fake_interpret)
+    monkeypatch.setattr(routes, "suggest_replacements", lambda *_args: [])
+
+    response = client.post(
+        f"/api/v1/routes/{trip.id}/edit-suggestions",
+        json={"targetItemId": str(selected_id), "instruction": "다른 곳으로 바꿔줘"},
+    )
+
+    assert response.status_code == 200
+    assert captured_ids == [selected_id]
+
+
+def test_여행_상세에_tmap_이동정보와합계를_내려준다(
+    client: TestClient, db: Session, trip: Route
+) -> None:
+    items = _day_of(trip).items
+    for index, item in enumerate(items):
+        place = Place(
+            id=uuid.uuid4(),
+            name=f"이동 장소 {index}",
+            category="attraction",
+            latitude=Decimal(f"33.{4000000 + index}"),
+            longitude=Decimal(f"126.{5000000 + index}"),
+        )
+        db.add(place)
+        item.place = place
+    db.flush()
+
+    now = datetime.now(UTC)
+    expected = [(1200, 7), (2300, 11)]
+    for source, destination, (distance, duration) in zip(
+        items[:-1], items[1:], expected, strict=True
+    ):
+        db.add(
+            RouteMove(
+                from_item_id=source.id,
+                to_item_id=destination.id,
+                transport=TransportType.RENTAL_CAR,
+            )
+        )
+        db.add(
+            RouteCalculationCache(
+                origin_latitude=source.place.latitude,
+                origin_longitude=source.place.longitude,
+                destination_latitude=destination.place.latitude,
+                destination_longitude=destination.place.longitude,
+                transport=TransportType.RENTAL_CAR,
+                requested_departure_at=None,
+                distance_meters=distance,
+                duration_minutes=duration,
+                calculated_at=now,
+                expires_at=now + timedelta(hours=1),
+            )
+        )
+    db.flush()
+
+    body = client.get(f"/api/v1/routes/{trip.id}").json()
+    response_items = body["routeDays"][0]["items"]
+
+    assert response_items[0]["moveToNext"] == {
+        "transport": "rental_car",
+        "distanceMeters": 1200,
+        "durationMinutes": 7,
+    }
+    assert response_items[1]["moveToNext"] == {
+        "transport": "rental_car",
+        "distanceMeters": 2300,
+        "durationMinutes": 11,
+    }
+    assert response_items[2]["moveToNext"] is None
+    assert body["distanceSummary"] == {
+        "totalDistanceMeters": 3500,
+        "totalDurationMinutes": 18,
+    }
+
+
+def test_여행_상세에_tour_api_실시간_장소를_내려준다(
+    client: TestClient, db: Session, trip: Route, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = trip.route_days[0].items[0]
+    first.latitude = Decimal("33.5432000")
+    first.longitude = Decimal("126.6695000")
+    db.flush()
+    monkeypatch.setattr(
+        routes,
+        "get_nearby_places",
+        lambda *_args, **_kwargs: [
+            TourPlace(
+                content_id="tour-123",
+                title="함덕해수욕장",
+                latitude=33.5432,
+                longitude=126.6695,
+                address="제주시 조천읍",
+                image_url="https://example.com/hamdeok.jpg",
+            )
+        ],
+    )
+
+    body = client.get(f"/api/v1/routes/{trip.id}").json()
+
+    assert body["tourApiPlaces"] == [
+        {
+            "contentId": "tour-123",
+            "title": "함덕해수욕장",
+            "address": "제주시 조천읍",
+            "latitude": 33.5432,
+            "longitude": 126.6695,
+            "imageUrl": "https://example.com/hamdeok.jpg",
+        }
+    ]
+
+
 # ---------------------------------------------------------------------------
 # 일정 편집 — 순번에 구멍이 남지 않는지
 # ---------------------------------------------------------------------------
@@ -83,6 +231,27 @@ def test_가운데_추가하면_뒤가_밀린다(client: TestClient, trip: Route
     assert after[0] == before[0]
     assert after[1] == response.json()["id"]
     assert after[2:] == before[1:]
+
+
+def test_db_장소를_추가하면_좌표와_기본체류시간을_저장한다(
+    client: TestClient, trip: Route, place: Place
+) -> None:
+    response = client.post(
+        f"/api/v1/route-days/{_day_of(trip).id}/items",
+        json={
+            "itemType": "attraction",
+            "sortOrder": 1,
+            "placeId": str(place.id),
+            "startsAt": "2026-09-11T15:00:00+09:00",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["latitude"] == float(place.latitude)
+    assert body["longitude"] == float(place.longitude)
+    assert body["stayMinutes"] == 60
+    assert body["endsAt"].startswith("2026-09-11T16:00:00")
 
 
 def test_맨_뒤를_넘는_순번은_맨_뒤로(client: TestClient, trip: Route) -> None:
@@ -443,9 +612,7 @@ def test_너무_긴_여행은_422(client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_남의_반려동물은_데려갈_수_없다(
-    client: TestClient, db: Session, stranger: User
-) -> None:
+def test_남의_반려동물은_데려갈_수_없다(client: TestClient, db: Session, stranger: User) -> None:
     pet = Pet(id=uuid.uuid4(), user_id=stranger.id, name="남의 몽이", species=PetSpecies.DOG)
     db.add(pet)
     db.flush()

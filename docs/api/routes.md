@@ -150,6 +150,10 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 
 생성은 오래 걸리므로 **즉시 `202`를 돌려주고 백그라운드에서 진행**합니다.
 
+첫날 출발지는 `departureLocation`/`departurePlaceId`가 있으면 그 장소를 사용하고,
+둘 다 없으면 첫 숙소를 사용합니다. 일정은 첫날 `선택한 출발지 → 추천 장소 → 숙소`,
+중간 날짜 `숙소 → 추천 장소 → 숙소`, 마지막 날 `숙소 → 추천 장소` 순서로 조립합니다.
+
 ### 요청
 
 ```json
@@ -204,6 +208,17 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 추천 생성 시 출발지(없으면 첫 숙소) 좌표를 기상청 5km 격자로 변환해 단기예보를
 조회합니다. 여행 날짜들의 최대 강수확률을 `weather` 점수에 반영하며, 예보 범위를
 벗어난 날짜이거나 기상청 호출이 실패하면 날씨 점수는 중립값으로 처리합니다.
+
+일정 조립은 하루에 카페를 최대 한 곳만 배치하고, 매일 마지막 방문을 17시 이후의
+식당으로 구성합니다. `relaxed`는 장소 수만 줄이지 않고 방문 사이 여백과 저녁 식사
+시간까지 확보합니다. 조건을 통과한 식당이 날짜 수보다 부족하면 추천 생성을 실패로
+처리하며, 식당이 아닌 장소로 조용히 대체하지 않습니다.
+
+추천 생성 때마다 출발지와 숙소 주변의 한국관광공사 `KorService2/locationBasedList2`를
+실시간 호출합니다. 응답 원문은 DB나 캐시에 저장하지 않으며, 제목·좌표가 일치하는
+기존 DB 후보에만 `TourAPI 실시간 정보 확인` 출처를 표시합니다. 여행 설명에는 조회·대조
+건수를 남겨 공모전 시연 화면에서 활용 여부를 확인할 수 있습니다. 호출 실패 시 기존 DB
+추천은 유지하되 설명에 실패 사실을 표시합니다.
 
 `pace`와 `transport`, `preferredTags`는 **이번 여행 조건**입니다.
 값을 보내지 않으면 사용자 기본 취향(`user_travel_preferences`)을 씁니다.
@@ -291,10 +306,13 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 완성된 추천 루트에서 자연어로 교체 후보를 요청합니다.
 
 ```json
-{ "instruction": "둘째 날 카페를 숙소에서 가까운 조용한 곳으로 바꿔줘" }
+{
+  "targetItemId": "교체 버튼을 누른 routeItemId",
+  "instruction": "숙소에서 가까운 조용한 카페로 바꿔줘"
+}
 ```
 
-루트 수정 전용 LLM은 현재 일정에서 교체 대상과 조건만 해석합니다. 실제 후보는
+루트 수정 전용 LLM은 선택된 일정 항목을 대상으로 원하는 조건만 해석합니다. 실제 후보는
 일반 챗봇이 아니라 기존 DB 하드 필터와 요청 당시의 `applied_weights`로 다시 계산합니다.
 응답의 `suggestions`에는 현재 일정과 겹치지 않는 상위 3개 장소가 담기며, 이 요청만으로
 일정은 변경되지 않습니다.
@@ -459,6 +477,7 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
 | `weather` | `route_days.weather_snapshot_id` 조인. 없으면 `null` |
 | `isSelected` | 추천 항목 중 사용자가 뺀 것을 구분. 기본 `true` |
 | `distanceSummary` | 계산값. 하위 `moveToNext` 합계 |
+| `tourApiPlaces` | 상세 조회 시 한국관광공사 TourAPI에서 실시간 조회한 주변 장소 최대 3건. DB에 저장하지 않음 |
 | `logCount` | 계산값. 이 여행에 속한 `travel_logs` 개수. 여행 모아보기 화면 헤더가 씀 ([`travel-logs.md`](./travel-logs.md)) |
 
 `route_moves`에는 순서와 이동수단만 영구 저장하고, 거리·시간·polyline은 캐시에서 가져옵니다.
@@ -615,6 +634,8 @@ memo, shareToken, 체크리스트, 개인 메모
 | `customPlaceName` | 조건부 | 200자 |
 
 `sortOrder`가 이미 있는 값이면 뒤 항목들을 밀어냅니다.
+DB 장소를 추가하면 좌표와 기본 체류시간을 함께 스냅샷으로 저장합니다. `startsAt`만
+보내고 `endsAt`을 생략하면 기본 체류시간을 더해 종료 시각을 계산합니다.
 
 앱의 `PlaceCategory`는 `etc`를 쓰지만 DB `schedule_item_type`은 `custom`입니다.
 **API는 `custom`을 씁니다.**
@@ -636,6 +657,8 @@ AI 추천 후보 또는 사용자가 직접 고른 DB 장소로 일정 항목을
 서버는 요청 당시의 반려동물·영업 조건을 다시 검사하고 추천 점수와 루트 종합 점수를
 갱신합니다. 같은 루트에 이미 있는 장소이거나 하드 필터를 통과하지 못한 장소는
 `422`로 거절합니다. 교체 항목 앞뒤의 TMAP 경로는 다시 계산해 캐시에 저장합니다.
+숙소 항목은 숙소 후보로만 교체할 수 있으며, 숙박일의 도착 숙소와 다음 날 출발 숙소는
+같은 장소로 함께 변경됩니다.
 
 ### PUT /route-days/{routeDayId}/items/order
 

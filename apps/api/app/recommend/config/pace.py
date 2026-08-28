@@ -13,7 +13,9 @@ class PaceRule(TypedDict):
 
 
 PACE: dict[str, PaceRule] = {
-    "relaxed": {"places_per_day": 3, "rest_min": 40, "window": ("10:00", "18:00")},
+    # 장소 수만 줄이면 오후 일찍 일정이 끝난다. 방문 사이 여백도 넓혀
+    # 하루 전체를 천천히 쓰는 프리셋으로 만든다.
+    "relaxed": {"places_per_day": 3, "rest_min": 110, "window": ("10:00", "19:00")},
     "normal": {"places_per_day": 4, "rest_min": 25, "window": ("09:00", "19:00")},
     "packed": {"places_per_day": 5, "rest_min": 15, "window": ("08:00", "21:00")},
 }
