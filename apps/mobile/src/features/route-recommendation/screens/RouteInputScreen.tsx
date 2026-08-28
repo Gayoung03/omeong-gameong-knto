@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { isAxiosError } from 'axios';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -63,12 +64,14 @@ type Trip = { title: string; startAt: string; endAt: string };
 type Stay = { id: string; placeId?: string; name: string; period: string; address: string };
 type EditTarget = 'stay' | null;
 type TripPhase = 'dates' | 'details';
+type FirstDayStart = 'stay' | 'other' | null;
 
 type RouteDraft = {
   trip: Trip;
   transportOptions: string[];
   transport: string;
   stays: Stay[];
+  firstDayStart: FirstDayStart;
   selectedPetIds: string[];
   departureLocation: string;
   places: string[];
@@ -100,7 +103,7 @@ const LEGACY_PLACE_TYPE_MAP: Record<string, (typeof PLACE_TYPE_OPTIONS)[number]>
 const SUPPORTED_TRANSPORT_OPTIONS = ['렌터카', '자가용', '택시', '도보'];
 
 type StoredRouteDraft = {
-  version: 5;
+  version: 6;
   draft: RouteDraft;
   currentStep: number;
 };
@@ -114,6 +117,7 @@ const initialDraft: RouteDraft = {
   transportOptions: ['렌터카', '자가용', '택시', '도보'],
   transport: '',
   stays: [],
+  firstDayStart: null,
   selectedPetIds: [],
   departureLocation: '',
   places: [],
@@ -278,7 +282,7 @@ function QuestionStep({
 }
 
 function serializeDraft(draft: RouteDraft, currentStep: number): string {
-  const stored: StoredRouteDraft = { version: 5, draft, currentStep };
+  const stored: StoredRouteDraft = { version: 6, draft, currentStep };
   return JSON.stringify(stored);
 }
 
@@ -316,6 +320,10 @@ function restoreDraft(saved: string): { draft: RouteDraft; currentStep: number }
       ].slice(0, 3)
     : initialDraft.places;
   const stays = Array.isArray(savedDraft.stays) ? savedDraft.stays : initialDraft.stays;
+  const firstDayStart: FirstDayStart =
+    savedDraft.firstDayStart === 'stay' || savedDraft.firstDayStart === 'other'
+      ? savedDraft.firstDayStart
+      : null;
   const requestedStep = 'currentStep' in parsed ? parsed.currentStep : REVIEW_STEP;
   const currentStep =
     typeof requestedStep === 'number'
@@ -327,6 +335,7 @@ function restoreDraft(saved: string): { draft: RouteDraft; currentStep: number }
       ...initialDraft,
       ...savedDraft,
       stays,
+      firstDayStart,
       transportOptions: SUPPORTED_TRANSPORT_OPTIONS,
       transport: SUPPORTED_TRANSPORT_OPTIONS.includes(savedDraft.transport ?? '')
         ? savedDraft.transport!
@@ -349,8 +358,15 @@ function validateStep(index: number, draft: RouteDraft): string | null {
     return '여행 일정을 다시 확인해주세요.';
   }
   if (index === 1 && !draft.transport) return '이동수단을 하나 선택해주세요.';
-  if (index === 2 && draft.stays.length === 0 && !draft.departureLocation.trim()) {
-    return '숙소가 없다면 여행을 시작할 장소를 골라주세요.';
+  if (
+    index === 2 &&
+    (draft.stays.length === 0 || draft.firstDayStart === 'other') &&
+    !draft.departureLocation.trim()
+  ) {
+    return '첫날 여행을 시작할 장소를 골라주세요.';
+  }
+  if (index === 2 && draft.stays.length > 0 && draft.firstDayStart === null) {
+    return '첫날 숙소에서 출발할지 다른 장소에서 출발할지 골라주세요.';
   }
   if (index === 3 && draft.selectedPetIds.length === 0) {
     return '함께 여행할 반려동물을 한 마리 이상 골라주세요.';
@@ -424,6 +440,7 @@ export function RouteInputScreen() {
   const skipCurrentStep = () => {
     if (openIndex === 2) {
       updateDraft('stays', []);
+      updateDraft('firstDayStart', null);
       if (!draft.departureLocation) updateDraft('departureLocation', '제주국제공항');
     }
     if (openIndex === 5) updateDraft('pace', initialDraft.pace);
@@ -691,8 +708,15 @@ export function RouteInputScreen() {
       setPageError('함께 여행할 반려동물을 한 마리 이상 골라주세요.');
       return;
     }
-    if (draft.stays.length === 0 && !draft.departureLocation.trim()) {
-      setPageError('숙소가 없다면 여행을 시작할 장소를 입력해주세요.');
+    if (
+      (draft.stays.length === 0 || draft.firstDayStart === 'other') &&
+      !draft.departureLocation.trim()
+    ) {
+      setPageError('첫날 여행을 시작할 장소를 입력해주세요.');
+      return;
+    }
+    if (draft.stays.length > 0 && draft.firstDayStart === null) {
+      setPageError('첫날 숙소에서 출발할지 다른 장소에서 출발할지 골라주세요.');
       return;
     }
     if (draft.places.length === 0) {
@@ -734,7 +758,10 @@ export function RouteInputScreen() {
         title: draft.trip.title,
         startAt: draft.trip.startAt,
         endAt: draft.trip.endAt,
-        departureLocation: draft.stays.length === 0 ? draft.departureLocation.trim() : undefined,
+        departureLocation:
+          draft.stays.length === 0 || draft.firstDayStart === 'other'
+            ? draft.departureLocation.trim()
+            : undefined,
         pace: paceMap[draft.pace] ?? 'normal',
         transport: transportMap[draft.transport],
         companionCount: 1,
@@ -753,8 +780,11 @@ export function RouteInputScreen() {
           petName: selectedPets.map((pet) => pet.name).join(', '),
         },
       });
-    } catch {
-      setPageError('루트 추천을 시작하지 못했어요. 잠시 후 다시 시도해주세요.');
+    } catch (error) {
+      const detail = isAxiosError<{ detail?: string }>(error)
+        ? error.response?.data?.detail
+        : null;
+      setPageError(detail ?? '루트 추천을 시작하지 못했어요. 잠시 후 다시 시도해주세요.');
     } finally {
       setIsSubmitting(false);
     }
@@ -882,7 +912,24 @@ export function RouteInputScreen() {
                   <Ionicons color={colors.orange} name="add-circle" size={15} />
                   <Text style={styles.dashedButtonText}>숙소 추가</Text>
                 </Pressable>
-                {draft.stays.length === 0 ? (
+                {draft.stays.length > 0 ? (
+                  <>
+                    <Text style={styles.formGroupTitle}>첫날 출발 장소</Text>
+                    <View style={styles.chipRow}>
+                      <ChoiceChip
+                        label="숙소에서 출발"
+                        onPress={() => updateDraft('firstDayStart', 'stay')}
+                        selected={draft.firstDayStart === 'stay'}
+                      />
+                      <ChoiceChip
+                        label="다른 장소에서 출발"
+                        onPress={() => updateDraft('firstDayStart', 'other')}
+                        selected={draft.firstDayStart === 'other'}
+                      />
+                    </View>
+                  </>
+                ) : null}
+                {draft.stays.length === 0 || draft.firstDayStart === 'other' ? (
                   <>
                     <Text style={styles.formGroupTitle}>여행 시작 장소</Text>
                     <View style={styles.chipRow}>

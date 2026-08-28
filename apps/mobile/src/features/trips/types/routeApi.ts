@@ -104,7 +104,15 @@ export type RouteItemResponse = {
   recommendationReason: string | null;
   /** 공식 장소가 아닌 직접 입력 일정의 이름. 이때 `place` 는 null 이다 */
   customPlaceName: string | null;
+  customAddress: string | null;
+  latitude: number | null;
+  longitude: number | null;
   place: PlaceSummaryResponse | null;
+  moveToNext: {
+    transport: ServerTransportType;
+    distanceMeters: number;
+    durationMinutes: number;
+  } | null;
 };
 
 /** 여행의 하루 */
@@ -130,7 +138,7 @@ export type RoutePetResponse = {
  * GET /routes/{routeId}.
  *
  * 명세에 있지만 아직 서버가 안 내려주는 것 —
- * `weather`(기상청) · `moveToNext`·`distanceSummary`(TMAP) · `stays`(추천 요청서).
+ * `weather`(기상청) · `stays`(추천 요청서).
  *
  * `logCount` 와 place 의 `rating`·`reviewCount`·`petPolicyType` 은
  * 2026-08-23 에 채워졌다.
@@ -141,6 +149,19 @@ export type RouteDetailResponse = RouteListItemResponse & {
   memo: string | null;
   shareToken: string | null;
   pets: RoutePetResponse[];
+  distanceSummary: {
+    totalDistanceMeters: number;
+    totalDurationMinutes: number;
+  };
+  /** 상세 조회 시 TourAPI에서 실시간으로 받은 주변 관광정보. DB에는 저장하지 않는다. */
+  tourApiPlaces: {
+    contentId: string;
+    title: string;
+    address: string | null;
+    latitude: number;
+    longitude: number;
+    imageUrl: string | null;
+  }[];
   routeDays: RouteDayResponse[];
 };
 

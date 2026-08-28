@@ -17,9 +17,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { clearPendingRoute, loadPendingRoute, savePendingRoute } from '../services/pendingRoute';
-import { searchPlaces } from '@/src/features/places/api/placesApi';
+import { searchAccommodations, searchPlaces } from '@/src/features/places/api/placesApi';
 import type { Place } from '@/src/features/places/types/place';
 import {
+  addRouteItem,
   createRouteRecommendation,
   getRouteGenerationStatus,
   getTripRaw,
@@ -32,6 +33,7 @@ import type {
   RouteEditSuggestionResponse,
   RouteItemResponse,
   RouteRequestCreateRequest,
+  ServerScheduleItemType,
 } from '@/src/features/trips/types/routeApi';
 import { colors, overlayColors } from '@/src/theme';
 
@@ -58,51 +60,93 @@ const formatTime = (value: string | null) =>
       }).format(new Date(value))
     : '시간 미정';
 
+const ITEM_TYPES = new Set<ServerScheduleItemType>([
+  'accommodation',
+  'attraction',
+  'cafe',
+  'restaurant',
+]);
+
+function serverItemType(place: Place): ServerScheduleItemType {
+  const category = place.serverCategory;
+  if (category === 'restaurant_cafe') return 'restaurant';
+  if (['beach', 'oreum', 'rental_experience', 'walking_trail'].includes(category ?? '')) {
+    return 'attraction';
+  }
+  return category && ITEM_TYPES.has(category as ServerScheduleItemType)
+    ? (category as ServerScheduleItemType)
+    : 'custom';
+}
+
+function timePart(value: string | null): string {
+  return value?.slice(11, 16) ?? '';
+}
+
 function RouteItemCard({
   item,
-  onEdit,
+  onOpen,
+  onReplace,
+  onTime,
   onToggle,
 }: {
   item: RouteItemResponse;
-  onEdit: () => void;
+  onOpen: () => void;
+  onReplace: () => void;
+  onTime: () => void;
   onToggle: () => void;
 }) {
   const name = item.place?.name ?? item.customPlaceName ?? '일정';
+  const canReplace = Boolean(item.place) && item.itemType !== 'custom';
   return (
     <View style={styles.itemCard}>
-      {item.place?.primaryImageUrl ? (
-        <Image source={{ uri: item.place.primaryImageUrl }} style={styles.thumbnail} />
-      ) : (
-        <View style={[styles.thumbnail, styles.thumbnailPlaceholder]}>
-          <Ionicons color={colors.textTertiary} name="image-outline" size={24} />
+      <Pressable
+        accessibilityHint={item.place ? '장소 상세 정보를 확인할 수 있어요' : undefined}
+        accessibilityRole={item.place ? 'button' : undefined}
+        disabled={!item.place}
+        onPress={onOpen}
+        style={({ pressed }) => [styles.itemMain, pressed && styles.itemMainPressed]}
+      >
+        {item.place?.primaryImageUrl ? (
+          <Image source={{ uri: item.place.primaryImageUrl }} style={styles.thumbnail} />
+        ) : (
+          <View style={[styles.thumbnail, styles.thumbnailPlaceholder]}>
+            <Ionicons color={colors.textTertiary} name="image-outline" size={24} />
+          </View>
+        )}
+        <View style={styles.itemCopy}>
+          <Text style={styles.itemTime}>{formatTime(item.startsAt)}</Text>
+          <Text numberOfLines={1} style={styles.itemName}>
+            {name}
+          </Text>
+          <Text numberOfLines={2} style={styles.itemReason}>
+            {item.recommendationReason ?? item.place?.address ?? '상세 정보를 확인해주세요.'}
+          </Text>
+          {item.recommendationScore !== null ? (
+            <Text style={styles.scoreText}>추천 점수 {Math.round(item.recommendationScore)}점</Text>
+          ) : null}
         </View>
-      )}
-      <View style={styles.itemCopy}>
-        <Text style={styles.itemTime}>{formatTime(item.startsAt)}</Text>
-        <Text numberOfLines={1} style={styles.itemName}>
-          {name}
-        </Text>
-        <Text numberOfLines={2} style={styles.itemReason}>
-          {item.recommendationReason ?? item.place?.address ?? '상세 정보를 확인해주세요.'}
-        </Text>
-        {item.recommendationScore !== null ? (
-          <Text style={styles.scoreText}>추천 점수 {Math.round(item.recommendationScore)}점</Text>
-        ) : null}
-      </View>
-      <View style={styles.itemActions}>
-        <Pressable accessibilityLabel={`${name} 선택`} onPress={onToggle}>
-          <Ionicons
-            color={item.isSelected ? colors.seaDeep : colors.textTertiary}
-            name={item.isSelected ? 'checkmark-circle' : 'ellipse-outline'}
-            size={23}
-          />
-        </Pressable>
-        {item.place ? (
-          <Pressable accessibilityLabel={`${name} 변경`} onPress={onEdit}>
-            <Ionicons color={colors.primary} name="swap-horizontal" size={22} />
+      </Pressable>
+      {item.recommendationScore !== null || canReplace || item.startsAt !== null ? (
+        <View style={styles.itemActions}>
+          {item.recommendationScore !== null ? (
+            <Pressable accessibilityLabel={`${name} 선택`} onPress={onToggle}>
+              <Ionicons
+                color={item.isSelected ? colors.seaDeep : colors.textTertiary}
+                name={item.isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                size={23}
+              />
+            </Pressable>
+          ) : null}
+          {canReplace ? (
+            <Pressable accessibilityLabel={`${name} 장소 변경`} onPress={onReplace}>
+              <Ionicons color={colors.primary} name="swap-horizontal" size={22} />
+            </Pressable>
+          ) : null}
+          <Pressable accessibilityLabel={`${name} 시간 변경`} onPress={onTime}>
+            <Ionicons color={colors.textSecondary} name="time-outline" size={21} />
           </Pressable>
-        ) : null}
-      </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -117,7 +161,9 @@ export function RouteRecommendationScreen() {
   const [feedback, setFeedback] = useState('');
   const [selectedDay, setSelectedDay] = useState(0);
   const [editingItem, setEditingItem] = useState<RouteItemResponse | null>(null);
-  const [editMode, setEditMode] = useState<'choose' | 'ai' | 'search'>('choose');
+  const [addingPlace, setAddingPlace] = useState(false);
+  const [editMode, setEditMode] = useState<'choose' | 'ai' | 'search' | 'time'>('choose');
+  const [timeValue, setTimeValue] = useState('');
   const [instruction, setInstruction] = useState('');
   const [suggestions, setSuggestions] = useState<RouteEditSuggestionResponse | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -167,7 +213,9 @@ export function RouteRecommendationScreen() {
   const activeDay = route?.routeDays[selectedDay];
   const selectedCount = useMemo(
     () =>
-      route?.routeDays.flatMap((day) => day.items).filter((item) => item.isSelected).length ?? 0,
+      route?.routeDays
+        .flatMap((day) => day.items)
+        .filter((item) => item.recommendationScore !== null && item.isSelected).length ?? 0,
     [route],
   );
   const refreshRoute = () =>
@@ -200,9 +248,24 @@ export function RouteRecommendationScreen() {
       .join('\n\n');
     await Share.share({ title: route.title, message: `${route.title}\n\n${text}` });
   };
+  const openEditor = (item: RouteItemResponse, mode: 'choose' | 'time' = 'choose') => {
+    setEditingItem(item);
+    setEditMode(mode);
+    setTimeValue(timePart(item.startsAt));
+  };
+  const openAddPlace = () => {
+    const lastVisit = [...(activeDay?.items ?? [])]
+      .reverse()
+      .find((item) => item.itemType !== 'accommodation');
+    setAddingPlace(true);
+    setEditMode('search');
+    setTimeValue(timePart(lastVisit?.endsAt ?? null));
+  };
   const closeEditor = () => {
     setEditingItem(null);
+    setAddingPlace(false);
     setEditMode('choose');
+    setTimeValue('');
     setInstruction('');
     setSuggestions(null);
     setSearchQuery('');
@@ -210,11 +273,15 @@ export function RouteRecommendationScreen() {
     setActionError('');
   };
   const askAi = async () => {
-    if (!routeId || !instruction.trim()) return;
+    if (!routeId || !editingItem || !instruction.trim()) return;
     setActionLoading(true);
     setActionError('');
     try {
-      const result = await requestRouteEditSuggestions(routeId, instruction.trim());
+      const result = await requestRouteEditSuggestions(
+        routeId,
+        editingItem.id,
+        instruction.trim(),
+      );
       setSuggestions(result);
       if (!result.suggestions.length) setActionError('조건에 맞는 대체 장소를 찾지 못했어요.');
     } catch (error) {
@@ -228,7 +295,11 @@ export function RouteRecommendationScreen() {
     setActionLoading(true);
     setActionError('');
     try {
-      setSearchResults(await searchPlaces(searchQuery.trim()));
+      setSearchResults(
+        await (editingItem?.itemType === 'accommodation'
+          ? searchAccommodations(searchQuery.trim())
+          : searchPlaces(searchQuery.trim())),
+      );
     } catch (error) {
       setActionError(errorMessage(error));
     } finally {
@@ -244,6 +315,65 @@ export function RouteRecommendationScreen() {
       await refreshRoute();
       closeEditor();
       setFeedback('일정의 장소를 변경했어요.');
+    } catch (error) {
+      setActionError(errorMessage(error));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+  const saveTime = async () => {
+    if (!editingItem || !activeDay || !/^([01]\d|2[0-3]):[0-5]\d$/.test(timeValue)) {
+      setActionError('시간을 HH:MM 형식으로 입력해주세요.');
+      return;
+    }
+    setActionLoading(true);
+    setActionError('');
+    try {
+      const startsAt = `${activeDay.routeDate}T${timeValue}:00+09:00`;
+      const duration =
+        editingItem.startsAt && editingItem.endsAt
+          ? Math.max(
+              0,
+              (new Date(editingItem.endsAt).getTime() -
+                new Date(editingItem.startsAt).getTime()) /
+                60_000,
+            )
+          : (editingItem.stayMinutes ?? 0);
+      await updateRouteItem(editingItem.id, {
+        startsAt,
+        ...(duration > 0
+          ? { endsAt: new Date(new Date(startsAt).getTime() + duration * 60_000).toISOString() }
+          : {}),
+      });
+      await refreshRoute();
+      closeEditor();
+      setFeedback('일정 시간을 변경했어요.');
+    } catch (error) {
+      setActionError(errorMessage(error));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+  const addPlace = async (place: Place) => {
+    if (!activeDay || !/^([01]\d|2[0-3]):[0-5]\d$/.test(timeValue)) {
+      setActionError('추가할 시간을 HH:MM 형식으로 입력해주세요.');
+      return;
+    }
+    const last = activeDay.items.at(-1);
+    const position =
+      last?.itemType === 'accommodation' ? last.sortOrder : activeDay.items.length;
+    setActionLoading(true);
+    setActionError('');
+    try {
+      await addRouteItem(activeDay.id, {
+        itemType: serverItemType(place),
+        placeId: place.id,
+        sortOrder: position,
+        startsAt: `${activeDay.routeDate}T${timeValue}:00+09:00`,
+      });
+      await refreshRoute();
+      closeEditor();
+      setFeedback(`${place.name}을(를) 일정에 추가했어요.`);
     } catch (error) {
       setActionError(errorMessage(error));
     } finally {
@@ -354,6 +484,12 @@ export function RouteRecommendationScreen() {
           {route.explanation ? (
             <Text style={styles.heroDescription}>{route.explanation}</Text>
           ) : null}
+          {route.explanation?.includes('TourAPI 실시간 관광정보') ? (
+            <View style={styles.tourApiBadge}>
+              <Ionicons color={colors.seaDeep} name="business-outline" size={14} />
+              <Text style={styles.tourApiBadgeText}>한국관광공사 TourAPI 실시간 반영</Text>
+            </View>
+          ) : null}
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayScroller}>
           {route.routeDays.map((day, index) => (
@@ -379,13 +515,50 @@ export function RouteRecommendationScreen() {
             <RouteItemCard
               key={item.id}
               item={item}
-              onEdit={() => setEditingItem(item)}
+              onOpen={() =>
+                item.place &&
+                router.push({
+                  pathname: '/places/[placeId]',
+                  params: { placeId: item.place.id },
+                })
+              }
+              onReplace={() => openEditor(item)}
+              onTime={() => openEditor(item, 'time')}
               onToggle={() => void toggleItem(item)}
             />
           ))
         ) : (
           <Text style={styles.emptyText}>추천된 일정이 없어요.</Text>
         )}
+        <Pressable onPress={openAddPlace} style={styles.addButton}>
+          <Ionicons color={colors.seaDeep} name="add-circle-outline" size={20} />
+          <Text style={styles.addButtonText}>장소 추가</Text>
+        </Pressable>
+        {route.tourApiPlaces.length ? (
+          <View style={styles.tourApiSection}>
+            <Text style={styles.tourApiSectionTitle}>한국관광공사 실시간 주변 관광정보</Text>
+            <Text style={styles.tourApiSectionDescription}>
+              TourAPI에서 지금 조회한 정보이며 DB에는 저장하지 않아요.
+            </Text>
+            {route.tourApiPlaces.map((place) => (
+              <View key={place.contentId} style={styles.tourApiCard}>
+                {place.imageUrl ? (
+                  <Image source={{ uri: place.imageUrl }} style={styles.tourApiImage} />
+                ) : (
+                  <View style={[styles.tourApiImage, styles.thumbnailPlaceholder]}>
+                    <Ionicons color={colors.textTertiary} name="image-outline" size={22} />
+                  </View>
+                )}
+                <View style={styles.itemCopy}>
+                  <Text style={styles.itemName}>{place.title}</Text>
+                  <Text numberOfLines={2} style={styles.itemReason}>
+                    {place.address ?? '주소 정보 없음'}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
         {feedback ? (
           <Text accessibilityRole="alert" style={styles.feedback}>
             {feedback}
@@ -402,13 +575,19 @@ export function RouteRecommendationScreen() {
       <Modal
         animationType="slide"
         transparent
-        visible={editingItem !== null}
+        visible={editingItem !== null || addingPlace}
         onRequestClose={closeEditor}
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.sheet}>
             <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>일정 장소 변경</Text>
+              <Text style={styles.sheetTitle}>
+                {addingPlace
+                  ? '일정에 장소 추가'
+                  : editMode === 'time'
+                    ? '일정 시간 변경'
+                    : '일정 장소 변경'}
+              </Text>
               <Pressable onPress={closeEditor}>
                 <Ionicons color={colors.textSecondary} name="close" size={24} />
               </Pressable>
@@ -427,6 +606,13 @@ export function RouteRecommendationScreen() {
                   <View>
                     <Text style={styles.methodTitle}>직접 장소 찾기</Text>
                     <Text style={styles.methodDescription}>장소 이름으로 검색해요.</Text>
+                  </View>
+                </Pressable>
+                <Pressable onPress={() => setEditMode('time')} style={styles.methodButton}>
+                  <Ionicons color={colors.textSecondary} name="time-outline" size={22} />
+                  <View>
+                    <Text style={styles.methodTitle}>시간 변경</Text>
+                    <Text style={styles.methodDescription}>이 장소의 시작 시간을 바꿔요.</Text>
                   </View>
                 </Pressable>
               </>
@@ -457,7 +643,7 @@ export function RouteRecommendationScreen() {
                         key={place.placeId}
                         name={place.name}
                         detail={place.recommendationReason}
-                        onPress={() => void replacePlace(place.placeId, suggestions.targetItemId)}
+                        onPress={() => void replacePlace(place.placeId)}
                       />
                     ))}
                   </>
@@ -466,6 +652,19 @@ export function RouteRecommendationScreen() {
             ) : null}
             {editMode === 'search' ? (
               <>
+                {addingPlace ? (
+                  <View style={styles.timeRow}>
+                    <Text style={styles.timeLabel}>방문 시간</Text>
+                    <TextInput
+                      keyboardType="numbers-and-punctuation"
+                      maxLength={5}
+                      onChangeText={setTimeValue}
+                      placeholder="예: 15:30"
+                      style={styles.timeInput}
+                      value={timeValue}
+                    />
+                  </View>
+                ) : null}
                 <View style={styles.searchRow}>
                   <TextInput
                     onChangeText={setSearchQuery}
@@ -483,9 +682,35 @@ export function RouteRecommendationScreen() {
                     key={place.id}
                     name={place.name}
                     detail={place.address}
-                    onPress={() => void replacePlace(place.id)}
+                    label={addingPlace ? '추가' : '변경'}
+                    onPress={() =>
+                      addingPlace ? void addPlace(place) : void replacePlace(place.id)
+                    }
                   />
                 ))}
+              </>
+            ) : null}
+            {editMode === 'time' ? (
+              <>
+                <Text style={styles.timeHelp}>24시간 형식으로 입력해주세요.</Text>
+                <TextInput
+                  autoFocus
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={5}
+                  onChangeText={setTimeValue}
+                  placeholder="예: 14:30"
+                  style={styles.timeInput}
+                  value={timeValue}
+                />
+                <Pressable
+                  disabled={actionLoading}
+                  onPress={() => void saveTime()}
+                  style={styles.primaryButton}
+                >
+                  <Text style={styles.primaryText}>
+                    {actionLoading ? '변경 중...' : '시간 변경하기'}
+                  </Text>
+                </Pressable>
               </>
             ) : null}
             {actionError ? (
@@ -503,10 +728,12 @@ export function RouteRecommendationScreen() {
 function ResultRow({
   name,
   detail,
+  label = '변경',
   onPress,
 }: {
   name: string;
   detail: string;
+  label?: string;
   onPress: () => void;
 }) {
   return (
@@ -517,7 +744,7 @@ function ResultRow({
           {detail}
         </Text>
       </View>
-      <Text style={styles.replaceText}>변경</Text>
+      <Text style={styles.replaceText}>{label}</Text>
     </Pressable>
   );
 }
@@ -563,6 +790,18 @@ const styles = StyleSheet.create({
   heroBadge: { color: colors.primary, fontSize: 12, fontWeight: '800' },
   heroTitle: { color: colors.textPrimary, fontSize: 20, fontWeight: '900', marginTop: 8 },
   heroDescription: { color: colors.textSecondary, fontSize: 13, lineHeight: 20, marginTop: 7 },
+  tourApiBadge: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.seaSoftLight,
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: 5,
+    marginTop: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
+  tourApiBadgeText: { color: colors.seaDeep, fontSize: 11, fontWeight: '800' },
   dayScroller: { marginVertical: 18 },
   dayTab: {
     alignItems: 'center',
@@ -586,6 +825,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     padding: 10,
   },
+  itemMain: { alignItems: 'center', flex: 1, flexDirection: 'row' },
+  itemMainPressed: { opacity: 0.7 },
   thumbnail: { borderRadius: 11, height: 72, width: 72 },
   thumbnailPlaceholder: {
     alignItems: 'center',
@@ -599,6 +840,37 @@ const styles = StyleSheet.create({
   scoreText: { color: colors.seaDeep, fontSize: 10, fontWeight: '700', marginTop: 5 },
   itemActions: { alignItems: 'center', gap: 18 },
   emptyText: { color: colors.textSecondary, paddingVertical: 30, textAlign: 'center' },
+  addButton: {
+    alignItems: 'center',
+    borderColor: colors.seaDeep,
+    borderRadius: 13,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    justifyContent: 'center',
+    marginBottom: 8,
+    minHeight: 48,
+  },
+  addButtonText: { color: colors.seaDeep, fontSize: 13, fontWeight: '800' },
+  tourApiSection: { marginTop: 16 },
+  tourApiSectionTitle: { color: colors.textPrimary, fontSize: 16, fontWeight: '900' },
+  tourApiSectionDescription: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    marginBottom: 9,
+    marginTop: 4,
+  },
+  tourApiCard: {
+    alignItems: 'center',
+    borderColor: colors.divider,
+    borderRadius: 13,
+    borderWidth: 1,
+    flexDirection: 'row',
+    marginBottom: 8,
+    padding: 9,
+  },
+  tourApiImage: { borderRadius: 10, height: 60, width: 60 },
   feedback: {
     backgroundColor: colors.seaSoftLight,
     borderRadius: 10,
@@ -669,6 +941,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     width: 48,
+  },
+  timeRow: { marginBottom: 12 },
+  timeLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 6 },
+  timeHelp: { color: colors.textSecondary, fontSize: 12, marginBottom: 8 },
+  timeInput: {
+    borderColor: colors.divider,
+    borderRadius: 12,
+    borderWidth: 1,
+    fontSize: 16,
+    minHeight: 48,
+    paddingHorizontal: 12,
   },
   resultRow: {
     alignItems: 'center',

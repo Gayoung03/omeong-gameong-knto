@@ -55,6 +55,7 @@ const CATEGORY_LABEL_BY_SERVER_CODE: Record<string, string> = {
   cafe: '카페·식당',
   hospital: '동물병원',
   restaurant: '카페·식당',
+  restaurant_cafe: '카페·식당',
   vet: '동물병원',
 };
 
@@ -83,6 +84,7 @@ export function toPlace(response: PlaceListItemResponse): Place {
   return {
     address: response.address ?? response.roadAddress ?? '',
     category: toCategoryLabel(response.category),
+    serverCategory: response.category,
     // 서버는 미터, 화면은 km. 좌표를 안 보내면 서버가 null 을 주고 화면은 거리를 그리지 않는다.
     distanceKm: response.distanceMeters === null ? null : response.distanceMeters / 1000,
     environment: toEnvironmentLabel(response.environment) ?? undefined,

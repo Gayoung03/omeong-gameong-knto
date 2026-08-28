@@ -128,11 +128,12 @@ export async function getRouteGenerationStatus(
 
 export async function requestRouteEditSuggestions(
   routeId: string,
+  targetItemId: string,
   instruction: string,
 ): Promise<RouteEditSuggestionResponse> {
   const { data } = await apiClient.post<RouteEditSuggestionResponse>(
     `/routes/${routeId}/edit-suggestions`,
-    { instruction },
+    { instruction, targetItemId },
     { timeout: 65_000 },
   );
   return data;
