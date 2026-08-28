@@ -1,5 +1,5 @@
-import { RouteInputScreen } from '@/src/features/route-recommendation/screens/RouteInputScreen';
+import { RouteIntroScreen } from '@/src/features/route-recommendation/screens/RouteIntroScreen';
 
 export default function RoutesRoute() {
-  return <RouteInputScreen />;
+  return <RouteIntroScreen />;
 }

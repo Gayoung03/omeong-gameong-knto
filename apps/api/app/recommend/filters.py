@@ -22,6 +22,17 @@ from app.recommend.schemas import BusinessHour, Candidate, PetPolicy
 from app.services.place_query import rating_expr, saved_count_expr
 
 DEFAULT_STAY_MINUTES = 60
+ITEM_TYPE_BY_CATEGORY = {
+    "accommodation": ScheduleItemType.ACCOMMODATION,
+    "attraction": ScheduleItemType.ATTRACTION,
+    "beach": ScheduleItemType.ATTRACTION,
+    "oreum": ScheduleItemType.ATTRACTION,
+    "rental_experience": ScheduleItemType.ATTRACTION,
+    "walking_trail": ScheduleItemType.ATTRACTION,
+    "cafe": ScheduleItemType.CAFE,
+    "restaurant": ScheduleItemType.RESTAURANT,
+    "restaurant_cafe": ScheduleItemType.RESTAURANT,
+}
 
 
 def is_pet_compatible(policy: PetPolicy | None, pets: Sequence[Pet]) -> bool:
@@ -60,6 +71,8 @@ def filter_candidates(
     db: Session,
     request: RouteRequest,
     pets: Sequence[Pet],
+    *,
+    include_accommodation: bool = False,
 ) -> list[Candidate]:
     """활성 장소를 DB에서 축소한 뒤 정책·휴무 조건을 적용한다.
 
@@ -88,7 +101,7 @@ def filter_candidates(
     candidates: list[Candidate] = []
     for row in rows:
         place = row.Place
-        item_type = _item_type_of(place.category)
+        item_type = _item_type_of(place.category, include_accommodation=include_accommodation)
         if item_type is None:
             continue
 
@@ -118,9 +131,7 @@ def filter_candidates(
     return candidates
 
 
-def _policies_by_place(
-    db: Session, place_ids: Sequence[uuid.UUID]
-) -> dict[uuid.UUID, PetPolicy]:
+def _policies_by_place(db: Session, place_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, PetPolicy]:
     rows = db.scalars(
         select(PlacePetPolicy)
         .where(PlacePetPolicy.place_id.in_(place_ids))
@@ -172,9 +183,7 @@ def _hours_by_place(
     return dict(result)
 
 
-def _tags_by_place(
-    db: Session, place_ids: Sequence[uuid.UUID]
-) -> dict[uuid.UUID, list[str]]:
+def _tags_by_place(db: Session, place_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[str]]:
     rows = db.execute(
         select(PlaceTagLink.place_id, PlaceTag.code)
         .join(PlaceTag, PlaceTag.id == PlaceTagLink.tag_id)
@@ -196,9 +205,14 @@ def _db_weekday(value: date) -> int:
     return (value.weekday() + 1) % 7
 
 
-def _item_type_of(category: str) -> ScheduleItemType | None:
-    try:
-        item_type = ScheduleItemType(category)
-    except ValueError:
+def _item_type_of(category: str, *, include_accommodation: bool = False) -> ScheduleItemType | None:
+    item_type = ITEM_TYPE_BY_CATEGORY.get(category)
+    if item_type is None:
         return None
-    return item_type if item_type != ScheduleItemType.CUSTOM else None
+    # 숙소는 사용자가 입력한 일자별 동선 기준점이다. 일반 방문 후보로 넘기면
+    # 일정 조립기가 숙소를 관광지처럼 배치하므로 추천 후보에서는 제외한다.
+    if item_type == ScheduleItemType.CUSTOM or (
+        item_type == ScheduleItemType.ACCOMMODATION and not include_accommodation
+    ):
+        return None
+    return item_type

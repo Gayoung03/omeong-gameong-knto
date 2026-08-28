@@ -21,7 +21,7 @@ PRESET_MULTIPLIERS: dict[str, dict[str, float]] = {
     "healing": {"weather": 2.0},
 }
 
-USER_CRITERIA_BOOST = 1.5
+USER_CRITERIA_BOOST = 2.0
 
 # common.geo.haversine_m 결과와 단위를 맞춘다.
 MAX_DAILY_DISTANCE_M = 50_000.0

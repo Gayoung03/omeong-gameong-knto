@@ -18,8 +18,13 @@ import type { PlaceCandidate, PlaceCategory } from '../types/trip';
 const CATEGORY_BY_SERVER_CODE: Record<string, PlaceCategory> = {
   accommodation: 'accommodation',
   attraction: 'attraction',
+  beach: 'attraction',
   cafe: 'cafe',
+  oreum: 'attraction',
+  rental_experience: 'attraction',
   restaurant: 'restaurant',
+  restaurant_cafe: 'restaurant',
+  walking_trail: 'attraction',
 };
 
 /**

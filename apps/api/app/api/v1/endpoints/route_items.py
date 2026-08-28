@@ -7,6 +7,8 @@
 """
 
 import uuid
+from datetime import timedelta
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -17,13 +19,16 @@ from app.api.dependencies import CurrentUser
 from app.db.models import Place, RouteDay, RouteItem, RouteMove
 from app.db.models.enums import TransportType
 from app.db.session import get_db
+from app.recommend.tmap import TMapError
 from app.schemas.route import (
     RouteItemCreate,
     RouteItemOrderUpdate,
+    RouteItemPlaceReplace,
     RouteItemResponse,
     RouteItemUpdate,
 )
 from app.services.route_access import load_owned_day, load_owned_item
+from app.services.route_recommendation import RecommendationGenerationError, replace_route_item
 
 router = APIRouter()
 
@@ -114,7 +119,8 @@ def create_route_item(
 ) -> RouteItemResponse:
     day, route = load_owned_day(db, route_day_id, current_user)
 
-    if payload.place_id is not None and db.get(Place, payload.place_id) is None:
+    place = db.get(Place, payload.place_id) if payload.place_id is not None else None
+    if payload.place_id is not None and place is None:
         raise HTTPException(status_code=404, detail="장소를 찾을 수 없습니다")
 
     existing = _sorted_items(day)
@@ -122,16 +128,26 @@ def create_route_item(
     # 끼워 넣고 전체를 다시 매기면 밀어내기가 저절로 된다.
     position = min(payload.sort_order, len(existing))
 
+    stay_minutes = payload.stay_minutes
+    if stay_minutes is None and place is not None:
+        stay_minutes = place.average_stay_minutes or 60
+    ends_at = payload.ends_at
+    if ends_at is None and payload.starts_at is not None and stay_minutes is not None:
+        ends_at = payload.starts_at + timedelta(minutes=stay_minutes)
+
     item = RouteItem(
         route_day_id=day.id,
         place_id=payload.place_id,
         custom_place_name=payload.custom_place_name,
+        custom_address=place.address if place is not None else None,
+        latitude=Decimal(str(place.latitude)) if place is not None else None,
+        longitude=Decimal(str(place.longitude)) if place is not None else None,
         item_type=payload.item_type,
         # 잠깐 쓰는 값. 바로 아래 _renumber 가 0 부터 다시 매긴다.
         sort_order=(existing[-1].sort_order + 1) if existing else 0,
         starts_at=payload.starts_at,
-        ends_at=payload.ends_at,
-        stay_minutes=payload.stay_minutes,
+        ends_at=ends_at,
+        stay_minutes=stay_minutes,
         note=payload.note,
     )
     db.add(item)
@@ -174,6 +190,33 @@ def update_route_item(
 
 
 @router.put(
+    "/route-items/{route_item_id}/place",
+    response_model=RouteItemResponse,
+    summary="일정 장소 교체 확정",
+)
+def replace_route_item_place(
+    route_item_id: uuid.UUID,
+    payload: RouteItemPlaceReplace,
+    current_user: CurrentUser,
+    db: DbSession,
+) -> RouteItemResponse:
+    """AI 추천 후보와 직접 고른 DB 장소를 같은 규칙으로 확정한다."""
+
+    item, day, route = load_owned_item(db, route_item_id, current_user)
+    try:
+        replaced = replace_route_item(db, route, day, item, payload.place_id)
+    except RecommendationGenerationError as error:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except TMapError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=502, detail="교체 장소의 이동 경로를 계산하지 못했습니다"
+        ) from error
+    return RouteItemResponse.model_validate(replaced)
+
+
+@router.put(
     "/route-days/{route_day_id}/items/order",
     response_model=list[RouteItemResponse],
     summary="일정 순서 변경",
@@ -190,9 +233,7 @@ def reorder_route_items(
     # 부분만 보내면 남은 항목의 순번을 서버가 짐작해야 한다. 짐작하지 않고
     # 거절한다 — 드래그 화면은 어차피 전체 목록을 들고 있다.
     if len(payload.item_ids) != len(by_id) or set(payload.item_ids) != set(by_id):
-        raise HTTPException(
-            status_code=422, detail="이 날짜의 일정 전체를 순서대로 보내야 합니다"
-        )
+        raise HTTPException(status_code=422, detail="이 날짜의 일정 전체를 순서대로 보내야 합니다")
 
     ordered = [by_id[item_id] for item_id in payload.item_ids]
     _renumber(db, ordered)

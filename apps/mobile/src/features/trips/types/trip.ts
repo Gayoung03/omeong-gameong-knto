@@ -18,6 +18,8 @@ export type TripTransport = 'rentalCar' | 'publicTransport' | 'ownCar' | 'walk';
 /** 일정에 담긴 장소 요약 정보 */
 export type SchedulePlace = {
   id: string;
+  /** 주소로 직접 입력해 장소 상세·저장 기능이 없는 일정 지점 */
+  isCustom?: boolean;
   name: string;
   category: PlaceCategory;
   description: string;
