@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     s3_bucket_name: str = ""
     s3_public_base_url: str = ""
     tmap_api: str = ""
+    kakao_rest_api_key: str = ""
+    weather_api_key: str = ""
 
     # --- 챗봇 -------------------------------------------------------------
     openai_api_key: str = ""
@@ -27,6 +29,11 @@ class Settings(BaseSettings):
     #: 사용자 한 명이 하루에 보낼 수 있는 질문 수(설계 결정 E3).
     #: `environment` 가 local 이면 제한하지 않는다 — 개발·시연 중에 막히면 곤란하다.
     chat_daily_limit: int = 15
+
+    # --- 루트 부분 수정 ---------------------------------------------------
+    # 일반 챗봇과 프롬프트·호출 경로·모델 설정을 공유하지 않는다.
+    route_edit_model: str = "gpt-4o-mini"
+    route_edit_timeout_seconds: float = 20.0
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../../.env"),

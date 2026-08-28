@@ -5,19 +5,44 @@ import uuid
 from datetime import timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser
-from app.db.models import Pet, Route, RouteDay, RoutePet
+from app.db.models import (
+    Pet,
+    Place,
+    Route,
+    RouteDay,
+    RouteItem,
+    RoutePet,
+    RouteRequest,
+    RouteRequestPet,
+    RouteRequestStay,
+)
 from app.db.models.enums import RouteCreationType, RouteStatus
-from app.db.session import get_db
+from app.db.session import BackgroundSessionFactory, get_background_session, get_db
+from app.integrations.llm.route_edit import (
+    RouteEditError,
+    RouteEditTimeoutError,
+    RouteItemContext,
+    interpret_route_edit,
+)
+from app.recommend.config.tags import normalize_preferred_tags
+from app.recommend.itinerary import SUPPORTED_TRANSPORTS
+from app.recommend.weights import resolve_weights
 from app.schemas.route import (
     RouteCreate,
     RouteDetail,
+    RouteEditSuggestionRequest,
+    RouteEditSuggestionResponse,
+    RouteGenerationStatus,
     RouteListItem,
     RouteListResponse,
+    RouteReplacementSuggestion,
+    RouteRequestAccepted,
+    RouteRequestCreate,
     RouteShareResponse,
     RouteUpdate,
     SharedRouteDetail,
@@ -28,10 +53,17 @@ from app.services.route_access import (
     log_counts_of,
     route_detail_options,
 )
+from app.services.route_recommendation import (
+    LocationResolutionError,
+    RecommendationGenerationError,
+    run_route_generation,
+    suggest_replacements,
+)
 
 router = APIRouter()
 
 DbSession = Annotated[Session, Depends(get_db)]
+OpenSession = Annotated[BackgroundSessionFactory, Depends(get_background_session)]
 
 # 명세(docs/api/routes.md PATCH /routes/{routeId})가 허용하는 상태 전이.
 # 역방향과 건너뛰기는 422 다. 표로 두면 "왜 이 전이는 안 되는가"를 코드에서
@@ -49,6 +81,110 @@ ALLOWED_STATUS_TRANSITIONS: dict[RouteStatus, set[RouteStatus]] = {
     RouteStatus.SAVED: {RouteStatus.ONGOING},
     RouteStatus.ONGOING: {RouteStatus.COMPLETED},
 }
+
+
+@router.post(
+    "/route-requests",
+    response_model=RouteRequestAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="추천 요청 생성 및 루트 생성 시작",
+)
+def create_route_request(
+    payload: RouteRequestCreate,
+    background_tasks: BackgroundTasks,
+    current_user: CurrentUser,
+    db: DbSession,
+    open_session: OpenSession,
+) -> RouteRequestAccepted:
+    """조건을 스냅샷으로 저장하고 추천 생성을 뒷작업에 맡긴다."""
+
+    try:
+        weights = resolve_weights(payload.priority_preset, payload.user_criteria)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if payload.transport not in SUPPORTED_TRANSPORTS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"현재 루트 추천에서 지원하지 않는 이동수단입니다: {payload.transport.value}",
+        )
+
+    pets = []
+    if payload.pet_ids:
+        pets = list(db.scalars(select(Pet).where(Pet.id.in_(payload.pet_ids))).all())
+        if len(pets) != len(set(payload.pet_ids)):
+            raise HTTPException(status_code=404, detail="반려동물을 찾을 수 없습니다")
+        if any(pet.user_id != current_user.id for pet in pets):
+            raise HTTPException(status_code=403, detail="다른 사용자의 반려동물입니다")
+
+    place_ids = {
+        place_id
+        for place_id in [payload.departure_place_id, *(stay.place_id for stay in payload.stays)]
+        if place_id is not None
+    }
+    if place_ids:
+        found_ids = set(db.scalars(select(Place.id).where(Place.id.in_(place_ids))).all())
+        if found_ids != place_ids:
+            raise HTTPException(status_code=404, detail="출발지 또는 숙소 장소를 찾을 수 없습니다")
+
+    preferred_tags = normalize_preferred_tags(payload.preferred_tags)
+    request = RouteRequest(
+        user_id=current_user.id,
+        title=payload.title,
+        start_at=payload.start_at,
+        end_at=payload.end_at,
+        departure_location=payload.departure_location,
+        departure_place_id=payload.departure_place_id,
+        pace=payload.pace,
+        transport=payload.transport,
+        companion_count=payload.companion_count,
+        preferred_tags=preferred_tags,
+        priority_preset=payload.priority_preset,
+        applied_weights=weights.model_dump(),
+        request_text=payload.request_text,
+    )
+    db.add(request)
+    db.flush()
+
+    for pet in pets:
+        db.add(RouteRequestPet(route_request_id=request.id, pet_id=pet.id))
+    for stay in payload.stays:
+        db.add(
+            RouteRequestStay(
+                route_request_id=request.id,
+                place_id=stay.place_id,
+                name=stay.name,
+                address=stay.address,
+                check_in_at=stay.check_in_at,
+                check_out_at=stay.check_out_at,
+            )
+        )
+
+    route = Route(
+        route_request_id=request.id,
+        user_id=current_user.id,
+        title=payload.title or "추천 제주 여행",
+        status=RouteStatus.GENERATING,
+        creation_type=RouteCreationType.RECOMMENDED,
+        version=1,
+        start_at=payload.start_at,
+        end_at=payload.end_at,
+        pace=payload.pace,
+        transport=payload.transport,
+        style_keywords=payload.preferred_tags,
+    )
+    db.add(route)
+    db.flush()
+    for pet in pets:
+        db.add(RoutePet(route_id=route.id, pet_id=pet.id))
+    db.commit()
+
+    background_tasks.add_task(run_route_generation, route.id, open_session)
+    return RouteRequestAccepted(
+        route_id=route.id,
+        route_request_id=request.id,
+        status=route.status,
+        version=route.version,
+    )
 
 
 @router.get("/routes", response_model=RouteListResponse, summary="내 여행 목록")
@@ -179,6 +315,96 @@ def get_shared_route(share_token: str, db: DbSession) -> SharedRouteDetail:
         raise HTTPException(status_code=404, detail="공유된 여행을 찾을 수 없습니다")
 
     return _fill_computed(db, route, SharedRouteDetail.model_validate(route))
+
+
+@router.get(
+    "/routes/{route_id}/status",
+    response_model=RouteGenerationStatus,
+    summary="추천 루트 생성 상태 확인",
+)
+def get_route_status(
+    route_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+) -> RouteGenerationStatus:
+    route = load_owned_route(db, route_id, current_user)
+    return RouteGenerationStatus(
+        route_id=route.id,
+        status=route.status,
+        version=route.version,
+        failure_reason=(
+            "추천 루트를 생성하지 못했습니다" if route.status == RouteStatus.FAILED else None
+        ),
+    )
+
+
+@router.post(
+    "/routes/{route_id}/edit-suggestions",
+    response_model=RouteEditSuggestionResponse,
+    summary="자연어 루트 부분 수정 후보 추천",
+)
+def create_route_edit_suggestions(
+    route_id: uuid.UUID,
+    payload: RouteEditSuggestionRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+) -> RouteEditSuggestionResponse:
+    """LLM은 수정 의도만 해석하고 실제 대체 장소는 DB 추천 엔진이 고른다."""
+
+    route = load_owned_route(db, route_id, current_user)
+    rows = db.execute(
+        select(RouteItem, Place)
+        .join(RouteDay, RouteDay.id == RouteItem.route_day_id)
+        .outerjoin(Place, Place.id == RouteItem.place_id)
+        .where(RouteDay.route_id == route.id)
+        .order_by(RouteDay.day_number, RouteItem.sort_order)
+    ).all()
+    contexts = [
+        RouteItemContext(
+            item_id=row.RouteItem.id,
+            name=(
+                row.Place.name
+                if row.Place is not None
+                else row.RouteItem.custom_place_name or "일정"
+            ),
+            category=row.RouteItem.item_type.value,
+        )
+        for row in rows
+    ]
+    try:
+        intent = interpret_route_edit(contexts, payload.instruction)
+        candidates = suggest_replacements(db, route, intent)
+    except RouteEditTimeoutError as error:
+        raise HTTPException(status_code=504, detail="루트 수정 해석이 늦어지고 있어요") from error
+    except RouteEditError as error:
+        raise HTTPException(status_code=502, detail="루트 수정 요청을 이해하지 못했어요") from error
+    except (LocationResolutionError, RecommendationGenerationError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    places = {
+        place.id: place
+        for place in db.scalars(
+            select(Place).where(Place.id.in_([candidate.place_id for candidate in candidates]))
+        ).all()
+    }
+    suggestions = [
+        RouteReplacementSuggestion(
+            place_id=candidate.place_id,
+            name=places[candidate.place_id].name,
+            category=places[candidate.place_id].category,
+            address=places[candidate.place_id].address,
+            primary_image_url=places[candidate.place_id].primary_image_url,
+            recommendation_score=round(candidate.total_score * 100, 2),
+            recommendation_reason=candidate.reason,
+        )
+        for candidate in candidates
+        if candidate.place_id in places
+    ]
+    return RouteEditSuggestionResponse(
+        target_item_id=intent.target_item_id,
+        interpretation=intent.interpretation,
+        suggestions=suggestions,
+    )
 
 
 @router.get("/routes/{route_id}", response_model=RouteDetail, summary="여행 상세")

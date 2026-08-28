@@ -17,13 +17,16 @@ from app.api.dependencies import CurrentUser
 from app.db.models import Place, RouteDay, RouteItem, RouteMove
 from app.db.models.enums import TransportType
 from app.db.session import get_db
+from app.recommend.tmap import TMapError
 from app.schemas.route import (
     RouteItemCreate,
     RouteItemOrderUpdate,
+    RouteItemPlaceReplace,
     RouteItemResponse,
     RouteItemUpdate,
 )
 from app.services.route_access import load_owned_day, load_owned_item
+from app.services.route_recommendation import RecommendationGenerationError, replace_route_item
 
 router = APIRouter()
 
@@ -171,6 +174,33 @@ def update_route_item(
     db.commit()
     db.refresh(item)
     return RouteItemResponse.model_validate(item)
+
+
+@router.put(
+    "/route-items/{route_item_id}/place",
+    response_model=RouteItemResponse,
+    summary="일정 장소 교체 확정",
+)
+def replace_route_item_place(
+    route_item_id: uuid.UUID,
+    payload: RouteItemPlaceReplace,
+    current_user: CurrentUser,
+    db: DbSession,
+) -> RouteItemResponse:
+    """AI 추천 후보와 직접 고른 DB 장소를 같은 규칙으로 확정한다."""
+
+    item, day, route = load_owned_item(db, route_item_id, current_user)
+    try:
+        replaced = replace_route_item(db, route, day, item, payload.place_id)
+    except RecommendationGenerationError as error:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except TMapError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=502, detail="교체 장소의 이동 경로를 계산하지 못했습니다"
+        ) from error
+    return RouteItemResponse.model_validate(replaced)
 
 
 @router.put(
