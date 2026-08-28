@@ -16,6 +16,7 @@ from app.db.models.enums import (
     TripPace,
 )
 from app.schemas.base import APISchema
+from app.schemas.validators import OptionalImageUrl
 
 
 class RouteListItem(APISchema):
@@ -251,7 +252,7 @@ class RouteUpdate(APISchema):
     status: RouteStatus | None = None
     style_keywords: list[str] | None = None
     memo: str | None = None
-    cover_image_url: str | None = None
+    cover_image_url: OptionalImageUrl = None
     is_public: bool | None = None
 
 
@@ -378,7 +379,7 @@ class RouteCreate(APISchema):
     #: 함께 가는 반려동물. 본인 소유가 아니면 403.
     pet_ids: list[uuid.UUID] = Field(default_factory=list)
     style_keywords: list[str] | None = None
-    cover_image_url: str | None = None
+    cover_image_url: OptionalImageUrl = None
     memo: str | None = None
 
     @model_validator(mode="after")
