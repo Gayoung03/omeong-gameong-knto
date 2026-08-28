@@ -77,6 +77,29 @@ def get_route(
     return leg
 
 
+def get_cached_route(
+    db: Session,
+    from_coord: tuple[float, float],
+    to_coord: tuple[float, float],
+    transport: TransportType,
+    *,
+    now: datetime | None = None,
+) -> RouteLeg | None:
+    """출발 시각과 무관하게 같은 구간의 최신 유효 캐시를 읽는다.
+
+    상세 조회는 외부 API를 호출하지 않는다. ``route_moves``에는 추천 생성 때의
+    출발 시각이 남지 않으므로 좌표와 이동수단이 같은 최신 계산값을 사용한다.
+    """
+    _validate_coord(from_coord)
+    _validate_coord(to_coord)
+    cache = db.scalar(
+        _cache_query(from_coord, to_coord, transport, now or datetime.now(UTC))
+        .order_by(RouteCalculationCache.calculated_at.desc())
+        .limit(1)
+    )
+    return _leg_from_cache(cache) if cache is not None else None
+
+
 def _find_cache(
     db: Session,
     from_coord: tuple[float, float],
@@ -91,18 +114,26 @@ def _find_cache(
         else RouteCalculationCache.requested_departure_at == depart_at
     )
     return db.scalar(
-        select(RouteCalculationCache)
-        .where(
-            RouteCalculationCache.origin_latitude == _coordinate_decimal(from_coord[0]),
-            RouteCalculationCache.origin_longitude == _coordinate_decimal(from_coord[1]),
-            RouteCalculationCache.destination_latitude == _coordinate_decimal(to_coord[0]),
-            RouteCalculationCache.destination_longitude == _coordinate_decimal(to_coord[1]),
-            RouteCalculationCache.transport == transport,
-            departure_condition,
-            RouteCalculationCache.expires_at > now,
-        )
+        _cache_query(from_coord, to_coord, transport, now)
+        .where(departure_condition)
         .order_by(RouteCalculationCache.calculated_at.desc())
         .limit(1)
+    )
+
+
+def _cache_query(
+    from_coord: tuple[float, float],
+    to_coord: tuple[float, float],
+    transport: TransportType,
+    now: datetime,
+):
+    return select(RouteCalculationCache).where(
+        RouteCalculationCache.origin_latitude == _coordinate_decimal(from_coord[0]),
+        RouteCalculationCache.origin_longitude == _coordinate_decimal(from_coord[1]),
+        RouteCalculationCache.destination_latitude == _coordinate_decimal(to_coord[0]),
+        RouteCalculationCache.destination_longitude == _coordinate_decimal(to_coord[1]),
+        RouteCalculationCache.transport == transport,
+        RouteCalculationCache.expires_at > now,
     )
 
 

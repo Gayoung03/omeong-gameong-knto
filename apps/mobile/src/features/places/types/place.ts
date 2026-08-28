@@ -29,6 +29,8 @@ export type Place = {
    */
   region: PlaceRegion | null;
   category: string;
+  /** 일정 추가 요청에 사용하는 DB 원본 분류 코드 */
+  serverCategory?: string;
   environment?: '실내' | '야외';
   /** 좌표를 보내지 않으면 서버가 거리를 계산하지 않는다. 그때는 null. */
   distanceKm: number | null;

@@ -205,4 +205,11 @@ def downgrade() -> None:
     op.drop_index("ix_guide_documents_is_active", table_name="guide_documents")
     op.drop_index("ix_guide_documents_category", table_name="guide_documents")
     op.drop_table("guide_documents")
+    for enum_name in (
+        "breed_restriction_scope",
+        "breed_restriction_type",
+        "carrier_type",
+        "guide_category",
+    ):
+        sa.Enum(name=enum_name).drop(op.get_bind(), checkfirst=True)
     # ### end Alembic commands ###

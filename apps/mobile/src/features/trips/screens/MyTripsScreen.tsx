@@ -1,19 +1,27 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState } from '@/src/components/feedback/ErrorState';
 import { AppHeader } from '@/src/components/layout/AppHeader';
 import { ScreenTitleBar } from '@/src/components/layout/ScreenTitleBar';
+import { getApiErrorMessage } from '@/src/services/apiError';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
+import { TripDeleteConfirmModal } from '../components/TripDeleteConfirmModal';
 import { TripListCard } from '../components/TripListCard';
+import { useDeleteTrip } from '../hooks/useDeleteTrip';
 import { useTrips } from '../hooks/useTrips';
+import type { TripListItem } from '../types/trip';
 
 export function MyTripsScreen() {
   const router = useRouter();
   const { data: trips, error, isLoading, isError, refetch } = useTrips();
+  const deleteMutation = useDeleteTrip();
+  const [pendingDeleteTrip, setPendingDeleteTrip] = useState<TripListItem | null>(null);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState('');
 
   const openTrip = (tripId: string) => {
     router.push({ pathname: '/trips/[tripId]', params: { tripId } });
@@ -25,6 +33,20 @@ export function MyTripsScreen() {
    */
   const startNewTrip = () => {
     router.push('/routes');
+  };
+
+  const confirmDelete = () => {
+    if (!pendingDeleteTrip) return;
+    deleteMutation.mutate(pendingDeleteTrip.id, {
+      onError: (deleteError) => {
+        setPendingDeleteTrip(null);
+        setDeleteErrorMessage(getApiErrorMessage(deleteError).description);
+      },
+      onSuccess: () => {
+        setPendingDeleteTrip(null);
+        setDeleteErrorMessage('');
+      },
+    });
   };
 
   const renderBody = () => {
@@ -67,7 +89,15 @@ export function MyTripsScreen() {
         data={trips}
         keyExtractor={(trip) => trip.id}
         renderItem={({ item }) => (
-          <TripListCard onPress={() => openTrip(item.id)} trip={item} />
+          <TripListCard
+            isDeleting={deleteMutation.isPending && pendingDeleteTrip?.id === item.id}
+            onDelete={() => {
+              setDeleteErrorMessage('');
+              setPendingDeleteTrip(item);
+            }}
+            onPress={() => openTrip(item.id)}
+            trip={item}
+          />
         )}
         showsVerticalScrollIndicator={false}
       />
@@ -92,7 +122,15 @@ export function MyTripsScreen() {
         }
         title="내 여행"
       />
+      {deleteErrorMessage ? <Text style={styles.deleteError}>{deleteErrorMessage}</Text> : null}
       {renderBody()}
+      <TripDeleteConfirmModal
+        isDeleting={deleteMutation.isPending}
+        onCancel={() => setPendingDeleteTrip(null)}
+        onConfirm={confirmDelete}
+        tripTitle={pendingDeleteTrip?.title ?? '여행 삭제'}
+        visible={Boolean(pendingDeleteTrip)}
+      />
     </SafeAreaView>
   );
 }
@@ -136,6 +174,14 @@ const styles = StyleSheet.create({
     color: colors.surface,
     fontSize: typography.label.fontSize,
     fontWeight: '700',
+  },
+  deleteError: {
+    backgroundColor: colors.errorBg,
+    color: colors.error,
+    fontSize: typography.caption.fontSize,
+    marginHorizontal: spacing.md,
+    padding: spacing.sm,
+    textAlign: 'center',
   },
   listContent: {
     gap: spacing.sm,

@@ -130,6 +130,9 @@ breed: varchar
 
 TourAPI, KCISA CSV, 비짓제주, 카카오별로 장소 테이블을 만들지 않습니다. 실제 장소는 `places`에 한 번만 저장하고 제공처 ID를 `place_external_refs`에 연결합니다.
 
+루트 추천에서 사용하는 TourAPI 응답은 공모전 조건에 따라 예외적으로 적재하지 않습니다.
+추천 요청마다 실시간 조회한 뒤 메모리에서 `places`와 대조하고 응답 원문은 버립니다.
+
 ```text
 places: 함덕해수욕장
 

@@ -60,6 +60,8 @@ class RouteRequest(Base):
     departure_place_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("places.id", ondelete="SET NULL")
     )
+    departure_latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    departure_longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     pace: Mapped[TripPace] = mapped_column(db_enum(TripPace, "trip_pace"), nullable=False)
     transport: Mapped[TransportType] = mapped_column(
         db_enum(TransportType, "transport_type"), nullable=False
@@ -106,6 +108,8 @@ class RouteRequestStay(Base):
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     address: Mapped[str | None] = mapped_column(Text)
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     check_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     check_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -258,6 +262,9 @@ class RouteItem(Base):
         UUID(as_uuid=True), ForeignKey("places.id", ondelete="SET NULL")
     )
     custom_place_name: Mapped[str | None] = mapped_column(String(200))
+    custom_address: Mapped[str | None] = mapped_column(Text)
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     item_type: Mapped[ScheduleItemType] = mapped_column(
         db_enum(ScheduleItemType, "schedule_item_type"), nullable=False
     )
