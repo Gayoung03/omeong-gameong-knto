@@ -8,8 +8,21 @@ import type { Place } from '../types/place';
 
 import { toPlace, toPlaceDetail } from './placeAdapter';
 
-/** 제주도 장소 수가 많지 않아 한 번에 받아 화면에서 거른다. */
-const LIST_LIMIT = 1000;
+export const PLACE_PAGE_SIZE = 40;
+
+export type PlaceListFilters = {
+  categories?: string[];
+  environment?: 'indoor' | 'outdoor';
+  q?: string;
+  region?: string;
+};
+
+export type PlacePage = {
+  items: Place[];
+  limit: number;
+  offset: number;
+  total: number;
+};
 
 /**
  * 공식 장소 목록.
@@ -18,12 +31,23 @@ const LIST_LIMIT = 1000;
  * (`GET /users/me/places`). 조건을 빠뜨리면 남이 등록한 장소가 이름·좌표째로
  * 섞이는 구조라, 섞일 수 없게 막아둔 것이다.
  */
-export async function getPlaces(): Promise<Place[]> {
+export async function getPlaces(
+  filters: PlaceListFilters,
+  offset = 0,
+): Promise<PlacePage> {
+  const params = new URLSearchParams();
+  params.set('limit', String(PLACE_PAGE_SIZE));
+  params.set('offset', String(offset));
+  if (filters.q) params.set('q', filters.q);
+  if (filters.region) params.set('region', filters.region);
+  if (filters.environment) params.set('environment', filters.environment);
+  filters.categories?.forEach((category) => params.append('category', category));
+
   const { data } = await apiClient.get<PlaceListResponse>('/places', {
-    params: { limit: LIST_LIMIT },
+    params,
   });
 
-  return data.items.map(toPlace);
+  return { ...data, items: data.items.map(toPlace) };
 }
 
 /** 장소명으로 검색한다. 서버가 좁혀 주므로 전체를 받아 거르지 않는다. */
