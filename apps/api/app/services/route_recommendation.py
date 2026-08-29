@@ -42,7 +42,7 @@ Geocoder = Callable[[str], GeocodedAddress]
 
 
 class LocationResolutionError(RuntimeError):
-    """DB 장소와 주소 모두에서 좌표를 얻지 못했다."""
+    """DB 장소와 주소·장소명 모두에서 좌표를 얻지 못했다."""
 
 
 class RecommendationGenerationError(RuntimeError):
@@ -68,7 +68,9 @@ def resolve_location(
         try:
             result = geocoder(address)
         except Exception as error:
-            raise LocationResolutionError("주소를 좌표로 변환하지 못했습니다") from error
+            raise LocationResolutionError(
+                "주소 또는 장소명을 좌표로 변환하지 못했습니다"
+            ) from error
         return result.latitude, result.longitude
 
     raise LocationResolutionError("장소 ID 또는 주소가 필요합니다")
@@ -146,11 +148,14 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     if not any(day.items for day in itinerary.days):
         raise RecommendationGenerationError("일정에 배치할 수 있는 장소가 없습니다")
     if any(
-        not day.items or day.items[-1].candidate.item_type != ScheduleItemType.RESTAURANT
+        day.dinner_required
+        and (
+            not day.items or day.items[-1].candidate.item_type != ScheduleItemType.RESTAURANT
+        )
         for day in itinerary.days
     ):
         raise RecommendationGenerationError(
-            "모든 날짜에 배치할 수 있는 반려동물 동반 저녁 식당이 부족합니다"
+            "저녁 식사가 필요한 날짜에 배치할 수 있는 반려동물 동반 식당이 부족합니다"
         )
 
     _save_itinerary(db, route, itinerary)

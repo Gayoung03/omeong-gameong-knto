@@ -50,7 +50,7 @@ GET /api/v1/places?latitude=33.4996&longitude=126.5312&radius=3000
 | `longitude` | number | — | -180 ~ 180 |
 | `radius` | int | 3000 | 미터. 좌표를 보낼 때만 유효 |
 | `sort` | enum | `distance` 또는 `name` | `distance` `name` `reviewCount` |
-| `limit` | int | 20 | 최대 100 |
+| `limit` | int | 20 | 최대 1000 |
 | `offset` | int | 0 | |
 
 좌표를 보내면 기본 정렬이 `distance`, 없으면 `name`입니다.

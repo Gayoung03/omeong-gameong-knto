@@ -9,7 +9,7 @@ import type { Place } from '../types/place';
 import { toPlace, toPlaceDetail } from './placeAdapter';
 
 /** 제주도 장소 수가 많지 않아 한 번에 받아 화면에서 거른다. */
-const LIST_LIMIT = 100;
+const LIST_LIMIT = 1000;
 
 /**
  * 공식 장소 목록.
