@@ -277,9 +277,18 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
   "routeId": "...",
   "status": "failed",
   "version": 1,
-  "failureReason": "추천할 장소를 찾지 못했습니다."
+  "failureReason": "NO_RECOMMENDABLE_PLACES"
 }
 ```
+
+| `failureReason` | 사용자 안내 |
+| --- | --- |
+| `LOCATION_NOT_FOUND` | 출발지·숙소 위치 확인 필요 |
+| `NO_RECOMMENDABLE_PLACES` | 조건에 맞는 장소 부족 |
+| `DINNER_RESTAURANT_SHORTAGE` | 저녁 식당 후보 부족 |
+| `ROUTE_PROVIDER_FAILED` | 이동 경로 제공자 실패 |
+| `GENERATION_TIMEOUT` | 생성 시간 초과 |
+| `UNKNOWN` | 분류하지 못한 실패 |
 
 ### 폴링 규칙 **[확정]** (2026-08-18)
 
@@ -292,14 +301,11 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 3분이 지나도 `generating`이면 앱은 폴링을 멈추고 "잠시 후 다시 확인해 주세요"를 보여줍니다.
 **서버가 생성을 중단하는 것은 아니므로**, 나중에 다시 들어오면 완료된 여행을 볼 수 있습니다.
 
-### `failureReason`은 응답에만 있습니다 **[확정]** (2026-08-18)
+### `failureReason`은 안전한 코드로 저장합니다 **[변경]** (2026-08-30)
 
-`routes` 테이블에 실패 사유를 담을 컬럼이 없습니다. **컬럼을 추가하지 않고,
-응답에서만 내려줍니다.**
-
-실패하면 사용자는 다시 시도하지 “왜 실패했는지”를 나중에 다시 찾아보지 않습니다.
-기록으로 남길 가치가 적어 스키마를 늘리지 않았습니다.
-서버 로그에는 남으므로 원인 추적에는 문제가 없습니다.
+추천 생성 실패 시 `routes.failure_reason`에 위 enum 코드만 저장합니다. 원시 예외 메시지,
+외부 제공자 응답, API 키 등 내부 정보는 응답에 포함하지 않습니다. 앱은 코드를 고정된
+사용자 안내 문구로 변환하며, 재시도는 같은 입력으로 새 추천 요청을 만듭니다.
 
 ---
 

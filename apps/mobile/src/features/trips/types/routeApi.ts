@@ -247,11 +247,19 @@ export type RouteRequestAcceptedResponse = {
   version: number;
 };
 
+export type RouteFailureReason =
+  | 'LOCATION_NOT_FOUND'
+  | 'NO_RECOMMENDABLE_PLACES'
+  | 'DINNER_RESTAURANT_SHORTAGE'
+  | 'ROUTE_PROVIDER_FAILED'
+  | 'GENERATION_TIMEOUT'
+  | 'UNKNOWN';
+
 export type RouteGenerationStatusResponse = {
   routeId: string;
   status: ServerRouteStatus;
   version: number;
-  failureReason: string | null;
+  failureReason: RouteFailureReason | null;
 };
 
 export type RouteReplacementSuggestionResponse = {

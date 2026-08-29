@@ -20,7 +20,12 @@ from app.db.models import (
     RouteRequestPet,
     RouteRequestStay,
 )
-from app.db.models.enums import RouteStatus, ScheduleItemType, TransportType
+from app.db.models.enums import (
+    RouteFailureReason,
+    RouteStatus,
+    ScheduleItemType,
+    TransportType,
+)
 from app.integrations.llm.route_edit import RouteEditIntent
 from app.integrations.maps.kakao import GeocodedAddress, geocode_address
 from app.integrations.tour_api.kto import TourAPIError, TourPlace, get_nearby_places
@@ -33,7 +38,7 @@ from app.recommend.filters import filter_candidates
 from app.recommend.itinerary import BuildRequest, Itinerary, RouteAnchor, build
 from app.recommend.schemas import Candidate, ScoredCandidate, Weights
 from app.recommend.scoring import ScoringContext, score_candidates
-from app.recommend.tmap import get_route
+from app.recommend.tmap import TMapError, get_route
 from app.recommend.weights import resolve_weights
 
 logger = logging.getLogger(__name__)
@@ -47,6 +52,14 @@ class LocationResolutionError(RuntimeError):
 
 class RecommendationGenerationError(RuntimeError):
     """추천 루트를 생성할 수 없다."""
+
+    def __init__(
+        self,
+        message: str,
+        reason: RouteFailureReason = RouteFailureReason.UNKNOWN,
+    ) -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 def resolve_location(
@@ -121,7 +134,10 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
         ),
     )
     if not scored:
-        raise RecommendationGenerationError("추천할 장소를 찾지 못했습니다")
+        raise RecommendationGenerationError(
+            "추천할 장소를 찾지 못했습니다",
+            RouteFailureReason.NO_RECOMMENDABLE_PLACES,
+        )
     scored = [
         item.model_copy(update={"reason": f"{item.reason} · 한국관광공사 TourAPI 실시간 정보 확인"})
         if item.place_id in tour_matched_ids
@@ -146,7 +162,10 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
         ),
     )
     if not any(day.items for day in itinerary.days):
-        raise RecommendationGenerationError("일정에 배치할 수 있는 장소가 없습니다")
+        raise RecommendationGenerationError(
+            "일정에 배치할 수 있는 장소가 없습니다",
+            RouteFailureReason.NO_RECOMMENDABLE_PLACES,
+        )
     if any(
         day.dinner_required
         and (
@@ -155,7 +174,8 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
         for day in itinerary.days
     ):
         raise RecommendationGenerationError(
-            "저녁 식사가 필요한 날짜에 배치할 수 있는 반려동물 동반 식당이 부족합니다"
+            "저녁 식사가 필요한 날짜에 배치할 수 있는 반려동물 동반 식당이 부족합니다",
+            RouteFailureReason.DINNER_RESTAURANT_SHORTAGE,
         )
 
     _save_itinerary(db, route, itinerary)
@@ -177,6 +197,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
         + tour_api_explanation
     )
     route.status = RouteStatus.GENERATED
+    route.failure_reason = None
     db.commit()
 
 
@@ -230,13 +251,28 @@ def run_route_generation(route_id: uuid.UUID, open_session: Callable) -> None:
     with open_session() as db:
         try:
             generate_route(db, route_id)
-        except Exception:
+        except Exception as error:
             db.rollback()
             route = db.get(Route, route_id)
             if route is not None:
                 route.status = RouteStatus.FAILED
+                route.failure_reason = _failure_reason(error)
                 db.commit()
             logger.exception("route recommendation failed", extra={"route_id": str(route_id)})
+
+
+def _failure_reason(error: Exception) -> RouteFailureReason:
+    """원시 예외 문자열 대신 공개 가능한 코드만 고른다."""
+
+    if isinstance(error, LocationResolutionError):
+        return RouteFailureReason.LOCATION_NOT_FOUND
+    if isinstance(error, RecommendationGenerationError):
+        return error.reason
+    if isinstance(error, TMapError):
+        return RouteFailureReason.ROUTE_PROVIDER_FAILED
+    if isinstance(error, TimeoutError):
+        return RouteFailureReason.GENERATION_TIMEOUT
+    return RouteFailureReason.UNKNOWN
 
 
 def suggest_replacements(

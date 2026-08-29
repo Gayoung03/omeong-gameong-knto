@@ -71,6 +71,15 @@ Enum route_status {
   failed
 }
 
+Enum route_failure_reason {
+  LOCATION_NOT_FOUND
+  NO_RECOMMENDABLE_PLACES
+  DINNER_RESTAURANT_SHORTAGE
+  ROUTE_PROVIDER_FAILED
+  GENERATION_TIMEOUT
+  UNKNOWN
+}
+
 Enum route_creation_type {
   recommended
   manual
@@ -286,6 +295,7 @@ Table routes {
   user_id uuid [not null, ref: > users.id]
   title varchar(150) [not null]
   status route_status [not null, default: 'generating']
+  failure_reason route_failure_reason
   creation_type route_creation_type [not null]
   version int [not null, default: 1]
   start_at timestamptz [not null]

@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { failureGuidance } from '../failureReason';
 import { clearPendingRoute, loadPendingRoute, savePendingRoute } from '../services/pendingRoute';
 import { searchAccommodations, searchPlaces } from '@/src/features/places/api/placesApi';
 import type { Place } from '@/src/features/places/types/place';
@@ -415,9 +416,7 @@ export function RouteRecommendationScreen() {
     return (
       <StateScreen
         title="루트를 만들지 못했어요"
-        description={
-          feedback || statusQuery.data?.failureReason || '조건을 확인하고 다시 요청해주세요.'
-        }
+        description={feedback || failureGuidance(statusQuery.data?.failureReason)}
         onPress={() => void retryGeneration()}
         button={pendingRequest ? '다시 추천받기' : '조건 다시 입력'}
       />

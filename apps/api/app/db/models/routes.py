@@ -28,6 +28,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.db.models.enums import (
     RouteCreationType,
+    RouteFailureReason,
     RouteStatus,
     ScheduleItemType,
     TransportType,
@@ -138,6 +139,9 @@ class Route(Base):
     title: Mapped[str] = mapped_column(String(150), nullable=False)
     status: Mapped[RouteStatus] = mapped_column(
         db_enum(RouteStatus, "route_status"), nullable=False, server_default="generating"
+    )
+    failure_reason: Mapped[RouteFailureReason | None] = mapped_column(
+        db_enum(RouteFailureReason, "route_failure_reason")
     )
     creation_type: Mapped[RouteCreationType] = mapped_column(
         db_enum(RouteCreationType, "route_creation_type"), nullable=False

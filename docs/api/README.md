@@ -602,7 +602,7 @@ NOT NULL이라 업로드 없이는 여행기록 기능 자체가 성립하지 �
 **여행 추천** ([`routes.md`](./routes.md))
 
 - [x] 폴링 — **2초 간격 / 3분 타임아웃**
-- [x] `failureReason` — 컬럼 추가 없이 **응답에만**
+- [x] `failureReason` — `routes.failure_reason`의 안전한 enum 코드
 - [x] 수동 여행에 재생성 호출 — **`422`**
 
 **보류 2건**
