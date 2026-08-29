@@ -1,16 +1,19 @@
 """사용자 프로필 엔드포인트."""
 
+from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser
+from app.core.security import verify_password
 from app.db.models import Favorite, Route, TravelLog, User
-from app.db.models.enums import RouteStatus
+from app.db.models.enums import AuthProvider, RouteStatus
 from app.db.session import get_db
 from app.schemas.user import (
+    AccountDeleteRequest,
     ActivitySummary,
     NotificationPreferencesResponse,
     NotificationPreferencesUpdate,
@@ -71,6 +74,34 @@ def update_me(payload: UserUpdate, current_user: CurrentUser, db: DbSession) -> 
     db.commit()
     db.refresh(current_user)
     return _to_response(db, current_user)
+
+
+@router.delete("/users/me", status_code=status.HTTP_204_NO_CONTENT, summary="회원 탈퇴")
+def delete_me(
+    payload: AccountDeleteRequest, current_user: CurrentUser, db: DbSession
+) -> Response:
+    """물리 삭제가 아니라 `deleted_at` 을 기록해 soft delete 한다(users.md).
+
+    local 계정은 비밀번호로 재확인한다. **소셜 계정의 `providerAccessToken` 재인증
+    분기는 Phase 5** — 지금은 signup 이 local 계정만 만들어 소셜 계정이 존재하지 않는다.
+    이메일·닉네임 익명화는 탈퇴 30일 뒤 배치가 담당하므로 여기서 하지 않는다.
+
+    탈퇴 후 이 사용자의 토큰이 401 이 되는 것은 Phase 4(`get_current_user` 가 토큰을
+    실제 검증하고 `deleted_at` 을 보게 될 때) 완성된다.
+    """
+    if current_user.auth_provider == AuthProvider.LOCAL:
+        password = payload.password.get_secret_value() if payload.password else ""
+        if current_user.password_hash is None or not verify_password(
+            password, current_user.password_hash
+        ):
+            raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다")
+    else:
+        # Phase 5 전까지 소셜 계정은 생성되지 않아 도달 불가한 방어 분기.
+        raise HTTPException(status_code=401, detail="재인증이 필요합니다")
+
+    current_user.deleted_at = datetime.now(UTC)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch(

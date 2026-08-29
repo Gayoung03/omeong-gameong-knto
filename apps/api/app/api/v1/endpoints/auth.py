@@ -9,10 +9,11 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import CurrentUser
 from app.core.security import (
     ACCESS_TOKEN_EXPIRES_IN,
     DUMMY_PASSWORD_HASH,
@@ -28,7 +29,9 @@ from app.db.models.enums import AuthProvider
 from app.db.session import get_db
 from app.schemas.auth import (
     AuthUser,
+    CheckEmailResponse,
     LoginRequest,
+    NormalizedEmail,
     RefreshRequest,
     RefreshTokenResponse,
     SignupRequest,
@@ -137,3 +140,22 @@ def refresh(payload: RefreshRequest, db: DbSession) -> RefreshTokenResponse:
         refresh_token=payload.refresh_token,
         expires_in=ACCESS_TOKEN_EXPIRES_IN,
     )
+
+
+@router.get("/auth/check-email", response_model=CheckEmailResponse, summary="이메일 중복 확인")
+def check_email(
+    email: Annotated[NormalizedEmail, Query(description="확인할 이메일")],
+    db: DbSession,
+) -> CheckEmailResponse:
+    # 탈퇴 계정 이메일도 soft delete 라 행이 남아 available=false (재가입 차단과 일치).
+    exists = db.scalar(select(User.id).where(User.email == email))
+    return CheckEmailResponse(available=exists is None)
+
+
+@router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT, summary="로그아웃")
+def logout(current_user: CurrentUser) -> Response:
+    """서버 무효화 없음(auth.md) — 토큰 삭제는 앱이 한다. 성공 신호(204)만 돌려준다.
+
+    지금은 개발용 고정 사용자(스텁)를 받는다. 실제 access token 검증 전환은 Phase 4.
+    """
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
