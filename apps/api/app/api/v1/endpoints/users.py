@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser
 from app.core.security import verify_password
-from app.db.models import Favorite, Route, TravelLog, User
+from app.db.models import Favorite, Route, TravelLog, User, UserTravelPreference
 from app.db.models.enums import AuthProvider, RouteStatus
 from app.db.session import get_db
+from app.schemas.travel_preference import TravelPreferenceResponse, TravelPreferenceUpsert
 from app.schemas.user import (
     AccountDeleteRequest,
     ActivitySummary,
@@ -20,6 +21,7 @@ from app.schemas.user import (
     UserResponse,
     UserUpdate,
 )
+from app.services.travel_preferences import upsert_travel_preference
 
 router = APIRouter()
 DbSession = Annotated[Session, Depends(get_db)]
@@ -102,6 +104,48 @@ def delete_me(
     current_user.deleted_at = datetime.now(UTC)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/users/me/travel-preference",
+    response_model=TravelPreferenceResponse,
+    summary="기본 여행 취향 조회",
+)
+def get_travel_preference(
+    current_user: CurrentUser, db: DbSession
+) -> TravelPreferenceResponse:
+    preference = db.get(UserTravelPreference, current_user.id)
+    if preference is None:
+        # 취향을 한 번도 저장하지 않은 사용자. 명세는 행 존재를 전제하지만 빈 상태를
+        # 명시하지 않아, 항상 200 + 기본값 모양(companionCount=1)을 돌려준다.
+        return TravelPreferenceResponse(
+            default_pace=None,
+            default_transport=None,
+            departure_location=None,
+            preferred_duration_days=None,
+            companion_count=1,
+            preferred_tags=None,
+            updated_at=None,
+        )
+    return TravelPreferenceResponse.model_validate(preference)
+
+
+@router.put(
+    "/users/me/travel-preference",
+    response_model=TravelPreferenceResponse,
+    summary="기본 여행 취향 수정",
+)
+def put_travel_preference(
+    payload: TravelPreferenceUpsert, current_user: CurrentUser, db: DbSession
+) -> TravelPreferenceResponse:
+    """전체 덮어쓰기(PUT). 보내지 않은 필드도 기본값으로 채워 전부 설정한다.
+
+    upsert 서비스가 없으면 만들고 있으면 갱신한다(가입과 같은 규칙 재사용).
+    """
+    preference = upsert_travel_preference(db, current_user.id, payload.model_dump())
+    db.commit()
+    db.refresh(preference)
+    return TravelPreferenceResponse.model_validate(preference)
 
 
 @router.patch(
