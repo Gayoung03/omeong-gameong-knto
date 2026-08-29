@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/src/services/apiError';
@@ -45,6 +45,15 @@ export function SocialCallbackScreen() {
     if (started.current || !code) return;
     started.current = true;
 
+    // 교환 코드를 URL·네비 상태에서 **즉시** 지운다(성공/실패 무관). code 는 이미 위에서
+    // 캡처했으니 요청엔 영향이 없고, 뒤로가기·브라우저 히스토리·공유로 재사용/유출되지
+    // 않게 한다. 네이티브는 setParams 로 파라미터만 비워 리마운트를 피한다.
+    if (Platform.OS === 'web') {
+      globalThis.history?.replaceState(null, '', globalThis.location?.pathname ?? '/auth/callback');
+    } else {
+      router.setParams({ code: '' });
+    }
+
     void socialExchange(code)
       .then(async (result) => {
         if ('linkRequired' in result) {
@@ -76,7 +85,8 @@ export function SocialCallbackScreen() {
       goHome();
     } catch (error) {
       // 비밀번호 불일치는 401. 실패해도 linkToken 은 살아 있어 다시 시도하거나
-      // 별도 계정으로 이어갈 수 있다.
+      // 별도 계정으로 이어갈 수 있다. 입력한 비밀번호는 화면에 남기지 않는다.
+      setPassword('');
       setMessage(getApiErrorMessage(error).title);
     } finally {
       setSubmitting(false);
