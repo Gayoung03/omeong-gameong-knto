@@ -35,6 +35,6 @@ export const placeCategories: PlaceCategory[] = [
     icon: 'cut-outline',
     serverCategories: ['pet_service', 'rental_experience'],
   },
-  { id: 'indoor', label: '실내', icon: 'business-outline', serverCategories: [] },
-  { id: 'outdoor', label: '야외', icon: 'leaf-outline', serverCategories: [] },
+  { id: 'indoor', label: '실내', icon: 'business-outline' },
+  { id: 'outdoor', label: '야외', icon: 'leaf-outline' },
 ];
