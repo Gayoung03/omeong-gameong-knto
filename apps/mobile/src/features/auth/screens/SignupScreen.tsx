@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { isAxiosError } from 'axios';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -13,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getApiErrorMessage } from '@/src/services/apiError';
 import { colors } from '@/src/theme';
 
 import { AgreementSection, hasAllRequiredAgreements } from '../components/AgreementSection';
@@ -52,6 +54,7 @@ export function SignupScreen() {
   const [data, setData] = useState<SignupData>(initialData);
   const [accountErrors, setAccountErrors] = useState<AccountErrors>({});
   const [agreementError, setAgreementError] = useState<string>();
+  const [submitError, setSubmitError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
 
   const updateAccount = (key: keyof SignupData['account'], value: string) => {
@@ -87,6 +90,7 @@ export function SignupScreen() {
   };
 
   const goNext = () => {
+    setSubmitError(undefined);
     if (step === 1 && !validateAccount()) return;
     setStep((current) => Math.min(current + 1, 3));
   };
@@ -116,12 +120,43 @@ export function SignupScreen() {
   const finishSignup = async () => {
     if (submitting) return;
     setSubmitting(true);
+    setSubmitError(undefined);
     try {
       await completeSignup(data);
       router.replace('/(tabs)/(home)');
+    } catch (error) {
+      handleSignupError(error);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  /**
+   * 가입 제출 실패를 화면에 남긴다(무반응 방지).
+   *
+   * Alert 은 웹에서 안 떠 눌러도 반응이 없어 보이므로, LoginScreen 처럼 화면 내
+   * 문구로 알린다. 계정 원인(409·422)은 1단계로 돌려보내 이메일 필드/상단 문구로,
+   * 그 밖(네트워크·서버)은 3단계 상단 문구로.
+   */
+  const handleSignupError = (error: unknown) => {
+    const status = isAxiosError(error) ? error.response?.status : undefined;
+
+    if (status === 409) {
+      // 이미 가입된 이메일(탈퇴 계정 포함, auth.md). 이메일 단계로 되돌린다.
+      setAccountErrors((current) => ({
+        ...current,
+        email: '이미 가입된 이메일이에요. 다른 이메일을 사용해주세요.',
+      }));
+      setStep(1);
+      return;
+    }
+    if (status === 422) {
+      // 입력 규칙 위반(비밀번호 규칙 등). 계정 단계로 돌려 다시 확인하게 한다.
+      setStep(1);
+      setSubmitError(getApiErrorMessage(error).description);
+      return;
+    }
+    setSubmitError(getApiErrorMessage(error).title);
   };
 
   const toggleVibe = (value: string) => {
@@ -155,6 +190,8 @@ export function SignupScreen() {
               title="회원가입"
             />
             <SignupProgress currentStep={step} />
+
+            {submitError && <Text style={styles.submitError}>{submitError}</Text>}
 
             {step === 1 && (
               <View>
@@ -494,6 +531,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     width: '100%',
   },
+  submitError: { color: colors.warning, fontSize: 13, marginBottom: 12, textAlign: 'center' },
   intro: { marginBottom: 25 },
   introTitle: { color: colors.textPrimary, fontSize: 25, fontWeight: '900', letterSpacing: -0.8 },
   introDescription: { color: colors.textSecondary, fontSize: 14, lineHeight: 21, marginTop: 8 },
