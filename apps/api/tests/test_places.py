@@ -159,6 +159,49 @@ def test_공식_장소_목록은_limit_1000까지_허용한다(client: TestClien
     assert client.get("/api/v1/places", params={"limit": 1001}).status_code == 422
 
 
+def test_카테고리를_여러_개_보내면_모두_검색한다(
+    client: TestClient, db: Session, place: Place
+) -> None:
+    restaurant = _make_place(db, "식당")
+    restaurant.category = "restaurant"
+    accommodation = _make_place(db, "숙소")
+    accommodation.category = "accommodation"
+    db.flush()
+
+    body = client.get(
+        "/api/v1/places",
+        params=[("category", "cafe"), ("category", "restaurant")],
+    ).json()
+
+    assert {item["name"] for item in body["items"]} == {place.name, "식당"}
+    assert body["total"] == 2
+
+
+def test_검색과_지역_필터는_페이지네이션_전에_적용한다(
+    client: TestClient, db: Session
+) -> None:
+    for index in range(25):
+        candidate = _make_place(db, f"애월 카페 {index:02d}")
+        candidate.region = "애월/한림/협재"
+    outside = _make_place(db, "애월 카페 다른 지역")
+    outside.region = "중문"
+    db.flush()
+
+    body = client.get(
+        "/api/v1/places",
+        params={
+            "q": "애월 카페",
+            "region": "애월/한림/협재",
+            "limit": 10,
+            "offset": 20,
+        },
+    ).json()
+
+    assert body["total"] == 25
+    assert len(body["items"]) == 5
+    assert all(item["region"] == "애월/한림/협재" for item in body["items"])
+
+
 def test_반경_밖의_장소는_빠진다(client: TestClient, db: Session, place: Place) -> None:
     far = _make_place(db, "서울 카페")
     far.latitude = 37.5665

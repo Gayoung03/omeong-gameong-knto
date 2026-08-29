@@ -103,7 +103,7 @@ def list_places(
     db: DbSession,
     current_user: OptionalUser,
     q: Annotated[str | None, Query(description="장소명 검색어")] = None,
-    category: str | None = None,
+    category: Annotated[list[str] | None, Query()] = None,
     region: str | None = None,
     tags: Annotated[list[str] | None, Query(description="여러 개면 AND")] = None,
     pet_policy: Annotated[list[PetPolicyType] | None, Query(alias="petPolicy")] = None,
@@ -126,7 +126,7 @@ def list_places(
     if q:
         conditions.append(Place.name.ilike(f"%{q}%"))
     if category:
-        conditions.append(Place.category == category)
+        conditions.append(Place.category.in_(category))
     if region:
         conditions.append(Place.region == region)
     if environment:

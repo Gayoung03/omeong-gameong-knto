@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { colors, overlayColors } from '@/src/theme';
@@ -11,27 +12,36 @@ type InteractivePlaceMapProps = {
 };
 
 const kakaoJavaScriptKey = process.env.EXPO_PUBLIC_KAKAO_JS_KEY?.trim();
+const MAX_MAP_MARKERS = 200;
 
 export function InteractivePlaceMap({ places }: InteractivePlaceMapProps) {
+  const mapPlaces = useMemo(
+    () =>
+      places.slice(0, MAX_MAP_MARKERS).map((place) => ({
+        id: place.id,
+        name: place.name,
+        address: place.address,
+        category: place.category,
+        latitude: place.latitude,
+        longitude: place.longitude,
+      })),
+    [places],
+  );
+
   if (!kakaoJavaScriptKey) {
     return <MapConfigurationNotice />;
   }
-
-  const mapPlaces = places.map((place) => ({
-    id: place.id,
-    name: place.name,
-    address: place.address,
-    category: place.category,
-    latitude: place.latitude,
-    longitude: place.longitude,
-  }));
 
   return (
     <View style={styles.container}>
       <KakaoPlaceMap appKey={kakaoJavaScriptKey} places={mapPlaces} />
       <View pointerEvents="none" style={styles.summary}>
-        <Text style={styles.summaryTitle}>추천 장소 {places.length}곳</Text>
-        <Text style={styles.summaryDescription}>마커를 누르면 장소 정보를 볼 수 있어요</Text>
+        <Text style={styles.summaryTitle}>불러온 장소 {places.length}곳</Text>
+        <Text style={styles.summaryDescription}>
+          {places.length > MAX_MAP_MARKERS
+            ? `지도 성능을 위해 ${MAX_MAP_MARKERS}곳만 표시해요`
+            : '마커를 누르면 장소 정보를 볼 수 있어요'}
+        </Text>
       </View>
     </View>
   );

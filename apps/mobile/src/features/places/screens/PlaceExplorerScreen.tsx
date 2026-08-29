@@ -14,12 +14,14 @@ import {
 } from 'react-native';
 
 import { PetPolicyBadge } from '@/src/components/domain/PetPolicyBadge';
+import { ErrorState } from '@/src/components/feedback/ErrorState';
 import { RemoteImage } from '@/src/components/ui/RemoteImage';
 import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
 import {
   useSavedPlaceIds,
   useToggleSavedPlace,
 } from '@/src/features/saved/hooks/useSavedPlaces';
+import { useDebounce } from '@/src/hooks/useDebounce';
 import { colors, spacing } from '@/src/theme';
 
 import { InteractivePlaceMap } from '../components/InteractivePlaceMap';
@@ -39,10 +41,43 @@ export function PlaceExplorerScreen() {
   );
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(view === 'map' ? 'map' : 'list');
-  // 장소 목록도 저장 목록도 서버가 정본이다. 목데이터는 더 이상 쓰지 않는다.
-  const { data: places = [], isPending } = usePlaces();
+  const debouncedQuery = useDebounce(query.trim());
+  const selectedCategoryConfig = placeCategories.find(({ id }) => id === selectedCategory);
+  const environment =
+    selectedCategory === 'indoor'
+      ? ('indoor' as const)
+      : selectedCategory === 'outdoor'
+        ? ('outdoor' as const)
+        : undefined;
+  const filters = useMemo(
+    () => ({
+      categories: selectedCategoryConfig?.serverCategories.length
+        ? selectedCategoryConfig.serverCategories
+        : undefined,
+      environment,
+      q: debouncedQuery || undefined,
+      region: selectedRegion === '전체' ? undefined : selectedRegion,
+    }),
+    [debouncedQuery, environment, selectedCategoryConfig, selectedRegion],
+  );
+  const {
+    data,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isError,
+    isFetchingNextPage,
+    isPending,
+    refetch,
+  } = usePlaces(filters);
   const savedPlaceIds = useSavedPlaceIds();
   const toggleSavedPlace = useToggleSavedPlace();
+
+  const places = useMemo(() => {
+    const unique = new Map<string, Place>();
+    data?.pages.forEach((page) => page.items.forEach((place) => unique.set(place.id, place)));
+    return [...unique.values()];
+  }, [data]);
 
   useEffect(() => {
     const selectedIndex = placeRegions.indexOf(selectedRegion);
@@ -51,25 +86,6 @@ export function PlaceExplorerScreen() {
       x: Math.max(0, selectedIndex * 116 - 28),
     });
   }, [selectedRegion]);
-
-  const filteredPlaces = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase('ko-KR');
-
-    return places.filter((place) => {
-      const matchesQuery =
-        !normalizedQuery ||
-        place.name.toLocaleLowerCase('ko-KR').includes(normalizedQuery) ||
-        place.address.toLocaleLowerCase('ko-KR').includes(normalizedQuery);
-      const matchesRegion = selectedRegion === '전체' || place.region === selectedRegion;
-      const matchesCategory = !selectedCategory
-        ? true
-        : selectedCategory === '실내' || selectedCategory === '야외'
-          ? place.environment === selectedCategory
-          : place.category === selectedCategory;
-
-      return matchesQuery && matchesRegion && matchesCategory;
-    });
-  }, [places, query, selectedCategory, selectedRegion]);
 
   const toggleFavorite = (place: Place) => {
     toggleSavedPlace.mutate({ isSaved: savedPlaceIds.has(place.id), placeId: place.id });
@@ -131,14 +147,14 @@ export function PlaceExplorerScreen() {
         style={styles.categoryScroll}
       >
         {placeCategories.map((category) => {
-          const isSelected = category.label === selectedCategory;
+          const isSelected = category.id === selectedCategory;
           return (
             <Pressable
               accessibilityRole="button"
               key={category.id}
               onPress={() =>
                 setSelectedCategory((currentCategory) =>
-                  currentCategory === category.label ? null : category.label,
+                    currentCategory === category.id ? null : category.id,
                 )
               }
               style={({ pressed }) => [
@@ -178,17 +194,30 @@ export function PlaceExplorerScreen() {
       {viewMode === 'list' ? (
         <FlatList
           contentContainerStyle={styles.listContent}
-          data={filteredPlaces}
+          data={places}
           keyExtractor={(place) => place.id}
           ListEmptyComponent={
             isPending ? (
               <View style={styles.loading}>
                 <ActivityIndicator color={colors.primary} />
               </View>
+            ) : isError ? (
+              <View style={styles.errorContainer}>
+                <ErrorState error={error} onRetry={() => void refetch()} />
+              </View>
             ) : (
               <EmptyResult />
             )
           }
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <ActivityIndicator color={colors.primary} style={styles.pageLoading} />
+            ) : null
+          }
+          onEndReached={() => {
+            if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+          }}
+          onEndReachedThreshold={0.4}
           renderItem={({ item }) => (
             <PlaceRow
               isFavorite={savedPlaceIds.has(item.id)}
@@ -200,7 +229,15 @@ export function PlaceExplorerScreen() {
           style={styles.resultsList}
         />
       ) : (
-        <InteractivePlaceMap places={filteredPlaces} />
+        isError ? (
+          <ErrorState error={error} onRetry={() => void refetch()} />
+        ) : isPending ? (
+          <View style={styles.loading}>
+            <ActivityIndicator color={colors.primary} />
+          </View>
+        ) : (
+          <InteractivePlaceMap places={places} />
+        )
       )}
     </SafeAreaView>
   );
@@ -421,6 +458,12 @@ const styles = StyleSheet.create({
   loading: {
     alignItems: 'center',
     paddingVertical: spacing.xl,
+  },
+  errorContainer: {
+    minHeight: 280,
+  },
+  pageLoading: {
+    paddingVertical: spacing.md,
   },
   listContent: {
     paddingHorizontal: spacing.md,

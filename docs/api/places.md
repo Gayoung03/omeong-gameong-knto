@@ -35,13 +35,14 @@
 
 ```text
 GET /api/v1/places?q=함덕&category=beach&limit=20&offset=0
+GET /api/v1/places?category=cafe&category=restaurant&limit=20&offset=0
 GET /api/v1/places?latitude=33.4996&longitude=126.5312&radius=3000
 ```
 
 | 파라미터 | 타입 | 기본값 | 설명 |
 | --- | --- | --- | --- |
 | `q` | string | — | 장소명 검색어 |
-| `category` | string | — | `places.category` |
+| `category` | string[] | — | `places.category`. 여러 개면 OR |
 | `region` | string | — | `places.region` |
 | `tags` | string[] | — | `place_tags.code`. 여러 개면 AND |
 | `petPolicy` | enum[] | — | `indoor_allowed` `outdoor_only` `partial_allowed` `not_allowed` `unknown` |
