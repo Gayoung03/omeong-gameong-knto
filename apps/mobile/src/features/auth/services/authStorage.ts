@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { LEGAL_DOCUMENT_VERSION } from '@/src/features/legal/constants/legalDocuments';
 
-import { login, logout, signup, type AuthUser } from '../api/authApi';
+import { login, logout, signup, type AuthProvider, type AuthUser } from '../api/authApi';
 import { toSignupPayload } from '../api/signupMapping';
 import type { SignupAgreements, SignupData } from '../types/auth';
 
@@ -14,6 +14,8 @@ const CONSENT_KEY = 'omeong-gameong.consent-record';
 export type AuthSession = {
   email: string;
   nickname: string;
+  /** 최초 가입 수단. 회원 탈퇴가 비밀번호(local)냐 제공처 재인증(소셜)이냐를 가른다. */
+  authProvider: AuthProvider;
   signedInAt: string;
 };
 
@@ -46,11 +48,12 @@ async function saveConsentRecord(agreements: SignupAgreements) {
   return record;
 }
 
-async function saveSession(user: Pick<AuthUser, 'email' | 'nickname'>) {
+async function saveSession(user: Pick<AuthUser, 'email' | 'nickname' | 'authProvider'>) {
   const session: AuthSession = {
     // 소셜 계정은 email 이 null 일 수 있다. 화면 표시는 닉네임을 쓰므로 빈 문자열로 둔다.
     email: user.email ?? '',
     nickname: user.nickname,
+    authProvider: user.authProvider,
     signedInAt: new Date().toISOString(),
   };
 
@@ -84,7 +87,7 @@ export async function signIn(email: string, password: string) {
 export async function completeSocialLogin(result: {
   accessToken: string;
   refreshToken: string;
-  user: Pick<AuthUser, 'email' | 'nickname'>;
+  user: Pick<AuthUser, 'email' | 'nickname' | 'authProvider'>;
 }) {
   await saveTokens(result.accessToken, result.refreshToken);
   return saveSession(result.user);
