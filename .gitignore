@@ -67,3 +67,4 @@ design-assets/
 # 장소 활성화 스크립트가 남기는 되돌리기용 id 목록.
 # 실행한 사람의 로컬에만 있으면 되고, DB 상태에 따라 매번 달라진다.
 apps/api/activated-*.txt
+apps/api/region-fixed-*.txt

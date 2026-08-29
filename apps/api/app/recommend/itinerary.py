@@ -68,6 +68,7 @@ class ItineraryDay:
     route_date: date
     items: tuple[ScheduledItem, ...]
     moves: tuple[ScheduledMove, ...]
+    dinner_required: bool
     start_anchor: RouteAnchor | None = None
     end_anchor: RouteAnchor | None = None
     day_start: datetime | None = None
@@ -199,6 +200,7 @@ def build(
                 route_date,
                 tuple(items),
                 tuple(moves),
+                dinner_required=day_end.time() >= DINNER_START,
                 start_anchor=start_anchor if items else None,
                 end_anchor=end_anchor if items else None,
                 day_start=day_start if items and start_anchor else None,
