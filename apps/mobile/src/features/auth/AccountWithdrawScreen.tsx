@@ -1,23 +1,37 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
+import { type AuthProvider } from './api/authApi';
+import { IconTextField } from './components/IconTextField';
 import { WithdrawConfirmModal } from './components/WithdrawConfirmModal';
 import { WithdrawDeletionCard } from './components/WithdrawDeletionCard';
 import { useWithdrawAccount } from './hooks/useWithdrawAccount';
+import { getAuthSession } from './services/authStorage';
 
 export function AccountWithdrawScreen() {
   const router = useRouter();
   const { withdraw, isPending, errorMessage } = useWithdrawAccount();
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [isConfirmModalVisible, setConfirmModalVisible] = useState(false);
+  const [password, setPassword] = useState('');
+  const [authProvider, setAuthProvider] = useState<AuthProvider>();
 
-  const isWithdrawDisabled = !isConfirmed || isPending;
+  useEffect(() => {
+    // 탈퇴가 비밀번호(local)냐 제공처 재인증(소셜)이냐를 세션의 가입 수단으로 가른다.
+    void getAuthSession().then((session) => setAuthProvider(session?.authProvider));
+  }, []);
+
+  // 소셜 계정 탈퇴는 제공처 재인증 흐름(카카오 재로그인)이 아직 없어 준비 중이다.
+  // authProvider 가 아직 로딩 안 됐으면(undefined) local 로 본다(대부분 local).
+  const isSocial = authProvider !== undefined && authProvider !== 'local';
+  const isWithdrawDisabled =
+    !isConfirmed || isPending || isSocial || password.trim().length === 0;
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -37,6 +51,23 @@ export function AccountWithdrawScreen() {
         </View>
 
         <WithdrawDeletionCard />
+
+        {isSocial ? (
+          <View style={styles.socialNotice}>
+            <Ionicons color={colors.textSecondary} name="information-circle-outline" size={20} />
+            <Text style={styles.socialNoticeText}>
+              소셜 계정 탈퇴는 준비 중이에요. 곧 지원할 예정이에요.
+            </Text>
+          </View>
+        ) : (
+          <IconTextField
+            icon="lock-closed-outline"
+            onChangeText={setPassword}
+            password
+            placeholder="비밀번호 확인"
+            value={password}
+          />
+        )}
 
         <Pressable
           accessibilityRole="checkbox"
@@ -88,7 +119,7 @@ export function AccountWithdrawScreen() {
         isPending={isPending}
         onCancel={() => setConfirmModalVisible(false)}
         onConfirm={() => {
-          void withdraw().finally(() => setConfirmModalVisible(false));
+          void withdraw(password).finally(() => setConfirmModalVisible(false));
         }}
         visible={isConfirmModalVisible}
       />
@@ -188,6 +219,20 @@ const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: colors.background,
     flex: 1,
+  },
+  socialNotice: {
+    alignItems: 'center',
+    backgroundColor: colors.neutralGray,
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  socialNoticeText: {
+    color: colors.textSecondary,
+    flex: 1,
+    fontSize: typography.body.fontSize - 2,
+    lineHeight: 20,
   },
   withdrawButton: {
     backgroundColor: colors.error,

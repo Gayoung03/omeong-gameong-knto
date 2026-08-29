@@ -7,8 +7,10 @@
 소셜 로그인(kakao·google)은 Phase 5 다. 여기엔 이메일 경로만 있다.
 """
 
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import RedirectResponse
@@ -61,6 +63,8 @@ from app.services.social_auth import (
     link_social_account,
     mask_email,
     resolve_exchange,
+    store_pending_profile,
+    take_pending_profile,
 )
 from app.services.travel_preferences import upsert_travel_preference
 
@@ -202,18 +206,66 @@ def _require_kakao(provider: str) -> None:
         raise HTTPException(status_code=422, detail="지원하지 않는 소셜 제공처입니다")
 
 
-def _allowed_return_prefixes() -> list[str]:
+#: HTTP(S)는 호스트 개념이 있어 정확 비교하고, 커스텀 스킴(exp·omeonggameong 등)은
+#: 호스트가 없어 scheme 만 정확 비교한다.
+_WEB_SCHEMES = frozenset({"http", "https"})
+
+
+@dataclass(frozen=True)
+class _ReturnUrlRule:
+    scheme: str
+    host: str | None  # HTTP(S)에서만 의미. 커스텀 스킴은 None.
+    port: int | None  # None 이면 포트 무관.
+
+
+def _parse_return_rule(entry: str) -> _ReturnUrlRule | None:
+    """허용 목록 항목(예: `http://localhost`, `exp://`, `https://app.example`) → 규칙."""
+    parsed = urlsplit(entry.strip())
+    scheme = parsed.scheme.lower()
+    if not scheme:
+        return None
+    host = (parsed.hostname or "").lower() or None
+    # HTTP(S) 규칙인데 호스트가 없으면(예: `http://`) 아무 호스트나 통과시키는 위험한
+    # 규칙이 되므로 버린다.
+    if scheme in _WEB_SCHEMES and host is None:
+        return None
+    return _ReturnUrlRule(scheme=scheme, host=host, port=parsed.port)
+
+
+def _allowed_return_rules() -> list[_ReturnUrlRule]:
     raw = settings.oauth_return_url_prefixes
     if raw:
-        return [prefix.strip() for prefix in raw.split(",") if prefix.strip()]
-    if settings.environment == "local":
-        return ["exp://", "http://localhost"]
-    return []
+        entries = [entry for entry in raw.split(",") if entry.strip()]
+    elif settings.environment == "local":
+        entries = ["exp://", "http://localhost"]
+    else:
+        entries = []
+    return [rule for entry in entries if (rule := _parse_return_rule(entry)) is not None]
 
 
 def _validate_return_url(return_url: str) -> None:
-    if not any(return_url.startswith(prefix) for prefix in _allowed_return_prefixes()):
-        raise HTTPException(status_code=422, detail="허용되지 않은 returnUrl 입니다")
+    """returnUrl 을 허용 목록과 **호스트 정확 비교**로 검증한다.
+
+    `startswith` 는 `http://localhost.evil.com`·`https://app.example.attacker.com`·
+    `http://localhost@evil.com` 같은 서브도메인·서픽스·userinfo 우회를 통과시켜
+    피해자 code 를 탈취당할 수 있다. `urlsplit` 으로 파싱해 scheme·host(+명시 포트)를
+    정확히 대조한다(validators.validate_image_url 과 같은 방식).
+    """
+    parsed = urlsplit(return_url)
+    scheme = parsed.scheme.lower()
+    host = (parsed.hostname or "").lower() or None
+
+    for rule in _allowed_return_rules():
+        if rule.scheme != scheme:
+            continue
+        if scheme in _WEB_SCHEMES:
+            if rule.host == host and (rule.port is None or rule.port == parsed.port):
+                return
+        else:
+            # 커스텀 스킴은 호스트가 없어 scheme 정확 비교로 충분.
+            return
+
+    raise HTTPException(status_code=422, detail="허용되지 않은 returnUrl 입니다")
 
 
 def _profile_claims(profile: SocialProfile) -> dict:
@@ -278,6 +330,10 @@ def social_callback(
     except TokenError:
         raise HTTPException(status_code=422, detail="state 가 유효하지 않습니다") from None
 
+    # state 는 1회성(CSRF·재생 방지). 재사용은 거부한다.
+    if not consume_jti_once(claims["jti"], _STATE_TTL.total_seconds() + LEEWAY_SECONDS):
+        raise HTTPException(status_code=422, detail="state 가 이미 사용되었습니다")
+
     return_url = claims.get("returnUrl", "")
     _validate_return_url(return_url)
 
@@ -288,7 +344,10 @@ def social_callback(
     except SocialProviderUnavailable:
         raise HTTPException(status_code=502, detail="소셜 제공처가 응답하지 않습니다") from None
 
-    exchange_code = encode_token(_profile_claims(profile), "exchange", _EXCHANGE_TTL)
+    # 프로필은 서버에 잠깐 보관하고 교환 코드에는 **참조 id 만** 싣는다 — email·nickname
+    # 같은 PII 를 returnUrl 쿼리스트링·브라우저 히스토리·access log 에 노출하지 않는다.
+    ref = store_pending_profile(profile, _EXCHANGE_TTL.total_seconds() + LEEWAY_SECONDS)
+    exchange_code = encode_token({"ref": ref}, "exchange", _EXCHANGE_TTL)
     separator = "&" if "?" in return_url else "?"
     return RedirectResponse(f"{return_url}{separator}code={exchange_code}", status_code=302)
 
@@ -301,10 +360,11 @@ def social_exchange(
         claims = decode_claims(payload.code, "exchange")
     except TokenError:
         raise HTTPException(status_code=401, detail="교환 코드가 유효하지 않습니다") from None
-    if not consume_jti_once(claims["jti"], _EXCHANGE_TTL.total_seconds() + LEEWAY_SECONDS):
-        raise HTTPException(status_code=401, detail="교환 코드가 이미 사용되었습니다")
+    # 참조 id 로 서버에 보관된 프로필을 1회만 꺼낸다(재사용·만료면 None → 401).
+    profile = take_pending_profile(claims.get("ref", ""))
+    if profile is None:
+        raise HTTPException(status_code=401, detail="교환 코드가 이미 사용되었거나 만료되었습니다")
 
-    profile = _profile_from_claims(claims)
     try:
         outcome = resolve_exchange(db, profile)
     except SocialAuthError:

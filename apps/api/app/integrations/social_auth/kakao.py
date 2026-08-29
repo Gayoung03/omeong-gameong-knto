@@ -81,6 +81,16 @@ class KakaoOAuthClient:
             self._verify_app_ownership(client, token)
             return self._read_profile(client, token)
 
+    def verify_access_token(self, access_token: str) -> SocialProfile:
+        """이미 가진 제공처 access token 을 검증하고 프로필을 읽는다(재인증 흐름).
+
+        회원 탈퇴처럼 앱이 **직접 재로그인해 얻은** 카카오 토큰을 서버가 검증할 때 쓴다.
+        코드 교환 없이 앱 소유 확인 + 프로필 조회만 한다.
+        """
+        with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+            self._verify_app_ownership(client, access_token)
+            return self._read_profile(client, access_token)
+
     def _exchange_code(self, client: httpx.Client, code: str, redirect_uri: str) -> str:
         data = {
             "grant_type": "authorization_code",

@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { LEGAL_DOCUMENT_VERSION } from '@/src/features/legal/constants/legalDocuments';
 
-import { login, logout, signup, type AuthUser } from '../api/authApi';
+import { login, logout, signup, type AuthProvider, type AuthUser } from '../api/authApi';
 import { toSignupPayload } from '../api/signupMapping';
 import type { SignupAgreements, SignupData } from '../types/auth';
 
@@ -14,6 +14,8 @@ const CONSENT_KEY = 'omeong-gameong.consent-record';
 export type AuthSession = {
   email: string;
   nickname: string;
+  /** 최초 가입 수단. 회원 탈퇴가 비밀번호(local)냐 제공처 재인증(소셜)이냐를 가른다. */
+  authProvider: AuthProvider;
   signedInAt: string;
 };
 
@@ -46,11 +48,12 @@ async function saveConsentRecord(agreements: SignupAgreements) {
   return record;
 }
 
-async function saveSession(user: Pick<AuthUser, 'email' | 'nickname'>) {
+async function saveSession(user: Pick<AuthUser, 'email' | 'nickname' | 'authProvider'>) {
   const session: AuthSession = {
     // 소셜 계정은 email 이 null 일 수 있다. 화면 표시는 닉네임을 쓰므로 빈 문자열로 둔다.
     email: user.email ?? '',
     nickname: user.nickname,
+    authProvider: user.authProvider,
     signedInAt: new Date().toISOString(),
   };
 
@@ -84,7 +87,7 @@ export async function signIn(email: string, password: string) {
 export async function completeSocialLogin(result: {
   accessToken: string;
   refreshToken: string;
-  user: Pick<AuthUser, 'email' | 'nickname'>;
+  user: Pick<AuthUser, 'email' | 'nickname' | 'authProvider'>;
 }) {
   await saveTokens(result.accessToken, result.refreshToken);
   return saveSession(result.user);
@@ -119,19 +122,29 @@ export async function updateSessionNickname(nickname: string) {
   return updated;
 }
 
+/**
+ * 로그인 상태를 기기에서 모두 지운다(토큰·세션·동의기록).
+ *
+ * 수동 로그아웃(signOut)·강제 로그아웃(apiClient 재발급 실패)·회원 탈퇴가 **같은
+ * 집합**을 지우도록 한곳에 모았다. queryClient 캐시 비우기는 React 컨텍스트가 필요해
+ * 여기서 하지 않고 호출부(useLogout·apiClient)가 함께 처리한다.
+ */
+export async function clearAuthState() {
+  await clearTokens();
+  await AsyncStorage.multiRemove([AUTH_SESSION_KEY, CONSENT_KEY]);
+}
+
 /** 로그아웃. 서버 로그아웃은 무효화가 없어 성공 신호일 뿐이라, 실패해도 로컬은 지운다. */
 export async function signOut() {
   try {
     await logout();
   } catch {
-    // 서버 로그아웃 실패(네트워크 등)해도 기기의 토큰·세션은 반드시 지운다.
+    // 서버 로그아웃 실패(네트워크 등)해도 기기의 토큰·세션·동의기록은 반드시 지운다.
   }
-  await clearTokens();
-  await AsyncStorage.removeItem(AUTH_SESSION_KEY);
+  await clearAuthState();
 }
 
-/** 회원 탈퇴 시 기기에 남은 계정 관련 기록을 모두 지운다. */
+/** 회원 탈퇴 시 기기에 남은 계정 관련 기록을 모두 지운다(로그아웃 정리와 같은 집합). */
 export async function clearAccountStorage() {
-  await clearTokens();
-  await AsyncStorage.multiRemove([AUTH_SESSION_KEY, CONSENT_KEY]);
+  await clearAuthState();
 }

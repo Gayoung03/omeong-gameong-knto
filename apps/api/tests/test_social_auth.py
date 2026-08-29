@@ -8,10 +8,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import encode_token, hash_password
 from app.db.models import User, UserSocialAccount
 from app.db.models.enums import AuthProvider
@@ -61,15 +63,10 @@ def _state(return_url: str = "exp://demo/cb") -> str:
     return encode_token({"returnUrl": return_url}, "oauth_state", timedelta(minutes=10))
 
 
-def _exchange_code(profile: SocialProfile, ttl: timedelta = timedelta(seconds=60)) -> str:
-    claims = {
-        "provider": profile.provider,
-        "puid": profile.provider_user_id,
-        "email": profile.email,
-        "nickname": profile.nickname,
-        "image": profile.profile_image_url,
-    }
-    return encode_token(claims, "exchange", ttl)
+def _exchange_code(ttl: timedelta = timedelta(seconds=60)) -> str:
+    # 교환 코드는 참조 id 만 담는다(프로필은 서버 보관). 직접 발급한 코드는 서버에
+    # 보관된 프로필이 없으므로, 만료·무효 경로 검증에만 쓴다.
+    return encode_token({"ref": "nonexistent"}, "exchange", ttl)
 
 
 def _callback_to_code(client: TestClient, profile: SocialProfile) -> str:
@@ -222,8 +219,14 @@ def test_교환_코드_재사용은_401(client: TestClient) -> None:
 
 
 def test_만료된_교환_코드는_401(client: TestClient) -> None:
-    expired = _exchange_code(_profile(kakao_id="expired-1"), ttl=timedelta(seconds=-120))
+    expired = _exchange_code(ttl=timedelta(seconds=-120))
     assert client.post(_EXCHANGE, json={"code": expired}).status_code == 401
+
+
+def test_서버에_없는_참조_교환_코드는_401(client: TestClient) -> None:
+    # 서명·만료는 멀쩡하나 서버에 보관된 프로필이 없는 참조 → 401.
+    valid_but_unknown = _exchange_code(ttl=timedelta(seconds=60))
+    assert client.post(_EXCHANGE, json={"code": valid_but_unknown}).status_code == 401
 
 
 def test_위조_교환_코드는_401(client: TestClient) -> None:
@@ -305,3 +308,46 @@ def test_link_토큰_재사용은_401(client: TestClient, db: Session) -> None:
         _COMPLETE, json={"linkToken": token, "action": "link", "password": "password123"}
     )
     assert second.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# returnUrl 검증 — 호스트 정확 매칭 (서브도메인·서픽스·userinfo 우회 차단)
+# ---------------------------------------------------------------------------
+
+
+def test_returnurl_우회는_422_정상값은_통과(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        settings,
+        "oauth_return_url_prefixes",
+        "http://localhost,https://app.omeong.example,omeonggameong://",
+    )
+    _use_fake()
+
+    def authorize(return_url: str) -> int:
+        response = client.get(_AUTHORIZE, params={"returnUrl": return_url}, follow_redirects=False)
+        return response.status_code
+
+    # startswith 로는 통과하던 우회들 — 전부 422.
+    assert authorize("http://localhost.evil.com/cb") == 422  # 서브도메인
+    assert authorize("https://app.omeong.example.attacker.com/cb") == 422  # 서픽스
+    assert authorize("http://localhost@evil.com/cb") == 422  # userinfo
+    assert authorize("https://evil.com/cb") == 422  # 무관 호스트
+
+    # 정상 값 — 통과(302).
+    assert authorize("http://localhost:8081/auth/callback") == 302  # 포트 무관
+    assert authorize("https://app.omeong.example/auth/callback") == 302
+    assert authorize("omeonggameong://auth/callback") == 302  # 커스텀 스킴
+
+
+def test_returnurl_비local_미설정이면_전부_422(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "oauth_return_url_prefixes", "")
+    _use_fake()
+    response = client.get(
+        _AUTHORIZE, params={"returnUrl": "https://app.omeong.example/cb"}, follow_redirects=False
+    )
+    assert response.status_code == 422

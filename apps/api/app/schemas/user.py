@@ -63,8 +63,9 @@ class UserUpdate(APISchema):
 class AccountDeleteRequest(APISchema):
     """회원 탈퇴 요청.
 
-    `local` 계정은 `password` 로 재확인한다. 소셜 계정은 `providerAccessToken` 재인증
-    이지만 그 분기는 Phase 5 — 지금은 signup 이 local 계정만 만들어 소셜 계정이 없다.
+    `local` 계정은 `password` 로 재확인한다. 소셜 계정은 비밀번호가 없어 앱이 제공처
+    재인증으로 얻은 `providerAccessToken` 을 보내고 서버가 그 토큰의 소유를 확인한다.
     """
 
     password: SecretStr | None = None
+    provider_access_token: str | None = None

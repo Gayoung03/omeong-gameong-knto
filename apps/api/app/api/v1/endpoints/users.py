@@ -12,6 +12,12 @@ from app.core.security import verify_password
 from app.db.models import Favorite, Route, TravelLog, User, UserTravelPreference
 from app.db.models.enums import AuthProvider, RouteStatus
 from app.db.session import get_db
+from app.integrations.social_auth.kakao import (
+    KakaoOAuthClient,
+    SocialAuthError,
+    SocialProviderUnavailable,
+    get_kakao_client,
+)
 from app.schemas.travel_preference import TravelPreferenceResponse, TravelPreferenceUpsert
 from app.schemas.user import (
     AccountDeleteRequest,
@@ -21,6 +27,7 @@ from app.schemas.user import (
     UserResponse,
     UserUpdate,
 )
+from app.services.social_auth import find_social_account
 from app.services.travel_preferences import upsert_travel_preference
 
 router = APIRouter()
@@ -80,16 +87,16 @@ def update_me(payload: UserUpdate, current_user: CurrentUser, db: DbSession) -> 
 
 @router.delete("/users/me", status_code=status.HTTP_204_NO_CONTENT, summary="회원 탈퇴")
 def delete_me(
-    payload: AccountDeleteRequest, current_user: CurrentUser, db: DbSession
+    payload: AccountDeleteRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+    kakao: Annotated[KakaoOAuthClient, Depends(get_kakao_client)],
 ) -> Response:
     """물리 삭제가 아니라 `deleted_at` 을 기록해 soft delete 한다(users.md).
 
-    local 계정은 비밀번호로 재확인한다. **소셜 계정의 `providerAccessToken` 재인증
-    분기는 Phase 5** — 지금은 signup 이 local 계정만 만들어 소셜 계정이 존재하지 않는다.
-    이메일·닉네임 익명화는 탈퇴 30일 뒤 배치가 담당하므로 여기서 하지 않는다.
-
-    탈퇴 후 이 사용자의 토큰이 401 이 되는 것은 Phase 4(`get_current_user` 가 토큰을
-    실제 검증하고 `deleted_at` 을 보게 될 때) 완성된다.
+    local 계정은 비밀번호로 재확인한다. 소셜 계정은 비밀번호가 없어, 앱이 제공처
+    재인증으로 얻은 `providerAccessToken` 을 검증하고 그 토큰이 이 회원의 소셜 계정
+    소유인지 확인한다. 이메일·닉네임 익명화는 탈퇴 30일 뒤 배치가 담당한다.
     """
     if current_user.auth_provider == AuthProvider.LOCAL:
         password = payload.password.get_secret_value() if payload.password else ""
@@ -98,12 +105,32 @@ def delete_me(
         ):
             raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다")
     else:
-        # Phase 5 전까지 소셜 계정은 생성되지 않아 도달 불가한 방어 분기.
-        raise HTTPException(status_code=401, detail="재인증이 필요합니다")
+        _reauthenticate_social(db, kakao, current_user, payload.provider_access_token)
 
     current_user.deleted_at = datetime.now(UTC)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _reauthenticate_social(
+    db: Session, kakao: KakaoOAuthClient, user: User, provider_access_token: str | None
+) -> None:
+    """소셜 계정 탈퇴 재인증. 제공처 토큰이 유효하고 **이 회원 소유**인지 확인한다."""
+    if not provider_access_token:
+        raise HTTPException(status_code=401, detail="재인증이 필요합니다")
+    try:
+        profile = kakao.verify_access_token(provider_access_token)
+    except SocialAuthError:
+        raise HTTPException(status_code=401, detail="재인증이 필요합니다") from None
+    except SocialProviderUnavailable:
+        raise HTTPException(
+            status_code=502, detail="소셜 제공처가 응답하지 않습니다"
+        ) from None
+
+    account = find_social_account(db, profile.provider, profile.provider_user_id)
+    # 유효한 토큰이라도 다른 회원의 계정이면 거부한다(남의 토큰으로 탈퇴 방지).
+    if account is None or account.user_id != user.id:
+        raise HTTPException(status_code=401, detail="재인증이 필요합니다")
 
 
 @router.get(

@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 
@@ -18,7 +19,7 @@ export function useWithdrawAccount() {
   const [isPending, setIsPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
 
-  const withdraw = async () => {
+  const withdraw = async (password: string) => {
     // 중복 클릭으로 요청이 두 번 나가지 않게 막는다.
     if (isPending) return;
 
@@ -26,15 +27,20 @@ export function useWithdrawAccount() {
     setErrorMessage(undefined);
 
     try {
-      await withdrawAccount();
+      await withdrawAccount(password);
+      // 성공 시 토큰·세션·동의기록·캐시를 **무조건** 지운다(세션 잔류로 자동 재로그인 방지).
       await clearLocalUserData();
       if (shouldClearAppCacheOnWithdraw()) queryClient.clear();
 
       // 뒤로가기로 탈퇴 전 화면에 돌아가지 못하도록 쌓인 화면을 모두 정리한다.
       if (router.canDismiss()) router.dismissAll();
       router.replace('/login');
-    } catch {
-      setErrorMessage('탈퇴 처리에 실패했어요. 잠시 후 다시 시도해 주세요.');
+    } catch (error) {
+      setErrorMessage(
+        isAxiosError(error) && error.response?.status === 401
+          ? '비밀번호가 일치하지 않아요.'
+          : '탈퇴 처리에 실패했어요. 잠시 후 다시 시도해 주세요.',
+      );
     } finally {
       setIsPending(false);
     }

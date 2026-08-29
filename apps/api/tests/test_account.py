@@ -7,8 +7,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
-from app.db.models import User
+from app.db.models import User, UserSocialAccount
 from app.db.models.enums import AuthProvider
+from app.integrations.social_auth.kakao import SocialAuthError, SocialProfile, get_kakao_client
+from app.main import app
 
 
 def _make_local_user(db: Session, email: str, password: str) -> User:
@@ -97,6 +99,92 @@ def test_틀린_비밀번호_탈퇴는_401_이고_계정은_남는다(
     db.flush()
 
     response = client.request("DELETE", "/api/v1/users/me", json={"password": "wrongpassword"})
+
+    assert response.status_code == 401
+    db.refresh(owner)
+    assert owner.deleted_at is None
+
+
+# ---------------------------------------------------------------------------
+# 소셜 계정 탈퇴 — 제공처 재인증
+# ---------------------------------------------------------------------------
+
+
+class _FakeKakaoReauth:
+    """verify_access_token 만 흉내내는 fake. provider_user_id 또는 에러를 주입."""
+
+    def __init__(self, provider_user_id: str | None = None, error: Exception | None = None):
+        self._provider_user_id = provider_user_id
+        self._error = error
+
+    def verify_access_token(self, access_token: str) -> SocialProfile:
+        if self._error is not None:
+            raise self._error
+        return SocialProfile(
+            provider="kakao",
+            provider_user_id=self._provider_user_id or "kk-1",
+            email=None,
+            nickname="카카오",
+            profile_image_url=None,
+        )
+
+
+def _make_kakao_owner(db: Session, owner: User, provider_user_id: str = "kk-1") -> None:
+    owner.auth_provider = AuthProvider.KAKAO
+    owner.password_hash = None
+    db.add(
+        UserSocialAccount(
+            user_id=owner.id, provider=AuthProvider.KAKAO, provider_user_id=provider_user_id
+        )
+    )
+    db.flush()
+
+
+def test_소셜_계정_탈퇴는_제공처_재인증으로_204(
+    client: TestClient, db: Session, owner: User
+) -> None:
+    _make_kakao_owner(db, owner, "kk-1")
+    app.dependency_overrides[get_kakao_client] = lambda: _FakeKakaoReauth(provider_user_id="kk-1")
+
+    response = client.request("DELETE", "/api/v1/users/me", json={"providerAccessToken": "tok"})
+
+    assert response.status_code == 204
+    db.refresh(owner)
+    assert owner.deleted_at is not None
+
+
+def test_소셜_탈퇴_토큰_없으면_401(client: TestClient, db: Session, owner: User) -> None:
+    _make_kakao_owner(db, owner, "kk-1")
+    app.dependency_overrides[get_kakao_client] = lambda: _FakeKakaoReauth(provider_user_id="kk-1")
+
+    response = client.request("DELETE", "/api/v1/users/me", json={})
+
+    assert response.status_code == 401
+    db.refresh(owner)
+    assert owner.deleted_at is None
+
+
+def test_남의_소셜_토큰으로는_탈퇴_불가_401(client: TestClient, db: Session, owner: User) -> None:
+    _make_kakao_owner(db, owner, "kk-1")
+    # 토큰은 유효하지만 다른 계정(kk-other) 소유 → 거부.
+    app.dependency_overrides[get_kakao_client] = lambda: _FakeKakaoReauth(
+        provider_user_id="kk-other"
+    )
+
+    response = client.request("DELETE", "/api/v1/users/me", json={"providerAccessToken": "tok"})
+
+    assert response.status_code == 401
+    db.refresh(owner)
+    assert owner.deleted_at is None
+
+
+def test_소셜_토큰_무효면_401(client: TestClient, db: Session, owner: User) -> None:
+    _make_kakao_owner(db, owner, "kk-1")
+    app.dependency_overrides[get_kakao_client] = lambda: _FakeKakaoReauth(
+        error=SocialAuthError("x")
+    )
+
+    response = client.request("DELETE", "/api/v1/users/me", json={"providerAccessToken": "bad"})
 
     assert response.status_code == 401
     db.refresh(owner)

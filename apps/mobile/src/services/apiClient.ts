@@ -1,15 +1,20 @@
 import { create, type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { router } from 'expo-router';
 
-import {
-  clearTokens,
-  getAccessToken,
-  getRefreshToken,
-  saveTokens,
-} from '@/src/features/auth/services/tokenStorage';
+import { getAccessToken, getRefreshToken, saveTokens } from '@/src/features/auth/services/tokenStorage';
+
+import { queryClient } from './queryClient';
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
+
+// 프로덕션 빌드에 API URL 이 없으면 localhost 로 몰래 붙는 대신 즉시 실패시킨다.
+// (dev 는 localhost 폴백을 허용한다.)
+if (!API_URL && !__DEV__) {
+  throw new Error('EXPO_PUBLIC_API_URL 이 설정되지 않았습니다 — 프로덕션 빌드에는 필수입니다.');
+}
 
 export const apiClient = create({
-  baseURL: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1',
+  baseURL: API_URL ?? 'http://localhost:8000/api/v1',
   timeout: 10_000,
 });
 
@@ -47,6 +52,18 @@ async function runRefresh(): Promise<string | null> {
   }
 }
 
+/**
+ * 재발급 실패 시 강제 로그아웃. 수동 로그아웃과 **동일하게** 토큰·세션·동의기록을 지우고
+ * 쿼리 캐시를 비운 뒤 로그인 화면으로 보낸다. authStorage 를 정적 import 하면 순환이
+ * 생기므로(authStorage→authApi→apiClient) 동적 import 로 끊는다.
+ */
+async function forceLogout(): Promise<void> {
+  const { clearAuthState } = await import('@/src/features/auth/services/authStorage');
+  await clearAuthState();
+  queryClient.clear();
+  router.replace('/login');
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
@@ -68,10 +85,8 @@ apiClient.interceptors.response.use(
     const newAccessToken = await refreshPromise;
 
     if (!newAccessToken) {
-      // 재발급 실패 → 토큰을 지우고 로그인 화면으로. 토큰이 사라지면 세션 게이트
-      // (getAuthSession)도 통과시키지 않는다.
-      await clearTokens();
-      router.replace('/login');
+      // 재발급 실패 → 수동 로그아웃과 동일하게 정리하고 로그인 화면으로.
+      await forceLogout();
       return Promise.reject(error);
     }
 

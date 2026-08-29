@@ -7,18 +7,22 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: SECRET_KEY 가 없을 때 기동 로그에 남길 안내. Pydantic 기본 메시지("Field
 #: required")는 무엇을 어디에 넣어야 하는지 알려주지 않아 사람이 읽을 수 있게 바꾼다.
-_MISSING_SECRET_KEY_MESSAGE = "SECRET_KEY가 .env에 없습니다 — .env.example 참고"
+#: HS256 서명 키의 최소 길이. RFC 7518 §3.2 는 HMAC-SHA256 키를 최소 32바이트로
+#: 권장한다 — 짧은 키는 무차별 대입에 약하다.
+_SECRET_KEY_MIN_LENGTH = 32
+_MISSING_SECRET_KEY_MESSAGE = (
+    f"SECRET_KEY가 없거나 너무 짧습니다({_SECRET_KEY_MIN_LENGTH}자 이상 필요) — .env.example 참고"
+)
 
 
 class Settings(BaseSettings):
     app_name: str = "Omeong Gameong API"
     environment: str = "local"
     api_v1_prefix: str = "/api/v1"
-    #: JWT 서명 키. 기본값을 두지 않고 빈 문자열도 막는다 — 빈 키는 뻔한 키라
-    #: 서버마다 다른(혹은 예측 가능한) 서명으로 발급된 토큰이 통과할 수 있다.
-    #: `.env.example` 의 빈 `SECRET_KEY=` 를 그대로 복사하면 기동에서 즉시
-    #: 실패한다(아래 get_settings 의 안내 메시지 참고).
-    secret_key: str = Field(min_length=1)
+    #: JWT 서명 키. 기본값을 두지 않고 32자 미만도 막는다 — 짧거나 뻔한 키는 서명을
+    #: 위조당할 여지가 있다. `.env.example` 의 빈 `SECRET_KEY=` 를 그대로 복사하거나
+    #: 짧은 값을 넣으면 기동에서 즉시 실패한다(아래 get_settings 의 안내 메시지 참고).
+    secret_key: str = Field(min_length=_SECRET_KEY_MIN_LENGTH)
     database_url: str = "postgresql+psycopg://omeong:omeong@localhost:5432/omeong"
     cors_origins: list[str] = ["http://localhost:8081", "http://localhost:19006"]
     aws_region: str = "ap-northeast-2"
