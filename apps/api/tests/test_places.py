@@ -154,6 +154,11 @@ def test_좌표를_하나만_보내면_422(client: TestClient) -> None:
     assert response.status_code == 422
 
 
+def test_공식_장소_목록은_limit_1000까지_허용한다(client: TestClient) -> None:
+    assert client.get("/api/v1/places", params={"limit": 1000}).status_code == 200
+    assert client.get("/api/v1/places", params={"limit": 1001}).status_code == 422
+
+
 def test_반경_밖의_장소는_빠진다(client: TestClient, db: Session, place: Place) -> None:
     far = _make_place(db, "서울 카페")
     far.latitude = 37.5665
