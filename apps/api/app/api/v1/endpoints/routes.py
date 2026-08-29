@@ -340,9 +340,7 @@ def get_route_status(
         route_id=route.id,
         status=route.status,
         version=route.version,
-        failure_reason=(
-            "추천 루트를 생성하지 못했습니다" if route.status == RouteStatus.FAILED else None
-        ),
+        failure_reason=route.failure_reason if route.status == RouteStatus.FAILED else None,
     )
 
 

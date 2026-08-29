@@ -244,6 +244,7 @@ AI 추천 결과와 사용자가 저장한 내 여행의 공통 루트 본체입
 | --- | --- |
 | `route_request_id` | 추천 생성에 사용한 입력 조건. 수동 여행은 null |
 | `status` | 생성 중, 추천 완료, 저장, 여행 중, 완료, 실패 |
+| `failure_reason` | 실패 시 공개 가능한 사유 코드. 내부 예외 메시지는 저장하지 않음 |
 | `creation_type` | `recommended`(추천 생성) 또는 `manual`(사용자 직접 생성) |
 | `version` | AI 재추천 버전 |
 | `pace`, `transport` | 적용된 여행 조건 |

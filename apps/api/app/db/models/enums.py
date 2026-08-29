@@ -93,6 +93,17 @@ class RouteStatus(StrEnum):
     FAILED = "failed"
 
 
+class RouteFailureReason(StrEnum):
+    """앱에 공개해도 안전한 추천 생성 실패 코드."""
+
+    LOCATION_NOT_FOUND = "LOCATION_NOT_FOUND"
+    NO_RECOMMENDABLE_PLACES = "NO_RECOMMENDABLE_PLACES"
+    DINNER_RESTAURANT_SHORTAGE = "DINNER_RESTAURANT_SHORTAGE"
+    ROUTE_PROVIDER_FAILED = "ROUTE_PROVIDER_FAILED"
+    GENERATION_TIMEOUT = "GENERATION_TIMEOUT"
+    UNKNOWN = "UNKNOWN"
+
+
 class RouteCreationType(StrEnum):
     RECOMMENDED = "recommended"
     MANUAL = "manual"

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.endpoints import routes
 from app.db.models import Place, Route, RouteRequest
+from app.db.models.enums import RouteFailureReason, RouteStatus
 from app.integrations.tour_api.kto import TourPlace
 from app.recommend.tmap import RouteLeg
 from app.recommend.weights import resolve_weights
@@ -78,6 +79,26 @@ def test_route_request_saves_resolved_weight_snapshot(
     request = db.get(RouteRequest, uuid.UUID(body["routeRequestId"]))
     assert request is not None
     assert request.applied_weights == pytest.approx(resolve_weights("pet", []).model_dump())
+
+
+def test_route_status_returns_persisted_safe_failure_reason(
+    client: TestClient,
+    db: Session,
+    place: Place,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(routes, "run_route_generation", lambda _route_id, _open: None)
+    created = client.post("/api/v1/route-requests", json=_payload(place.id)).json()
+    route = db.get(Route, uuid.UUID(created["routeId"]))
+    assert route is not None
+    route.status = RouteStatus.FAILED
+    route.failure_reason = RouteFailureReason.ROUTE_PROVIDER_FAILED
+    db.commit()
+
+    body = client.get(f"/api/v1/routes/{route.id}/status").json()
+
+    assert body["status"] == "failed"
+    assert body["failureReason"] == "ROUTE_PROVIDER_FAILED"
 
 
 def test_route_request_rejects_transport_without_route_provider(

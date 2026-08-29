@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from app.db import models  # noqa: F401
 from app.db.base import Base
-from app.db.models.enums import RouteCreationType
+from app.db.models.enums import RouteCreationType, RouteFailureReason
 
 EXPECTED_TABLES = {
     "chat_conversations",
@@ -88,6 +88,8 @@ def test_manual_route_schema() -> None:
     assert routes.c.route_request_id.nullable is True
     assert routes.c.creation_type.nullable is False
     assert routes.c.creation_type.type.enums == [member.value for member in RouteCreationType]
+    assert routes.c.failure_reason.nullable is True
+    assert routes.c.failure_reason.type.enums == [member.value for member in RouteFailureReason]
     assert any(
         constraint.name == "ck_routes_creation_type_request_consistency"
         for constraint in routes.constraints

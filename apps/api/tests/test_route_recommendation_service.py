@@ -10,10 +10,17 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.db.models import Route, RouteDay, RouteItem, RouteRequest, RouteRequestStay
-from app.db.models.enums import ScheduleItemType
+from app.db.models.enums import RouteFailureReason, RouteStatus, ScheduleItemType
 from app.integrations.maps.kakao import GeocodedAddress
 from app.schemas.route import RouteRequestCreate, RouteRequestStayCreate
-from app.services.route_recommendation import _day_anchors, _paired_stay_anchor, resolve_location
+from app.services import route_recommendation
+from app.services.route_recommendation import (
+    RecommendationGenerationError,
+    _day_anchors,
+    _failure_reason,
+    _paired_stay_anchor,
+    resolve_location,
+)
 
 KST = timezone(timedelta(hours=9))
 
@@ -24,6 +31,52 @@ class FakeSession:
 
     def get(self, _model: object, _place_id: uuid.UUID) -> object | None:
         return self.place
+
+
+class FakeGenerationSession:
+    def __init__(self) -> None:
+        self.route = SimpleNamespace(
+            status=RouteStatus.GENERATING,
+            failure_reason=None,
+        )
+        self.committed = False
+
+    def __enter__(self) -> "FakeGenerationSession":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def rollback(self) -> None:
+        pass
+
+    def get(self, _model: object, _route_id: uuid.UUID) -> object:
+        return self.route
+
+    def commit(self) -> None:
+        self.committed = True
+
+
+def test_failure_reason_never_uses_internal_exception_message() -> None:
+    assert _failure_reason(RuntimeError("SECRET_KEY=do-not-expose")) is RouteFailureReason.UNKNOWN
+
+
+def test_background_failure_persists_safe_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+    db = FakeGenerationSession()
+
+    def fail(*_args: object) -> None:
+        raise RecommendationGenerationError(
+            "내부 후보 정보",
+            RouteFailureReason.NO_RECOMMENDABLE_PLACES,
+        )
+
+    monkeypatch.setattr(route_recommendation, "generate_route", fail)
+
+    route_recommendation.run_route_generation(uuid.uuid4(), lambda: db)
+
+    assert db.route.status is RouteStatus.FAILED
+    assert db.route.failure_reason is RouteFailureReason.NO_RECOMMENDABLE_PLACES
+    assert db.committed is True
 
 
 def test_resolve_location_prefers_db_place_without_geocoding() -> None:

@@ -10,6 +10,7 @@ from app.db.models.enums import (
     PetSize,
     PetSpecies,
     RouteCreationType,
+    RouteFailureReason,
     RouteStatus,
     ScheduleItemType,
     TransportType,
@@ -448,7 +449,7 @@ class RouteGenerationStatus(APISchema):
     route_id: uuid.UUID
     status: RouteStatus
     version: int
-    failure_reason: str | None = None
+    failure_reason: RouteFailureReason | None = None
 
 
 class RouteEditSuggestionRequest(APISchema):
