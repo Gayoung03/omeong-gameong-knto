@@ -21,8 +21,6 @@ services:
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://omeong:omeong@postgres-smoke:5432/omeong_smoke
-      # alembic 이 app 설정을 import 한다. smoke 는 격리 검사라 더미로 충분하다.
-      SECRET_KEY: smoke-only-not-a-real-secret
     depends_on:
       postgres-smoke:
         condition: service_healthy
