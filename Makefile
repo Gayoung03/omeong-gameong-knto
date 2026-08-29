@@ -4,7 +4,7 @@ LOCAL_COMPOSE = $(COMPOSE) -f infra/docker-compose.local.yml
 .PHONY: setup dev dev-local mobile-install api-install mobile-dev api-dev backend-up \
 	backend-down backend-logs backend-local-up backend-local-down backend-local-logs \
 	db-migrate db-migrate-check db-migrate-local db-seed db-seed-local \
-	db-migration-smoke lint typecheck test check
+	db-migration-smoke chat-check lint typecheck test check
 
 setup: mobile-install api-install
 
@@ -78,6 +78,11 @@ db-migration-smoke:
 		up --build --abort-on-container-exit --exit-code-from migrate-smoke || status=$$?; \
 	docker compose -f infra/docker-compose.migration-smoke.yml down --remove-orphans; \
 	exit $$status
+
+chat-check:
+	@mkdir -p tmp
+	@$(LOCAL_COMPOSE) run --build --rm -T api .venv/bin/python -m scripts.chat_quality_check $(MODELS) > tmp/chat-quality.md
+	@echo "→ tmp/chat-quality.md"
 
 lint:
 	cd apps/mobile && npm run lint
