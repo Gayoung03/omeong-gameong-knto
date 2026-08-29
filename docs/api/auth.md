@@ -121,7 +121,7 @@ Authorization: Bearer <accessToken>
 | 필드 | 타입 | 필수 | 설명 |
 | --- | --- | --- | --- |
 | `email` | string | ✅ | `users.email`. 중복 불가 |
-| `password` | string | ✅ | 서버에서 해시 후 `users.password_hash`에 저장 |
+| `password` | string | ✅ | **최소 8자·최대 128자.** 서버에서 argon2 해시 후 `users.password_hash`에 저장 |
 | `nickname` | string(50) | ✅ | `users.nickname` |
 | `pet` | object | — | 없으면 반려동물 없이 가입 |
 | `pet.name` | string(50) | ✅ | `pet`을 보낼 때 필수 |
@@ -438,4 +438,5 @@ GET /api/v1/auth/check-email?email=traveler@example.com
 | 2026-08-12 | 확정 규약 반영 — camelCase 응답, refresh token 분리, `POST /auth/refresh` 추가, 반려동물 종류 3종 |
 | 2026-08-15 | PR #29 머지 반영 — 회원가입 요청의 `pet`에 `speciesDetail` 추가, 필드 표에 반영. "저장할 컬럼이 없다"는 확인 필요 항목은 `pets.species_detail` 추가로 해소 |
 | 2026-08-15 | 남은 `[확인 필요]` 5건 확정 — 토큰 만료(30분/14일), 탈퇴 이메일 재가입 차단, refresh 회전 없음, 로그아웃 서버 무효화 없음, `check-email` 유지 |
+| 2026-08-29 | 비밀번호 규칙 확정 — **최소 8자·최대 128자**, 해시는 argon2 (구현 Phase 3, #137) |
 | 2026-08-29 | **소셜 절 전면 개정 (팀 리뷰 대기 — GitHub #129)** — ① 애플 제외(Android·웹만 출시), ② `POST /auth/social`(SDK 토큰 전달) → 서버 콜백 방식(`authorize`/`callback`/`exchange`/`complete`)으로 교체, ③ 이메일 겹침 시 비밀번호 확인 후 연동(자동 연동은 구현 전 보안 검토로 기각 — local 가입에 이메일 소유 확인이 없어 계정 탈취 경로가 됨), ④ 탈퇴 계정은 연동·소셜 재로그인 모두 차단, ⑤ JWT 구현 규약 표 추가(HS256·typ·deleted_at 확인), ⑥ `user_social_accounts` 테이블 안(컬럼 표 포함 — 실제 추가는 DB 규약 절차로). 근거: 웹 출시 확정(08-28), 보안·설계 리뷰(08-28) |
