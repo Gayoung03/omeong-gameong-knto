@@ -814,3 +814,4 @@ AI 추천 후보 또는 사용자가 직접 고른 DB 장소로 일정 항목을
 | 2026-08-12 | 목록에만 있고 본문이 없던 `DELETE /checklist-items/{itemId}`, `PATCH`·`DELETE /memos/{memoId}` 명세 작성 |
 | 2026-08-15 | PR #29 머지 반영 — 수동 여행 스키마(`creation_type`, nullable `route_request_id`, `route_pets`) 설명 추가, 응답에 `creationType` 추가, `regenerate`의 수동 여행 처리 명시. 수동 생성 엔드포인트는 확인 필요로 기록 |
 | 2026-08-18 | 미정 2건 확정 — 폴링 **2초 간격 / 3분 타임아웃**, `failureReason`은 컬럼 추가 없이 응답에만, 수동 여행 재생성은 **`422`**. 수동 생성 엔드포인트는 **보류 유지**하되 DB 준비 완료 사실과 유력안을 정리 |
+| 2026-08-30 | 생성 실패를 재시도·운영 분석에 활용할 수 있도록 `failureReason`을 `routes.failure_reason`의 안전한 enum 코드로 저장하도록 변경 |

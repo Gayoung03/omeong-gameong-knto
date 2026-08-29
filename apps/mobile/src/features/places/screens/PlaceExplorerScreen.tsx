@@ -51,9 +51,7 @@ export function PlaceExplorerScreen() {
         : undefined;
   const filters = useMemo(
     () => ({
-      categories: selectedCategoryConfig?.serverCategories.length
-        ? selectedCategoryConfig.serverCategories
-        : undefined,
+      categories: selectedCategoryConfig?.serverCategories,
       environment,
       q: debouncedQuery || undefined,
       region: selectedRegion === '전체' ? undefined : selectedRegion,
@@ -66,6 +64,7 @@ export function PlaceExplorerScreen() {
     fetchNextPage,
     hasNextPage,
     isError,
+    isFetchNextPageError,
     isFetchingNextPage,
     isPending,
     refetch,
@@ -212,6 +211,14 @@ export function PlaceExplorerScreen() {
           ListFooterComponent={
             isFetchingNextPage ? (
               <ActivityIndicator color={colors.primary} style={styles.pageLoading} />
+            ) : isFetchNextPageError ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void fetchNextPage()}
+                style={({ pressed }) => [styles.pageRetry, pressed && styles.pressed]}
+              >
+                <Text style={styles.pageRetryText}>추가 장소를 불러오지 못했어요 · 다시 시도</Text>
+              </Pressable>
             ) : null
           }
           onEndReached={() => {
@@ -464,6 +471,15 @@ const styles = StyleSheet.create({
   },
   pageLoading: {
     paddingVertical: spacing.md,
+  },
+  pageRetry: {
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  pageRetryText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
   },
   listContent: {
     paddingHorizontal: spacing.md,

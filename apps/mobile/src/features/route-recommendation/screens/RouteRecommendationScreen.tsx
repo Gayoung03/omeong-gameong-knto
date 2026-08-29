@@ -16,7 +16,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { failureGuidance } from '../failureReason';
 import { clearPendingRoute, loadPendingRoute, savePendingRoute } from '../services/pendingRoute';
 import { searchAccommodations, searchPlaces } from '@/src/features/places/api/placesApi';
 import type { Place } from '@/src/features/places/types/place';
@@ -32,6 +31,7 @@ import {
 } from '@/src/features/trips/api/tripsApi';
 import type {
   RouteEditSuggestionResponse,
+  RouteFailureReason,
   RouteItemResponse,
   RouteRequestCreateRequest,
   ServerScheduleItemType,
@@ -40,6 +40,17 @@ import { colors, overlayColors } from '@/src/theme';
 
 const POLL_MS = 2_000;
 const TIMEOUT_MS = 3 * 60 * 1_000;
+
+const FAILURE_GUIDANCE: Record<RouteFailureReason, string> = {
+  LOCATION_NOT_FOUND: '출발지나 숙소 위치를 확인하지 못했어요. 주소를 다시 확인해주세요.',
+  NO_RECOMMENDABLE_PLACES:
+    '선택한 조건에 맞는 반려동물 동반 장소가 부족해요. 조건을 조금 넓혀주세요.',
+  DINNER_RESTAURANT_SHORTAGE:
+    '저녁 시간에 배치할 반려동물 동반 식당이 부족해요. 날짜나 조건을 조정해주세요.',
+  ROUTE_PROVIDER_FAILED: '이동 경로를 확인하지 못했어요. 잠시 후 다시 시도해주세요.',
+  GENERATION_TIMEOUT: '추천 생성 시간이 초과됐어요. 잠시 후 다시 시도해주세요.',
+  UNKNOWN: '루트를 생성하지 못했어요. 조건을 확인하고 다시 요청해주세요.',
+};
 
 function errorMessage(error: unknown): string {
   if (isAxiosError<{ detail?: string }>(error)) {
@@ -416,7 +427,7 @@ export function RouteRecommendationScreen() {
     return (
       <StateScreen
         title="루트를 만들지 못했어요"
-        description={feedback || failureGuidance(statusQuery.data?.failureReason)}
+        description={feedback || FAILURE_GUIDANCE[statusQuery.data?.failureReason ?? 'UNKNOWN']}
         onPress={() => void retryGeneration()}
         button={pendingRequest ? '다시 추천받기' : '조건 다시 입력'}
       />

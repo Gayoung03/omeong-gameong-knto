@@ -17,8 +17,8 @@ export type PlaceCategory = {
   id: string;
   label: string;
   icon: PlaceIconName;
-  /** 이 화면 분류에 포함되는 서버 `places.category` 코드. 환경 칩은 빈 배열이다. */
-  serverCategories: string[];
+  /** 이 화면 분류에 포함되는 서버 `places.category` 코드. 환경 칩에는 없다. */
+  serverCategories?: string[];
 };
 
 export type Place = {
