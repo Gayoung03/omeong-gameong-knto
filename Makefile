@@ -4,7 +4,7 @@ LOCAL_COMPOSE = $(COMPOSE) -f infra/docker-compose.local.yml
 .PHONY: setup dev dev-local mobile-install api-install mobile-dev api-dev backend-up \
 	backend-down backend-logs backend-local-up backend-local-down backend-local-logs \
 	db-migrate db-migrate-check db-migrate-local db-seed db-seed-local \
-	db-migration-smoke chat-check lint typecheck test check
+	db-migration-smoke chat-check chat-check-places lint typecheck test check
 
 setup: mobile-install api-install
 
@@ -79,10 +79,20 @@ db-migration-smoke:
 	docker compose -f infra/docker-compose.migration-smoke.yml down --remove-orphans; \
 	exit $$status
 
+# 규정·가이드 질문. 로컬 씨앗에 문서 15편·규정 12건이 다 있어 로컬로 충분하다.
 chat-check:
 	@mkdir -p tmp
-	@$(LOCAL_COMPOSE) run --build --rm -T api .venv/bin/python -m scripts.chat_quality_check $(MODELS) > tmp/chat-quality.md
-	@echo "→ tmp/chat-quality.md"
+	@$(LOCAL_COMPOSE) run --build --rm -T api .venv/bin/python -m scripts.chat_quality_check \
+		--set rules $(if $(MODELS),--models $(MODELS)) > tmp/chat-quality-rules.md
+	@echo "→ tmp/chat-quality-rules.md"
+
+# 장소 질문. **팀 RDS 로만 검증된다** — 로컬 씨앗 장소 4건은 region 이 챗봇 어휘
+# 밖이라 어떤 지역 질문도 0건이다. 그래서 컨테이너가 아니라 .env 의 DATABASE_URL 로 붙는다.
+chat-check-places:
+	@mkdir -p tmp
+	@cd apps/api && uv run python -m scripts.chat_quality_check \
+		--set places $(if $(MODELS),--models $(MODELS)) > ../../tmp/chat-quality-places.md
+	@echo "→ tmp/chat-quality-places.md"
 
 lint:
 	cd apps/mobile && npm run lint
