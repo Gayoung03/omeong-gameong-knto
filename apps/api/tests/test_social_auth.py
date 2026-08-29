@@ -63,15 +63,10 @@ def _state(return_url: str = "exp://demo/cb") -> str:
     return encode_token({"returnUrl": return_url}, "oauth_state", timedelta(minutes=10))
 
 
-def _exchange_code(profile: SocialProfile, ttl: timedelta = timedelta(seconds=60)) -> str:
-    claims = {
-        "provider": profile.provider,
-        "puid": profile.provider_user_id,
-        "email": profile.email,
-        "nickname": profile.nickname,
-        "image": profile.profile_image_url,
-    }
-    return encode_token(claims, "exchange", ttl)
+def _exchange_code(ttl: timedelta = timedelta(seconds=60)) -> str:
+    # 교환 코드는 참조 id 만 담는다(프로필은 서버 보관). 직접 발급한 코드는 서버에
+    # 보관된 프로필이 없으므로, 만료·무효 경로 검증에만 쓴다.
+    return encode_token({"ref": "nonexistent"}, "exchange", ttl)
 
 
 def _callback_to_code(client: TestClient, profile: SocialProfile) -> str:
@@ -224,8 +219,14 @@ def test_교환_코드_재사용은_401(client: TestClient) -> None:
 
 
 def test_만료된_교환_코드는_401(client: TestClient) -> None:
-    expired = _exchange_code(_profile(kakao_id="expired-1"), ttl=timedelta(seconds=-120))
+    expired = _exchange_code(ttl=timedelta(seconds=-120))
     assert client.post(_EXCHANGE, json={"code": expired}).status_code == 401
+
+
+def test_서버에_없는_참조_교환_코드는_401(client: TestClient) -> None:
+    # 서명·만료는 멀쩡하나 서버에 보관된 프로필이 없는 참조 → 401.
+    valid_but_unknown = _exchange_code(ttl=timedelta(seconds=60))
+    assert client.post(_EXCHANGE, json={"code": valid_but_unknown}).status_code == 401
 
 
 def test_위조_교환_코드는_401(client: TestClient) -> None:

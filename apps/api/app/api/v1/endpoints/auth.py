@@ -63,6 +63,8 @@ from app.services.social_auth import (
     link_social_account,
     mask_email,
     resolve_exchange,
+    store_pending_profile,
+    take_pending_profile,
 )
 from app.services.travel_preferences import upsert_travel_preference
 
@@ -342,7 +344,10 @@ def social_callback(
     except SocialProviderUnavailable:
         raise HTTPException(status_code=502, detail="소셜 제공처가 응답하지 않습니다") from None
 
-    exchange_code = encode_token(_profile_claims(profile), "exchange", _EXCHANGE_TTL)
+    # 프로필은 서버에 잠깐 보관하고 교환 코드에는 **참조 id 만** 싣는다 — email·nickname
+    # 같은 PII 를 returnUrl 쿼리스트링·브라우저 히스토리·access log 에 노출하지 않는다.
+    ref = store_pending_profile(profile, _EXCHANGE_TTL.total_seconds() + LEEWAY_SECONDS)
+    exchange_code = encode_token({"ref": ref}, "exchange", _EXCHANGE_TTL)
     separator = "&" if "?" in return_url else "?"
     return RedirectResponse(f"{return_url}{separator}code={exchange_code}", status_code=302)
 
@@ -355,10 +360,11 @@ def social_exchange(
         claims = decode_claims(payload.code, "exchange")
     except TokenError:
         raise HTTPException(status_code=401, detail="교환 코드가 유효하지 않습니다") from None
-    if not consume_jti_once(claims["jti"], _EXCHANGE_TTL.total_seconds() + LEEWAY_SECONDS):
-        raise HTTPException(status_code=401, detail="교환 코드가 이미 사용되었습니다")
+    # 참조 id 로 서버에 보관된 프로필을 1회만 꺼낸다(재사용·만료면 None → 401).
+    profile = take_pending_profile(claims.get("ref", ""))
+    if profile is None:
+        raise HTTPException(status_code=401, detail="교환 코드가 이미 사용되었거나 만료되었습니다")
 
-    profile = _profile_from_claims(claims)
     try:
         outcome = resolve_exchange(db, profile)
     except SocialAuthError:
