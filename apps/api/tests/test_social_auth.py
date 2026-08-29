@@ -8,10 +8,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import encode_token, hash_password
 from app.db.models import User, UserSocialAccount
 from app.db.models.enums import AuthProvider
@@ -305,3 +307,46 @@ def test_link_토큰_재사용은_401(client: TestClient, db: Session) -> None:
         _COMPLETE, json={"linkToken": token, "action": "link", "password": "password123"}
     )
     assert second.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# returnUrl 검증 — 호스트 정확 매칭 (서브도메인·서픽스·userinfo 우회 차단)
+# ---------------------------------------------------------------------------
+
+
+def test_returnurl_우회는_422_정상값은_통과(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        settings,
+        "oauth_return_url_prefixes",
+        "http://localhost,https://app.omeong.example,omeonggameong://",
+    )
+    _use_fake()
+
+    def authorize(return_url: str) -> int:
+        response = client.get(_AUTHORIZE, params={"returnUrl": return_url}, follow_redirects=False)
+        return response.status_code
+
+    # startswith 로는 통과하던 우회들 — 전부 422.
+    assert authorize("http://localhost.evil.com/cb") == 422  # 서브도메인
+    assert authorize("https://app.omeong.example.attacker.com/cb") == 422  # 서픽스
+    assert authorize("http://localhost@evil.com/cb") == 422  # userinfo
+    assert authorize("https://evil.com/cb") == 422  # 무관 호스트
+
+    # 정상 값 — 통과(302).
+    assert authorize("http://localhost:8081/auth/callback") == 302  # 포트 무관
+    assert authorize("https://app.omeong.example/auth/callback") == 302
+    assert authorize("omeonggameong://auth/callback") == 302  # 커스텀 스킴
+
+
+def test_returnurl_비local_미설정이면_전부_422(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "oauth_return_url_prefixes", "")
+    _use_fake()
+    response = client.get(
+        _AUTHORIZE, params={"returnUrl": "https://app.omeong.example/cb"}, follow_redirects=False
+    )
+    assert response.status_code == 422
