@@ -29,6 +29,7 @@ from app.schemas.review import (
     ReviewSummary,
     ReviewUpdate,
 )
+from app.services.place_access import load_visible_place
 
 router = APIRouter()
 
@@ -65,7 +66,8 @@ def list_place_reviews(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ReviewListResponse:
-    _load_place(db, place_id)
+    # 남의 개인 장소의 리뷰는 남에게 보이지 않는다(장소 조회와 동일 규칙).
+    load_visible_place(db, place_id, current_user)
 
     condition = Review.place_id == place_id
     total = db.scalar(select(func.count(Review.id)).where(condition)) or 0
@@ -110,7 +112,8 @@ def create_review(
     current_user: CurrentUser,
     db: DbSession,
 ) -> ReviewItem:
-    _load_place(db, place_id)
+    # 남의 개인 장소에는 리뷰를 쓸 수 없다(장소 조회와 동일 규칙).
+    load_visible_place(db, place_id, current_user)
 
     if payload.visited_at and payload.visited_at > datetime.now(KST).date():
         raise HTTPException(status_code=422, detail="방문일은 미래일 수 없습니다")
@@ -229,13 +232,6 @@ def delete_review(review_id: uuid.UUID, current_user: CurrentUser, db: DbSession
 # ---------------------------------------------------------------------------
 # 공용
 # ---------------------------------------------------------------------------
-
-
-def _load_place(db: Session, place_id: uuid.UUID) -> Place:
-    place = db.get(Place, place_id)
-    if place is None or not place.is_active:
-        raise HTTPException(status_code=404, detail="장소를 찾을 수 없습니다")
-    return place
 
 
 def _load_own_review(db: Session, review_id: uuid.UUID, user: User) -> Review:

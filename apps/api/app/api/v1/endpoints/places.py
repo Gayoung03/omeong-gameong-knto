@@ -48,6 +48,7 @@ from app.schemas.place import (
     PlaceTagListResponse,
     PlaceTagResponse,
 )
+from app.services.place_access import load_visible_place
 from app.services.place_query import (
     distance_expr,
     has_tag_condition,
@@ -301,7 +302,7 @@ def list_my_favorites(
 
 @router.get("/places/{place_id}", response_model=PlaceDetail, summary="장소 상세")
 def get_place(place_id: uuid.UUID, current_user: OptionalUser, db: DbSession) -> PlaceDetail:
-    place = _load_visible_place(db, place_id, current_user)
+    place = load_visible_place(db, place_id, current_user)
     return _to_detail(db, place, current_user)
 
 
@@ -344,7 +345,7 @@ def add_favorite(place_id: uuid.UUID, current_user: CurrentUser, db: DbSession) 
 
     이미 즐겨찾기한 장소여도 409 가 아니라 204 다.
     """
-    _load_visible_place(db, place_id, current_user)
+    load_visible_place(db, place_id, current_user)
 
     existing = db.get(Favorite, {"user_id": current_user.id, "place_id": place_id})
     if existing is None:
@@ -360,7 +361,7 @@ def add_favorite(place_id: uuid.UUID, current_user: CurrentUser, db: DbSession) 
     summary="즐겨찾기 해제",
 )
 def remove_favorite(place_id: uuid.UUID, current_user: CurrentUser, db: DbSession) -> Response:
-    _load_visible_place(db, place_id, current_user)
+    load_visible_place(db, place_id, current_user)
 
     existing = db.get(Favorite, {"user_id": current_user.id, "place_id": place_id})
     if existing is not None:
@@ -373,24 +374,6 @@ def remove_favorite(place_id: uuid.UUID, current_user: CurrentUser, db: DbSessio
 # ---------------------------------------------------------------------------
 # 공용
 # ---------------------------------------------------------------------------
-
-
-def _load_visible_place(db: Session, place_id: uuid.UUID, user: User | None) -> Place:
-    """볼 수 있는 장소만 돌려준다.
-
-    공식 장소이거나 내가 등록한 장소여야 한다. **남이 등록한 장소는 404** 다 —
-    403 으로 알려주면 "그 id 의 장소가 존재한다"는 사실이 새어 나간다.
-    """
-    place = db.get(Place, place_id)
-    if place is None or not place.is_active:
-        raise HTTPException(status_code=404, detail="장소를 찾을 수 없습니다")
-
-    is_official = place.created_by_user_id is None
-    is_mine = user is not None and place.created_by_user_id == user.id
-    if not is_official and not is_mine:
-        raise HTTPException(status_code=404, detail="장소를 찾을 수 없습니다")
-
-    return place
 
 
 def _to_detail(db: Session, place: Place, user: User | None) -> PlaceDetail:
