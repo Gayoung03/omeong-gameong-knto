@@ -80,6 +80,16 @@ export async function signIn(email: string, password: string) {
   return saveSession(result.user);
 }
 
+/** 소셜 로그인/연동 완료 후 토큰·세션을 구성한다(카카오 콜백에서 호출). */
+export async function completeSocialLogin(result: {
+  accessToken: string;
+  refreshToken: string;
+  user: Pick<AuthUser, 'email' | 'nickname'>;
+}) {
+  await saveTokens(result.accessToken, result.refreshToken);
+  return saveSession(result.user);
+}
+
 /**
  * 계정·(선택)반려동물·여행 취향을 한 요청으로 가입한다.
  *

@@ -22,6 +22,7 @@ import { AuthHeader } from '../components/AuthHeader';
 import { IconTextField } from '../components/IconTextField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { getAuthSession, signIn } from '../services/authStorage';
+import { startKakaoLogin } from '../services/kakaoLogin';
 
 /**
  * 각 사의 브랜드 가이드라인에 규정된 색이라 theme 토큰으로 치환하지 않는다.
@@ -156,7 +157,12 @@ export function LoginScreen() {
                 <Pressable
                   accessibilityLabel={`${provider.label} 로그인`}
                   key={provider.label}
-                  onPress={() => setNoticeMessage(`${provider.label} 로그인은 준비 중이에요.`)}
+                  onPress={() =>
+                    // 카카오만 연결됐다. 네이버·구글은 기존 "준비 중" 안내 유지.
+                    provider.label === '카카오'
+                      ? startKakaoLogin()
+                      : setNoticeMessage(`${provider.label} 로그인은 준비 중이에요.`)
+                  }
                   style={({ pressed }) => [
                     styles.socialButton,
                     { backgroundColor: provider.background },
