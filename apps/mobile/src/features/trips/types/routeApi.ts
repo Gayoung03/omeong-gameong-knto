@@ -122,7 +122,23 @@ export type RouteDayResponse = {
   /** YYYY-MM-DD */
   routeDate: string;
   title: string | null;
+  weather: {
+    condition: 'sunny' | 'partly_cloudy' | 'cloudy' | 'rainy' | 'snowy' | 'windy';
+    temperature: number | null;
+    minTemperature: number | null;
+    maxTemperature: number | null;
+    precipitationProbability: number | null;
+  } | null;
   items: RouteItemResponse[];
+};
+
+export type RouteStayResponse = {
+  id: string;
+  placeId: string | null;
+  name: string;
+  address: string | null;
+  checkInAt: string | null;
+  checkOutAt: string | null;
 };
 
 /** 이 여행에 함께 가는 반려동물 */
@@ -137,9 +153,6 @@ export type RoutePetResponse = {
 /**
  * GET /routes/{routeId}.
  *
- * 명세에 있지만 아직 서버가 안 내려주는 것 —
- * `weather`(기상청) · `stays`(추천 요청서).
- *
  * `logCount` 와 place 의 `rating`·`reviewCount`·`petPolicyType` 은
  * 2026-08-23 에 채워졌다.
  */
@@ -149,6 +162,7 @@ export type RouteDetailResponse = RouteListItemResponse & {
   memo: string | null;
   shareToken: string | null;
   pets: RoutePetResponse[];
+  stays: RouteStayResponse[];
   distanceSummary: {
     totalDistanceMeters: number;
     totalDurationMinutes: number;

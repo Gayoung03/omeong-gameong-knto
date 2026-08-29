@@ -245,6 +245,7 @@ class RouteDay(Base):
         order_by="RouteItem.sort_order",
         cascade="all, delete-orphan",
     )
+    weather: Mapped["WeatherSnapshot | None"] = relationship("WeatherSnapshot")
 
 
 class RouteItem(Base):

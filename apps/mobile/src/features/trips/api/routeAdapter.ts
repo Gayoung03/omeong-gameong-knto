@@ -76,6 +76,15 @@ const PACE_LABEL: Record<ServerTripPace, string> = {
   packed: '부지런히 많이 보는 여행',
 };
 
+const WEATHER_CONDITION_MAP = {
+  sunny: 'sunny',
+  partly_cloudy: 'partlyCloudy',
+  cloudy: 'cloudy',
+  rainy: 'rainy',
+  snowy: 'snowy',
+  windy: 'cloudy',
+} as const;
+
 function toMoveTransport(transport: ServerTransportType): TransportType {
   if (transport === 'walk') return 'walk';
   if (transport === 'ferry' || transport === 'airplane') return 'ferry';
@@ -201,22 +210,34 @@ function toSchedule(day: RouteDayResponse): Schedule {
     dayNumber: day.dayNumber,
     // 서버가 date 타입이라 이미 'YYYY-MM-DD' 다.
     date: day.routeDate,
-    // 날씨는 기상청 연동 전까지 없다. null 이면 화면이 날씨 칸을 그리지 않는다.
-    weather: null,
+    weather:
+      day.weather &&
+      day.weather.temperature !== null &&
+      day.weather.minTemperature !== null &&
+      day.weather.maxTemperature !== null
+        ? {
+            condition: WEATHER_CONDITION_MAP[day.weather.condition],
+            temperature: day.weather.temperature,
+            minTemperature: day.weather.minTemperature,
+            maxTemperature: day.weather.maxTemperature,
+            hourly: [],
+          }
+        : null,
     items: items.map(({ item, place }, index) => toScheduleItem(item, place, index)),
   };
 }
 
 /**
- * 숙소 요약. 서버의 `stays` 는 아직 없지만
- * 일정 안의 숙소 항목에서 이름을 뽑아낼 수 있다. 중복은 없앤다.
+ * 숙소 요약. 추천 요청 숙소를 우선하고, 수동 여행은 일정의 숙소 항목을 쓴다.
  */
-function toAccommodationSummary(days: RouteDayResponse[]): string {
-  const names = days
-    .flatMap((day) => day.items)
-    .filter((item) => item.itemType === 'accommodation')
-    .map((item) => item.customPlaceName ?? item.place?.name)
-    .filter((name): name is string => Boolean(name));
+function toAccommodationSummary(route: RouteDetailResponse): string {
+  const names = route.stays.length
+    ? route.stays.map((stay) => stay.name)
+    : route.routeDays
+        .flatMap((day) => day.items)
+        .filter((item) => item.itemType === 'accommodation')
+        .map((item) => item.customPlaceName ?? item.place?.name)
+        .filter((name): name is string => Boolean(name));
 
   return [...new Set(names)].join(', ');
 }
@@ -253,7 +274,7 @@ export function toTrip(route: RouteDetailResponse): Trip {
     ...toTripListItem(route),
     transport: TRANSPORT_MAP[route.transport] ?? 'rentalCar',
     pets: route.pets.map(toTripPet),
-    accommodationSummary: toAccommodationSummary(route.routeDays),
+    accommodationSummary: toAccommodationSummary(route),
     travelStyle: PACE_LABEL[route.pace] ?? '',
     styleKeywords: route.styleKeywords ?? [],
     memo: route.memo ?? '',

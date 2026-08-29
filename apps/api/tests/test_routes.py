@@ -27,15 +27,21 @@ from app.db.models import (
     RouteCalculationCache,
     RouteDay,
     RouteMove,
+    RouteRequest,
+    RouteRequestStay,
     TravelLog,
     User,
+    WeatherSnapshot,
 )
 from app.db.models.enums import (
     DataProvider,
     PetPolicyType,
     PetSpecies,
+    RouteCreationType,
     RouteStatus,
     TransportType,
+    TripPace,
+    WeatherCondition,
 )
 from app.integrations.llm.route_edit import RouteEditIntent
 from app.integrations.tour_api.kto import TourPlace
@@ -172,6 +178,65 @@ def test_여행_상세에_tmap_이동정보와합계를_내려준다(
         "totalDistanceMeters": 3500,
         "totalDurationMinutes": 18,
     }
+
+
+def test_여행_상세에_요청숙소와_저장된_날씨를_내려준다(
+    client: TestClient, db: Session, trip: Route
+) -> None:
+    request = RouteRequest(
+        user_id=trip.user_id,
+        start_at=trip.start_at,
+        end_at=trip.end_at,
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+    )
+    db.add(request)
+    db.flush()
+    trip.route_request_id = request.id
+    trip.creation_type = RouteCreationType.RECOMMENDED
+    stay = RouteRequestStay(
+        route_request_id=request.id,
+        name="함덕 펜션",
+        address="제주시 조천읍",
+        check_in_at=trip.start_at,
+        check_out_at=trip.end_at,
+    )
+    snapshot = WeatherSnapshot(
+        region="제주시",
+        forecast_at=trip.start_at,
+        condition=WeatherCondition.SUNNY,
+        temperature=Decimal("27.5"),
+        min_temperature=Decimal("22.0"),
+        max_temperature=Decimal("29.0"),
+        precipitation_probability=10,
+        source_updated_at=datetime.now(UTC),
+    )
+    db.add_all([stay, snapshot])
+    db.flush()
+    _day_of(trip).weather_snapshot_id = snapshot.id
+    db.flush()
+
+    response = client.get(f"/api/v1/routes/{trip.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stays"][0]["name"] == "함덕 펜션"
+    assert body["routeDays"][0]["weather"] == {
+        "condition": "sunny",
+        "temperature": 27.5,
+        "minTemperature": 22.0,
+        "maxTemperature": 29.0,
+        "precipitationProbability": 10,
+    }
+
+
+def test_날씨_스냅샷이_없어도_여행_상세는_정상_반환된다(
+    client: TestClient, trip: Route
+) -> None:
+    response = client.get(f"/api/v1/routes/{trip.id}")
+
+    assert response.status_code == 200
+    assert response.json()["routeDays"][0]["weather"] is None
 
 
 def test_여행_상세에_tour_api_실시간_장소를_내려준다(
