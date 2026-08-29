@@ -328,6 +328,10 @@ def social_callback(
     except TokenError:
         raise HTTPException(status_code=422, detail="state 가 유효하지 않습니다") from None
 
+    # state 는 1회성(CSRF·재생 방지). 재사용은 거부한다.
+    if not consume_jti_once(claims["jti"], _STATE_TTL.total_seconds() + LEEWAY_SECONDS):
+        raise HTTPException(status_code=422, detail="state 가 이미 사용되었습니다")
+
     return_url = claims.get("returnUrl", "")
     _validate_return_url(return_url)
 
