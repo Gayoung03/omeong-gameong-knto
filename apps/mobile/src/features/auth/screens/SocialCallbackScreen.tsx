@@ -2,6 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { z } from 'zod';
 
 import { getApiErrorMessage } from '@/src/services/apiError';
 import { colors } from '@/src/theme';
@@ -19,6 +20,9 @@ import { completeSocialLogin } from '../services/authStorage';
 
 type Status = 'processing' | 'link' | 'error';
 
+// 딥링크로 들어오는 파라미터는 신뢰할 수 없으므로 zod 로 최소 검증한다.
+const callbackParamsSchema = z.object({ code: z.string().min(1) });
+
 /**
  * 카카오 로그인 복귀 화면(`/auth/callback`).
  *
@@ -27,7 +31,7 @@ type Status = 'processing' | 'link' | 'error';
  */
 export function SocialCallbackScreen() {
   const router = useRouter();
-  const { code } = useLocalSearchParams<{ code?: string }>();
+  const code = callbackParamsSchema.safeParse(useLocalSearchParams()).data?.code;
   // code 유무는 첫 렌더에서 정해지므로 초기 상태로 잡는다(이펙트에서 동기 setState 금지).
   const [status, setStatus] = useState<Status>(code ? 'processing' : 'error');
   const [link, setLink] = useState<LinkRequiredResponse | null>(null);

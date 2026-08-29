@@ -122,19 +122,29 @@ export async function updateSessionNickname(nickname: string) {
   return updated;
 }
 
+/**
+ * 로그인 상태를 기기에서 모두 지운다(토큰·세션·동의기록).
+ *
+ * 수동 로그아웃(signOut)·강제 로그아웃(apiClient 재발급 실패)·회원 탈퇴가 **같은
+ * 집합**을 지우도록 한곳에 모았다. queryClient 캐시 비우기는 React 컨텍스트가 필요해
+ * 여기서 하지 않고 호출부(useLogout·apiClient)가 함께 처리한다.
+ */
+export async function clearAuthState() {
+  await clearTokens();
+  await AsyncStorage.multiRemove([AUTH_SESSION_KEY, CONSENT_KEY]);
+}
+
 /** 로그아웃. 서버 로그아웃은 무효화가 없어 성공 신호일 뿐이라, 실패해도 로컬은 지운다. */
 export async function signOut() {
   try {
     await logout();
   } catch {
-    // 서버 로그아웃 실패(네트워크 등)해도 기기의 토큰·세션은 반드시 지운다.
+    // 서버 로그아웃 실패(네트워크 등)해도 기기의 토큰·세션·동의기록은 반드시 지운다.
   }
-  await clearTokens();
-  await AsyncStorage.removeItem(AUTH_SESSION_KEY);
+  await clearAuthState();
 }
 
-/** 회원 탈퇴 시 기기에 남은 계정 관련 기록을 모두 지운다. */
+/** 회원 탈퇴 시 기기에 남은 계정 관련 기록을 모두 지운다(로그아웃 정리와 같은 집합). */
 export async function clearAccountStorage() {
-  await clearTokens();
-  await AsyncStorage.multiRemove([AUTH_SESSION_KEY, CONSENT_KEY]);
+  await clearAuthState();
 }
