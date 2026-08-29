@@ -16,7 +16,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser
-from app.db.models import Place, RouteDay, RouteItem, RouteMove
+from app.db.models import RouteDay, RouteItem, RouteMove
 from app.db.models.enums import TransportType
 from app.db.session import get_db
 from app.recommend.tmap import TMapError
@@ -27,6 +27,7 @@ from app.schemas.route import (
     RouteItemResponse,
     RouteItemUpdate,
 )
+from app.services.place_access import load_visible_place
 from app.services.route_access import load_owned_day, load_owned_item
 from app.services.route_recommendation import RecommendationGenerationError, replace_route_item
 
@@ -119,9 +120,12 @@ def create_route_item(
 ) -> RouteItemResponse:
     day, route = load_owned_day(db, route_day_id, current_user)
 
-    place = db.get(Place, payload.place_id) if payload.place_id is not None else None
-    if payload.place_id is not None and place is None:
-        raise HTTPException(status_code=404, detail="장소를 찾을 수 없습니다")
+    # 남의 개인 장소는 일정에 넣을 수 없다 — 없는 장소와 똑같이 404 다.
+    place = (
+        load_visible_place(db, payload.place_id, current_user)
+        if payload.place_id is not None
+        else None
+    )
 
     existing = _sorted_items(day)
     # 명세는 "이미 있는 값이면 뒤 항목을 밀어낸다"이다. 목록의 원하는 자리에

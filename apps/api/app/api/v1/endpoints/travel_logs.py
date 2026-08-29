@@ -33,7 +33,7 @@ from sqlalchemy import Integer, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.dependencies import CurrentUser
-from app.db.models import Notification, Pet, Place, Route, TravelLog, TravelLogPet, User
+from app.db.models import Notification, Pet, Route, TravelLog, TravelLogPet, User
 from app.db.models.enums import GenerationStatus, MomentMood, WritingStyle
 from app.db.session import BackgroundSessionFactory, get_background_session, get_db
 from app.integrations.llm.travel_log_image import generate_log_image
@@ -51,6 +51,7 @@ from app.schemas.travel_log import (
     TravelLogRouteSummary,
     TravelLogUpdate,
 )
+from app.services.place_access import load_visible_place
 from app.services.route_access import load_owned_route, pets_of
 
 router = APIRouter(prefix="/travel-logs")
@@ -104,7 +105,7 @@ def create_travel_log(
         # 없으면 404, 남의 여행이면 403. 여행 쪽과 같은 규칙을 그대로 쓴다.
         load_owned_route(db, payload.route_id, current_user)
 
-    place_name = _resolve_place_name(db, payload.place_id, payload.place_name)
+    place_name = _resolve_place_name(db, payload.place_id, payload.place_name, current_user)
 
     log = TravelLog(
         user_id=current_user.id,
@@ -352,9 +353,8 @@ def update_travel_log(
         setattr(log, field, value)
 
     if place_id is not None:
-        place = db.get(Place, place_id)
-        if place is None or not place.is_active:
-            raise HTTPException(status_code=404, detail="장소를 찾을 수 없습니다")
+        # 남의 개인 장소로는 바꿀 수 없다 — 없는 장소와 똑같이 404 다.
+        place = load_visible_place(db, place_id, current_user)
         log.place_id = place.id
         # 장소를 바꾸면 그 시점의 이름을 다시 박제한다. 이름을 함께 보냈으면
         # 그쪽을 존중한다 — 앱이 화면에 보여준 이름과 어긋나지 않게 한다.
@@ -477,7 +477,7 @@ def _load_own_log(
 
 
 def _resolve_place_name(
-    db: Session, place_id: uuid.UUID | None, place_name: str | None
+    db: Session, place_id: uuid.UUID | None, place_name: str | None, user: User
 ) -> str:
     """기록에 박제할 장소명을 정한다.
 
@@ -486,11 +486,11 @@ def _resolve_place_name(
 
     이름을 함께 보냈으면 그쪽을 존중한다 — 앱이 화면에 보여준 이름과 어긋나지
     않게 한다. PATCH 의 장소 변경도 같은 규칙이다.
+
+    남의 개인 장소는 없는 장소와 똑같이 404 다(장소 조회와 동일 규칙).
     """
     if place_id is not None:
-        place = db.get(Place, place_id)
-        if place is None or not place.is_active:
-            raise HTTPException(status_code=404, detail="장소를 찾을 수 없습니다")
+        place = load_visible_place(db, place_id, user)
         return place_name or place.name
 
     if not place_name:

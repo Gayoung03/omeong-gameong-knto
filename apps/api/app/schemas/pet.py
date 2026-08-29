@@ -9,6 +9,7 @@ from pydantic import Field, StringConstraints, field_validator, model_validator
 
 from app.db.models.enums import PetSize, PetSpecies
 from app.schemas.base import APISchema
+from app.schemas.validators import OptionalImageUrl
 
 KST = ZoneInfo("Asia/Seoul")
 PetName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
@@ -54,7 +55,7 @@ class PetCreate(APISchema):
     size: PetSize | None = None
     weight_kg: float | None = Field(default=None, ge=0)
     birth_date: date | None = None
-    image_url: str | None = None
+    image_url: OptionalImageUrl = None
     health_notes: str | None = None
 
     @field_validator("birth_date")
@@ -83,7 +84,7 @@ class PetUpdate(APISchema):
     size: PetSize | None = None
     weight_kg: float | None = Field(default=None, ge=0)
     birth_date: date | None = None
-    image_url: str | None = None
+    image_url: OptionalImageUrl = None
     health_notes: str | None = None
 
     @field_validator("birth_date")

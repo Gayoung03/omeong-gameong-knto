@@ -8,6 +8,7 @@ from pydantic import Field, StringConstraints, field_validator
 
 from app.db.models.enums import AuthProvider
 from app.schemas.base import APISchema
+from app.schemas.validators import OptionalImageUrl
 
 Nickname = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
 
@@ -49,7 +50,7 @@ class UserResponse(APISchema):
 
 class UserUpdate(APISchema):
     nickname: Nickname | None = None
-    profile_image_url: str | None = Field(default=None)
+    profile_image_url: OptionalImageUrl = Field(default=None)
 
     @field_validator("nickname")
     @classmethod
