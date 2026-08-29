@@ -198,3 +198,20 @@ def client(db: Session, owner: User) -> Generator[TestClient, None, None]:
         yield test_client
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def anon_client(db: Session) -> Generator[TestClient, None, None]:
+    """인증 의존성을 **갈아끼우지 않는** 클라이언트.
+
+    `get_current_user`·`get_optional_user` 의 실제 구현(JWT 검증·local 폴백)을 그대로
+    태운다. get_db 와 뒷작업 연결만 테스트 트랜잭션으로 돌린다. 토큰은 테스트가
+    `Authorization: Bearer` 헤더로 직접 실어 보낸다.
+    """
+    app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_background_session] = lambda: _joined_session(db)
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+    app.dependency_overrides.clear()
