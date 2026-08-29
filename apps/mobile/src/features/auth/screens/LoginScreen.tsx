@@ -12,6 +12,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { isAxiosError } from 'axios';
+
+import { getApiErrorMessage } from '@/src/services/apiError';
 import { brandColors, colors } from '@/src/theme';
 
 import { AuthBrand } from '../components/AuthBrand';
@@ -61,8 +64,19 @@ export function LoginScreen() {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
-    await signIn(email);
-    router.replace('/(tabs)/(home)');
+    setNoticeMessage(undefined);
+    try {
+      await signIn(email, password);
+      router.replace('/(tabs)/(home)');
+    } catch (error) {
+      // 이메일 없음·비번 불일치는 서버가 같은 401 로 준다(가입 이메일 노출 방지).
+      // 그 밖(네트워크·서버)은 apiError 관례 문구를 쓴다.
+      setNoticeMessage(
+        isAxiosError(error) && error.response?.status === 401
+          ? '이메일 또는 비밀번호가 올바르지 않아요.'
+          : getApiErrorMessage(error).title,
+      );
+    }
   };
 
   return (
