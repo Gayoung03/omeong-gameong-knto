@@ -97,3 +97,33 @@ class RefreshRequest(APISchema):
 
 class CheckEmailResponse(APISchema):
     available: bool
+
+
+# ---------------------------------------------------------------------------
+# 소셜 로그인 (docs/api/auth.md 소셜 절)
+# ---------------------------------------------------------------------------
+
+
+class SocialTokenResponse(TokenResponse):
+    """소셜 로그인 성공 — 공통 토큰 응답 + `isNewUser`."""
+
+    is_new_user: bool
+
+
+class LinkRequiredResponse(APISchema):
+    """검증 이메일이 기존 계정과 겹쳐 비밀번호 확인이 필요할 때(로그인 미완료)."""
+
+    link_required: bool = True
+    link_token: str
+    masked_email: str
+
+
+class SocialExchangeRequest(APISchema):
+    code: str
+
+
+class SocialCompleteRequest(APISchema):
+    link_token: str
+    action: Literal["link", "separate"]
+    #: `link` 일 때만 필요(기존 계정 비밀번호 확인).
+    password: SecretStr | None = None

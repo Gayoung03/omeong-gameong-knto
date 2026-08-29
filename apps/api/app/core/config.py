@@ -29,6 +29,19 @@ class Settings(BaseSettings):
     weather_api_key: str = ""
     tour_api_key: str = ""
 
+    # --- 소셜 로그인 (카카오) -------------------------------------------
+    #: 카카오 로그인 REST 앱 키(client_id). 인가·토큰 교환에 쓴다.
+    #: kakao_rest_api_key 를 그대로 사용한다(위).
+    #: 보안 강화가 켜져 있으면 필요한 client_secret. 없으면 교환에서 생략한다.
+    kakao_client_secret: str = ""
+    #: access_token_info 로 받은 app_id 가 우리 앱인지 대조할 값. 설정 시에만 검증.
+    kakao_app_id: str = ""
+    #: 카카오 콘솔에 등록한 Redirect URI. 인가·토큰 교환에서 같은 값을 써야 한다.
+    kakao_redirect_uri: str = ""
+    #: returnUrl 허용 프리픽스(콤마 구분). 비어 있으면 local 은 exp://·http://localhost
+    #: 를 기본 허용하고, 그 외 환경은 아무것도 허용하지 않는다(전부 422 — 설정 필수).
+    oauth_return_url_prefixes: str = ""
+
     # --- 챗봇 -------------------------------------------------------------
     openai_api_key: str = ""
     #: 모델은 설정값이라 코드를 고치지 않고 바꾼다. 저렴한 소형부터 시작하고
