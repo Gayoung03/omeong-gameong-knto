@@ -15,6 +15,7 @@ from app.db.models.enums import (
     ScheduleItemType,
     TransportType,
     TripPace,
+    WeatherCondition,
 )
 from app.schemas.base import APISchema
 from app.schemas.validators import OptionalImageUrl
@@ -106,6 +107,27 @@ class RouteMoveResponse(APISchema):
     duration_minutes: int
 
 
+class RouteWeatherResponse(APISchema):
+    """루트 생성 시 저장한 하루 날씨 스냅샷."""
+
+    condition: WeatherCondition
+    temperature: float | None
+    min_temperature: float | None
+    max_temperature: float | None
+    precipitation_probability: int | None
+
+
+class RouteStayResponse(APISchema):
+    """추천 요청에 포함된 숙소."""
+
+    id: uuid.UUID
+    place_id: uuid.UUID | None
+    name: str
+    address: str | None
+    check_in_at: datetime | None
+    check_out_at: datetime | None
+
+
 class RouteDistanceSummary(APISchema):
     """여행 전체 이동 구간의 합계."""
 
@@ -152,6 +174,7 @@ class RouteDayResponse(APISchema):
     day_number: int
     route_date: date
     title: str | None
+    weather: RouteWeatherResponse | None = None
     items: list[RouteItemResponse]
 
 
@@ -173,6 +196,7 @@ class RouteDetail(RouteListItem):
     memo: str | None
     share_token: str | None
     pets: list[RoutePetResponse]
+    stays: list[RouteStayResponse] = Field(default_factory=list)
     distance_summary: RouteDistanceSummary = Field(default_factory=RouteDistanceSummary)
     tour_api_places: list[TourAPIPlaceResponse] = Field(default_factory=list)
     route_days: list[RouteDayResponse]

@@ -50,6 +50,7 @@ from app.schemas.route import (
     RouteRequestAccepted,
     RouteRequestCreate,
     RouteShareResponse,
+    RouteStayResponse,
     RouteUpdate,
     SharedRouteDetail,
     TourAPIPlaceResponse,
@@ -518,10 +519,20 @@ def _fill_computed(
     `model_validate(route)` 는 ORM 객체에 있는 것만 옮겨온다. 이 값들은 세어야
     나오는 것이라 만들어진 응답에 나중에 넣는다.
 
-    **아직 못 채우는 것** — weather(기상청), stays(추천 요청서).
-    데이터 소스가 생기면 여기에 같이 붙인다.
+    날씨는 생성 시 저장된 스냅샷만 읽는다. 상세 조회 중 기상청을 다시 호출하지
+    않으므로 외부 API 장애가 여행 상세 응답을 깨뜨리지 않는다.
     """
     detail.log_count = log_counts_of(db, [route.id]).get(route.id, 0)
+
+    if isinstance(detail, RouteDetail) and route.route_request_id is not None:
+        detail.stays = [
+            RouteStayResponse.model_validate(stay)
+            for stay in db.scalars(
+                select(RouteRequestStay)
+                .where(RouteRequestStay.route_request_id == route.route_request_id)
+                .order_by(RouteRequestStay.check_in_at.nulls_last(), RouteRequestStay.id)
+            ).all()
+        ]
 
     places = [
         item.place for day in detail.route_days for item in day.items if item.place is not None

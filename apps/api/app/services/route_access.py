@@ -38,6 +38,7 @@ def route_detail_options() -> tuple:
     """
     return (
         selectinload(Route.route_days).selectinload(RouteDay.items).selectinload(RouteItem.place),
+        selectinload(Route.route_days).selectinload(RouteDay.weather),
         selectinload(Route.pets),
     )
 

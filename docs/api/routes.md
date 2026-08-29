@@ -483,12 +483,17 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
 | `moveToNext` | 마지막 항목이면 `null`. `route_moves` + TMAP 계산 결과 |
 | `distanceMeters` `durationMinutes` | **DB에 영구 저장하지 않습니다.** `route_calculation_cache`에 최대 24시간만 캐시하고 만료되면 다시 계산합니다 |
 | `weather` | `route_days.weather_snapshot_id` 조인. 없으면 `null` |
+| `stays` | 추천 요청의 `route_request_stays`. 수동 여행이면 빈 배열 |
 | `isSelected` | 추천 항목 중 사용자가 뺀 것을 구분. 기본 `true` |
 | `distanceSummary` | 계산값. 하위 `moveToNext` 합계 |
 | `tourApiPlaces` | 상세 조회 시 한국관광공사 TourAPI에서 실시간 조회한 주변 장소 최대 3건. DB에 저장하지 않음 |
 | `logCount` | 계산값. 이 여행에 속한 `travel_logs` 개수. 여행 모아보기 화면 헤더가 씀 ([`travel-logs.md`](./travel-logs.md)) |
 
 `route_moves`에는 순서와 이동수단만 영구 저장하고, 거리·시간·polyline은 캐시에서 가져옵니다.
+
+날씨는 루트 생성 시 저장된 스냅샷만 반환합니다. 상세 조회 시 기상청 API를 다시
+호출하지 않으므로 기상청 장애나 API 키 누락이 있어도 상세 응답은 정상 반환되며,
+저장된 스냅샷이 없는 날짜의 `weather`는 `null`입니다.
 
 ### 에러
 
