@@ -36,7 +36,7 @@ import type { SignupData } from '../types/auth';
 const initialData: SignupData = {
   agreements: { age14: false, terms: false, privacy: false, marketing: false },
   account: { email: '', password: '', passwordConfirm: '', nickname: '' },
-  pet: { type: null, typeDetail: '', size: null },
+  pet: { name: '', type: null, typeDetail: '', size: null },
   travel: {
     duration: null,
     transport: null,
@@ -54,6 +54,7 @@ export function SignupScreen() {
   const [data, setData] = useState<SignupData>(initialData);
   const [accountErrors, setAccountErrors] = useState<AccountErrors>({});
   const [agreementError, setAgreementError] = useState<string>();
+  const [petError, setPetError] = useState<string>();
   const [submitError, setSubmitError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
 
@@ -89,9 +90,43 @@ export function SignupScreen() {
     return Object.keys(errors).length === 0 && !agreementsMissing;
   };
 
+  /**
+   * 펫 단계 검증. 펫 정보를 하나라도 채웠으면 완전한 펫(종류·이름·기타상세)을 요구하고,
+   * 전부 비었으면 통과시켜 펫을 보내지 않는다(기존 "선택" 동작). 백엔드 pet 규칙과
+   * 맞춘다 — name 필수(1~50자), species=other 면 speciesDetail 필수.
+   */
+  const validatePet = () => {
+    const name = data.pet.name.trim();
+    const hasAnyInfo =
+      data.pet.type !== null ||
+      data.pet.size !== null ||
+      name.length > 0 ||
+      data.pet.typeDetail.trim().length > 0;
+
+    if (!hasAnyInfo) {
+      setPetError(undefined);
+      return true;
+    }
+    if (data.pet.type === null) {
+      setPetError('반려동물 종류를 선택해주세요.');
+      return false;
+    }
+    if (name.length === 0 || name.length > 50) {
+      setPetError('반려동물 이름을 1~50자로 입력해주세요.');
+      return false;
+    }
+    if (data.pet.type === 'other' && data.pet.typeDetail.trim().length === 0) {
+      setPetError('기타 종의 종류를 입력해주세요.');
+      return false;
+    }
+    setPetError(undefined);
+    return true;
+  };
+
   const goNext = () => {
     setSubmitError(undefined);
     if (step === 1 && !validateAccount()) return;
+    if (step === 2 && !validatePet()) return;
     setStep((current) => Math.min(current + 1, 3));
   };
 
@@ -110,7 +145,11 @@ export function SignupScreen() {
 
   const skipCurrentStep = () => {
     if (step === 2) {
-      setData((current) => ({ ...current, pet: { type: null, typeDetail: '', size: null } }));
+      setPetError(undefined);
+      setData((current) => ({
+        ...current,
+        pet: { name: '', type: null, typeDetail: '', size: null },
+      }));
       setStep(3);
       return;
     }
@@ -304,6 +343,23 @@ export function SignupScreen() {
                       value={data.pet.typeDetail}
                     />
                   )}
+                </Section>
+
+                <Section title="반려동물 이름">
+                  <IconTextField
+                    error={petError}
+                    icon="paw-outline"
+                    maxLength={50}
+                    onChangeText={(value) => {
+                      setData((current) => ({
+                        ...current,
+                        pet: { ...current.pet, name: value },
+                      }));
+                      if (petError) setPetError(undefined);
+                    }}
+                    placeholder="반려동물 이름 (입력 시 필수)"
+                    value={data.pet.name}
+                  />
                 </Section>
 
                 <Section title="반려동물 크기">
