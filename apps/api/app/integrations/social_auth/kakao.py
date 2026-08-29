@@ -8,12 +8,30 @@
 provider 를 확장할 수 있게 프로필 형태(`SocialProfile`)와 예외는 provider 중립이다.
 """
 
+import logging
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
 import httpx
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+def _log_rejection(step: str, response: httpx.Response) -> None:
+    """카카오가 거부한 이유를 내부 로그에만 남긴다.
+
+    외부 응답은 일반화된 401 하나지만(정보 노출 방지), KOE 코드가 로그에 없으면
+    콘솔 설정 문제(client secret 사용함, 동의항목 등)를 진단할 방법이 없다.
+    토큰·사용자 정보는 남기지 않는다 — error/error_code 필드만.
+    """
+    try:
+        body = response.json()
+        detail = {k: body.get(k) for k in ("error", "error_code", "error_description") if k in body}
+    except ValueError:
+        detail = {"raw": response.text[:200]}
+    logger.warning("카카오 %s 거부: status=%s %s", step, response.status_code, detail)
 
 KAKAO_AUTHORIZE_URL = "https://kauth.kakao.com/oauth/authorize"
 KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
@@ -79,7 +97,8 @@ class KakaoOAuthClient:
         if response.status_code >= 500:
             raise SocialProviderUnavailable("카카오 서버가 응답하지 않습니다")
         if response.status_code != 200:
-            # 400/401(잘못된·만료된 코드) 등은 인증 실패로 통일.
+            # 400/401(잘못된·만료된 코드, client secret 미전송 등)은 인증 실패로 통일.
+            _log_rejection("토큰 교환", response)
             raise SocialAuthError("카카오 인가 코드가 유효하지 않습니다")
         access_token = response.json().get("access_token")
         if not access_token:
@@ -117,6 +136,7 @@ class KakaoOAuthClient:
         if response.status_code >= 500:
             raise SocialProviderUnavailable("카카오 서버가 응답하지 않습니다")
         if response.status_code != 200:
+            _log_rejection("사용자 정보 조회", response)
             raise SocialAuthError("카카오 사용자 정보를 확인하지 못했습니다")
         return response.json()
 
