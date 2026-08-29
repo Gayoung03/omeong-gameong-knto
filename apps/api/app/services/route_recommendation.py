@@ -148,11 +148,14 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     if not any(day.items for day in itinerary.days):
         raise RecommendationGenerationError("일정에 배치할 수 있는 장소가 없습니다")
     if any(
-        not day.items or day.items[-1].candidate.item_type != ScheduleItemType.RESTAURANT
+        day.dinner_required
+        and (
+            not day.items or day.items[-1].candidate.item_type != ScheduleItemType.RESTAURANT
+        )
         for day in itinerary.days
     ):
         raise RecommendationGenerationError(
-            "모든 날짜에 배치할 수 있는 반려동물 동반 저녁 식당이 부족합니다"
+            "저녁 식사가 필요한 날짜에 배치할 수 있는 반려동물 동반 식당이 부족합니다"
         )
 
     _save_itinerary(db, route, itinerary)
