@@ -22,6 +22,8 @@ export type SignupData = {
     nickname: string;
   };
   pet: {
+    /** 반려동물 이름. 펫 정보를 하나라도 채우면 필수(1~50자). 전부 비면 미전송. */
+    name: string;
     type: PetType | null;
     /** type이 'other'일 때만 채워진다. 사용자가 직접 적은 종 이름 */
     typeDetail: string;
