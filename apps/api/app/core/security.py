@@ -98,6 +98,46 @@ def decode_token(token: str, expected_typ: TokenType) -> uuid.UUID:
         raise TokenError from error
 
 
+def encode_token(claims: dict, typ: str, ttl: timedelta) -> str:
+    """짧은 수명의 목적 토큰을 만든다(oauth_state·exchange·link 등).
+
+    access/refresh 와 같은 서명·클레임 규약을 쓰되 `typ` 을 자유롭게 준다. `claims`
+    는 용도별 페이로드(returnUrl, provider 프로필 등)다. `typ`·`jti`·`iat`·`exp` 는
+    서버가 채운다.
+    """
+    now = datetime.now(UTC)
+    payload = {
+        **claims,
+        "typ": typ,
+        "jti": uuid.uuid4().hex,
+        "iat": int(now.timestamp()),
+        "exp": int((now + ttl).timestamp()),
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+
+
+def decode_claims(token: str, expected_typ: str) -> dict:
+    """`encode_token` 으로 만든 토큰을 검증하고 클레임 전체를 돌려준다.
+
+    서명·만료·`typ` 일치를 확인한다. 어느 하나라도 어긋나면 `TokenError`.
+    (subject 만 필요한 access/refresh 는 `decode_token` 을 쓴다.)
+    """
+    try:
+        claims = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[ALGORITHM],
+            leeway=LEEWAY_SECONDS,
+        )
+    except jwt.PyJWTError as error:
+        logger.info("목적 토큰 검증 실패: %s", type(error).__name__)
+        raise TokenError from error
+    if claims.get("typ") != expected_typ:
+        logger.info("목적 토큰 typ 불일치: expected=%s", expected_typ)
+        raise TokenError
+    return claims
+
+
 def hash_password(password: str) -> str:
     return _password_hasher.hash(password)
 
