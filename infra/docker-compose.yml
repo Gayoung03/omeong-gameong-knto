@@ -4,6 +4,7 @@ services:
     container_name: omeong-gameong-migrate
     environment:
       DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY를 .env에 설정하세요.}
     command:
       - /bin/sh
       - -ec
@@ -21,6 +22,7 @@ services:
       APP_NAME: ${APP_NAME:-Omeong Gameong API}
       ENVIRONMENT: ${ENVIRONMENT:-local}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL을 .env에 설정하세요.}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY를 .env에 설정하세요.}
       AWS_REGION: ${AWS_REGION:-ap-northeast-2}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
