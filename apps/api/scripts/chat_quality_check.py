@@ -5,21 +5,26 @@
 
 프로덕션 코드는 고치지 않는다. 모델 설정과 도구 호출 기록만 이 안에서 갈아끼운다.
 
-실행 (로컬 모드에서만):
+문항은 두 벌이고 **도는 DB 가 다르다.**
 
-    make chat-check
+    make chat-check          # rules  — 규정·가이드 질문. 로컬(dev-local)
+    make chat-check-places   # places — 장소 질문. 팀 RDS
 
-장소 질문은 넣지 않았다 — `make dev-local` 에서는 씨앗 장소 4건의 `region` 이
-챗봇 어휘 밖이라 **구조적으로 항상 0건**이다. 규정·가이드는 로컬 씨앗에
-가이드 문서 15편·운송 규정 12건이 다 들어 있어 로컬로 충분하다.
+**장소 질문을 로컬에서 돌리면 무조건 0건이다.** 씨앗 장소 4건의 `region` 이
+챗봇 어휘 밖이라 어떤 지역 질문도 걸리지 않는다. 이걸 모르고 점검하면
+"장소 추천이 다 안 된다"는 잘못된 결론이 나온다. 그래서 타깃을 나눴다.
+
+규정·가이드는 로컬 씨앗에 문서 15편·규정 12건이 다 있어 로컬로 충분하다.
 
 정답 기준은 `scripts/seed_guides.py` 의 값에서 그대로 가져왔다.
 **판정은 사람이 한다.** 이 스크립트는 같은 조건으로 답을 모아줄 뿐이다.
 """
 
+import argparse
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 from app.core.config import settings
 from app.db.session import SessionLocal
@@ -31,7 +36,7 @@ DEFAULT_MODELS = ["gpt-4o-mini", "gpt-4o"]
 
 #: 전부 **회사·항로를 집지 않은 질문**이다. 8/28 에 배운 것 — 한 곳만 조회되는
 #: 질문은 통과하고, 여러 건이 조회되는 질문에서 모델이 뭉갠다.
-QUESTIONS = [
+RULE_QUESTIONS = [
     {
         "id": 1,
         "tag": "회귀 · 8/28 오답 ①",
@@ -103,6 +108,72 @@ QUESTIONS = [
 ]
 
 
+#: 2026-08-29 권역 보정(275곳) 뒤 재검증용. **팀 RDS 에서만 의미가 있다.**
+#: 보정으로 `서귀포시/모슬포` 가 42곳 → 150곳 안팎, `제주시/제주국제공항` 이
+#: 361곳 → 250곳 안팎이 됐다. 늘어난 쪽과 **줄어든 쪽을 함께** 본다.
+PLACE_QUESTIONS = [
+    {
+        "id": 1,
+        "tag": "보정 대상 · 서귀포",
+        "question": "서귀포에서 강아지랑 갈 만한 카페 알려줘",
+        "expected": [
+            "보정 전에는 **2곳**뿐이었다. 여러 곳이 나와야 한다",
+            "소개하는 장소가 실제로 서귀포에 있어야 한다",
+        ],
+        "trap": "여전히 한두 곳이면 보정이 검색에 반영되지 않은 것이다.",
+    },
+    {
+        "id": 2,
+        "tag": "보정 대상 · 서귀포",
+        "question": "서귀포에 강아지랑 갈 수 있는 실내 장소 있어?",
+        "expected": [
+            "보정 전에는 **1곳**뿐이었다",
+            "동반정책을 기본으로 넘기지 않으므로 후보가 넉넉해야 한다",
+        ],
+        "trap": "1곳이면 보정 전과 같다.",
+    },
+    {
+        "id": 3,
+        "tag": "역방향 회귀 · 제주시",
+        "question": "제주시에 강아지랑 갈 카페 추천해줘",
+        "expected": [
+            "**제주시에서 274곳을 뺐다.** 그래도 정상적으로 답해야 한다",
+            "소개하는 장소 주소에 **서귀포가 섞이면 안 된다**",
+        ],
+        "trap": "가장 중요한 문항. 빼는 쪽을 과하게 뺐으면 여기서 드러난다.",
+    },
+    {
+        "id": 4,
+        "tag": "회귀 · 안 건드린 권역",
+        "question": "애월에서 강아지랑 갈 수 있는 카페 알려줘",
+        "expected": ["보정과 무관한 권역이다. 전과 같아야 한다(4곳 이상)"],
+        "trap": "여기가 달라졌으면 엉뚱한 것까지 옮긴 것이다.",
+    },
+    {
+        "id": 5,
+        "tag": "회귀 · 중문",
+        "question": "중문 근처에 강아지랑 갈 만한 곳 있어?",
+        "expected": [
+            "중문 권역은 원래 맞게 분류돼 있었다(활성 25곳). 전과 같아야 한다",
+            "상예동·색달동은 아직 `서귀포시/모슬포` 다 — 2단계 몫이라 지금은 정상",
+        ],
+        "trap": "중문이 비었으면 중문 장소까지 모슬포로 옮긴 것이다.",
+    },
+    {
+        "id": 6,
+        "tag": "다건 · 제주 전체",
+        "question": "제주도에서 반려동물 동반되는 카페 추천해줘",
+        "expected": [
+            "보정 전에는 서귀포·중문이 **0건**이라 북쪽만 나왔다",
+            "이제 남쪽 장소가 섞여 나오면 보정이 먹은 것이다",
+        ],
+        "trap": "권역을 여러 번 검색하는 질문이다. 답변이 여덟 문장을 넘지 않아야 한다(C3).",
+    },
+]
+
+QUESTION_SETS = {"rules": RULE_QUESTIONS, "places": PLACE_QUESTIONS}
+
+
 def _trace_dispatch(trace):
     """`_dispatch` 를 감싸 도구 호출을 기록한다. 원본은 그대로 부른다.
 
@@ -165,21 +236,52 @@ def _print_trace(trace: list[dict]) -> None:
     print()
 
 
+#: 문항 묶음마다 제목과 한 줄 설명이 다르다.
+SET_HEADINGS = {
+    "rules": (
+        "규정 질문 답변 품질 점검",
+        "전부 **회사·항로를 집지 않은 질문**이다. 한 곳만 조회되는 질문은 8/28 에도 통과했다.",
+    ),
+    "places": (
+        "장소 질문 답변 품질 점검 — 권역 보정 재검증",
+        "**팀 RDS 기준.** 로컬에서 돌리면 전부 0건이라 의미가 없다.",
+    ),
+}
+
+
 def main() -> None:
-    models = sys.argv[1].split(",") if len(sys.argv) > 1 else DEFAULT_MODELS
+    parser = argparse.ArgumentParser(description="답변 품질 점검")
+    parser.add_argument(
+        "--set",
+        dest="question_set",
+        choices=sorted(QUESTION_SETS),
+        default="rules",
+        help="rules 규정·가이드(로컬) / places 장소(팀 RDS)",
+    )
+    parser.add_argument(
+        "--models",
+        default=",".join(DEFAULT_MODELS),
+        help="쉼표로 구분. 기본은 " + " / ".join(DEFAULT_MODELS),
+    )
+    args = parser.parse_args()
+
+    models = [name.strip() for name in args.models.split(",") if name.strip()]
+    questions = QUESTION_SETS[args.question_set]
+    title, lead = SET_HEADINGS[args.question_set]
     now = datetime.now(KST)
 
-    print("# 규정 질문 답변 품질 점검")
+    print(f"# {title}")
     print()
-    print(f"실행: {now:%Y-%m-%d %H:%M} KST · 모델 {' / '.join(models)} · 문항 {len(QUESTIONS)}개")
+    print(f"실행: {now:%Y-%m-%d %H:%M} KST · 모델 {' / '.join(models)} · 문항 {len(questions)}개")
+    print(f"대상 DB: `{urlparse(settings.database_url).hostname}`")
     print()
-    print("전부 **회사·항로를 집지 않은 질문**이다. 한 곳만 조회되는 질문은 8/28 에도 통과했다.")
+    print(lead)
     print()
     print("## 채점표")
     print()
     print("| # | 문항 | " + " | ".join(models) + " |")
     print("| --- | --- | " + " | ".join(["---"] * len(models)) + " |")
-    for spec in QUESTIONS:
+    for spec in questions:
         cells = " | ".join(["☐"] * len(models))
         print(f"| {spec['id']} | {spec['question']} | {cells} |")
     print()
@@ -187,7 +289,7 @@ def main() -> None:
     print()
 
     with SessionLocal() as db:
-        for spec in QUESTIONS:
+        for spec in questions:
             print("---")
             print()
             print(f"## {spec['id']}. {spec['question']}")
@@ -205,7 +307,7 @@ def main() -> None:
             for model in models:
                 print(f"### {model}", flush=True)
                 print()
-                sys.stderr.write(f"  [{spec['id']}/{len(QUESTIONS)}] {model} … ")
+                sys.stderr.write(f"  [{spec['id']}/{len(questions)}] {model} … ")
                 sys.stderr.flush()
 
                 answer, trace, seconds, error = _ask(db, model, spec["question"])
