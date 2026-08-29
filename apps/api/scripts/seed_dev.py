@@ -7,6 +7,7 @@ DB에 화면을 확인할 최소한의 데이터를 심는다.
     cd apps/api && uv run python -m scripts.seed_dev
 """
 
+import os
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -15,6 +16,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import DEV_USER_ID
+from app.core.config import settings
+from app.core.security import hash_password
 from app.db.models import (
     Pet,
     Place,
@@ -46,6 +49,10 @@ KST = timezone(timedelta(hours=9))
 # 이 사용자를 돌려주므로 값이 어긋나면 로컬에서 401 이 난다.
 SEED_USER_ID = DEV_USER_ID
 SEED_USER_EMAIL = "seed@omeong.local"
+
+# 데모 로그인용 비밀번호. **환경변수로 줄 때만** 해시로 심는다(코드·저장소에
+# 평문 비밀번호를 두지 않는다). 없으면 기존 동작 — 비밀번호 없는 계정.
+SEED_DEV_PASSWORD = os.environ.get("SEED_DEV_PASSWORD")
 
 SEED_PET_ID = uuid.UUID("00000000-0000-0000-0000-000000000011")
 SEED_ROUTE_ID = uuid.UUID("00000000-0000-0000-0000-000000000201")
@@ -196,12 +203,23 @@ def _warn_if_changed(label: str, field: str, actual: object, expected: object) -
         print(f"  \u26a0 {label}.{field} 가 씨앗과 다릅니다: {actual!r} (기대 {expected!r})")
 
 
+def _apply_dev_password(user: User) -> None:
+    """SEED_DEV_PASSWORD 가 있으면 데모 로그인용 비밀번호를 해시로 심는다.
+
+    없으면 아무것도 하지 않아 기존 동작(비밀번호 없는 계정)이 유지된다. 이메일
+    로그인(`POST /auth/login`, seed@omeong.local)으로 데모할 때 쓴다.
+    """
+    if SEED_DEV_PASSWORD:
+        user.password_hash = hash_password(SEED_DEV_PASSWORD)
+
+
 def seed_user(db: Session) -> User:
     """씨앗 사용자 한 명. 이미 있으면 그대로 돌려준다."""
     user = db.get(User, SEED_USER_ID)
     if user is not None:
         _warn_if_changed("user", "nickname", user.nickname, "율무")
         _warn_if_changed("user", "email", user.email, SEED_USER_EMAIL)
+        _apply_dev_password(user)
         print(f"  사용자   건너뜀 ({user.nickname})")
         return user
 
@@ -210,6 +228,7 @@ def seed_user(db: Session) -> User:
         email=SEED_USER_EMAIL,
         nickname="율무",
     )
+    _apply_dev_password(user)
     db.add(user)
     db.flush()
     print(f"  사용자   생성 ({user.nickname})")
@@ -401,6 +420,12 @@ def seed_route(db: Session, user: User, pet: Pet, places: dict[str, Place]) -> R
 
 
 def main() -> None:
+    # 운영 실행 가드: 이 스크립트는 개발·시연용 더미 데이터를 심는다. production 에서
+    # 실행하면 운영 DB 를 오염시키므로 막는다. (environment 만으로는 environment=local
+    # 인데 DATABASE_URL 이 원격을 가리키는 경우까지 잡지 못한다 — 그건 .env 관리로 방어.)
+    if settings.environment == "production":
+        raise SystemExit("seed_dev 는 운영(production) 환경에서 실행할 수 없습니다.")
+
     print("씨앗 데이터 심는 중...")
     with SessionLocal() as db:
         user = seed_user(db)
