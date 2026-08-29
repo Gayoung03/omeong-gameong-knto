@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { isAxiosError } from 'axios';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -16,7 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { CalendarPicker } from '../components/InlineDateTimePicker';
+import { CalendarRangePicker } from '../components/InlineDateTimePicker';
 import {
   isPriorityPreset,
   isUserCriterion,
@@ -28,9 +29,15 @@ import {
   type UserCriterion,
 } from '../personalization';
 import { formatTripDuration } from '../utils/tripDuration';
+import { savePendingRoute } from '../services/pendingRoute';
 
 import { ConfirmModal } from '@/src/components/feedback/ConfirmModal';
 import { brandAssets } from '@/src/config/brandAssets';
+import { searchAccommodations } from '@/src/features/places/api/placesApi';
+import type { Place } from '@/src/features/places/types/place';
+import { usePets } from '@/src/features/profile/hooks/usePets';
+import { createRouteRecommendation } from '@/src/features/trips/api/tripsApi';
+import type { ServerTransportType, ServerTripPace } from '@/src/features/trips/types/routeApi';
 import { colors as theme, overlayColors, radius, spacing, typography } from '@/src/theme';
 
 const DRAFT_KEY = 'route-input-draft';
@@ -54,17 +61,19 @@ const colors = {
 };
 
 type Trip = { title: string; startAt: string; endAt: string };
-type Stay = { id: string; name: string; period: string; address: string };
-type Pet = { name: string; species: string; size: string; weight: string };
-type EditTarget = 'trip' | 'pet' | 'stay' | null;
-type PickerTarget = 'start-date' | 'end-date' | null;
+type Stay = { id: string; placeId?: string; name: string; period: string; address: string };
+type EditTarget = 'stay' | null;
+type TripPhase = 'dates' | 'details';
+type FirstDayStart = 'stay' | 'other' | null;
 
 type RouteDraft = {
   trip: Trip;
   transportOptions: string[];
   transport: string;
   stays: Stay[];
-  pet: Pet;
+  firstDayStart: FirstDayStart;
+  selectedPetIds: string[];
+  departureLocation: string;
   places: string[];
   pace: string;
   priorityMode: PriorityMode;
@@ -91,22 +100,26 @@ const LEGACY_PLACE_TYPE_MAP: Record<string, (typeof PLACE_TYPE_OPTIONS)[number]>
   오름: '오름·자연',
 };
 
+const SUPPORTED_TRANSPORT_OPTIONS = ['렌터카', '자가용', '택시', '도보'];
+
 type StoredRouteDraft = {
-  version: 3;
+  version: 6;
   draft: RouteDraft;
   currentStep: number;
 };
 
 const initialDraft: RouteDraft = {
   trip: {
-    title: '제주 여행',
-    startAt: new Date(2026, 7, 18, 10, 0).toISOString(),
-    endAt: new Date(2026, 7, 20, 18, 0).toISOString(),
+    title: '',
+    startAt: '',
+    endAt: '',
   },
-  transportOptions: ['렌터카', '택시', '대중교통'],
-  transport: '렌터카',
-  stays: [{ id: 'stay-1', name: '애월 오션펜션', period: '1~2일차', address: '제주시 애월읍' }],
-  pet: { name: '몽이', species: '강아지', size: '소형', weight: '4.2kg' },
+  transportOptions: ['렌터카', '자가용', '택시', '도보'],
+  transport: '',
+  stays: [],
+  firstDayStart: null,
+  selectedPetIds: [],
+  departureLocation: '',
   places: [],
   pace: '여유롭게',
   priorityMode: 'manual',
@@ -129,21 +142,6 @@ const STEPS = [
 ] as const;
 
 const REVIEW_STEP = STEPS.length;
-
-const formatDate = (iso: string) =>
-  new Intl.DateTimeFormat('ko-KR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    weekday: 'short',
-  }).format(new Date(iso));
-
-const formatTime = (iso: string) =>
-  new Intl.DateTimeFormat('ko-KR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(new Date(iso));
 
 const formatShortDate = (iso: string) => {
   const date = new Date(iso);
@@ -195,6 +193,26 @@ const formatStayPeriods = (periods: string[]) => {
   return isContinuous
     ? `${days[0]}~${days.at(-1)}일차`
     : days.map((day) => `${day}일차`).join(', ');
+};
+
+const toStayRequest = (stay: Stay, trip: Trip) => {
+  const days = parseStayPeriods(stay.period)
+    .map((period) => Number(period.replace(/\D/g, '')))
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  const checkInAt = new Date(trip.startAt);
+  checkInAt.setDate(checkInAt.getDate() + Math.max((days[0] ?? 1) - 1, 0));
+  checkInAt.setHours(15, 0, 0, 0);
+  const checkOutAt = new Date(trip.startAt);
+  checkOutAt.setDate(checkOutAt.getDate() + (days.at(-1) ?? 1));
+  checkOutAt.setHours(11, 0, 0, 0);
+  return {
+    placeId: stay.placeId,
+    name: stay.name,
+    address: stay.address || stay.name,
+    checkInAt: checkInAt.toISOString(),
+    checkOutAt: checkOutAt.toISOString(),
+  };
 };
 
 function ChoiceChip({
@@ -263,37 +281,8 @@ function QuestionStep({
   );
 }
 
-function AddRow({
-  value,
-  placeholder,
-  onChangeText,
-  onAdd,
-}: {
-  value: string;
-  placeholder: string;
-  onChangeText: (value: string) => void;
-  onAdd: () => void;
-}) {
-  return (
-    <View style={styles.addRow}>
-      <TextInput
-        onChangeText={onChangeText}
-        onSubmitEditing={onAdd}
-        placeholder={placeholder}
-        placeholderTextColor={theme.textTertiary}
-        returnKeyType="done"
-        style={styles.addInput}
-        value={value}
-      />
-      <Pressable accessibilityLabel="추가" onPress={onAdd} style={styles.inlineAddButton}>
-        <Ionicons color={colors.white} name="add" size={18} />
-      </Pressable>
-    </View>
-  );
-}
-
 function serializeDraft(draft: RouteDraft, currentStep: number): string {
-  const stored: StoredRouteDraft = { version: 3, draft, currentStep };
+  const stored: StoredRouteDraft = { version: 6, draft, currentStep };
   return JSON.stringify(stored);
 }
 
@@ -303,6 +292,11 @@ function restoreDraft(saved: string): { draft: RouteDraft; currentStep: number }
     'draft' in parsed && parsed.draft
       ? (parsed.draft as Partial<RouteDraft>)
       : (parsed as Partial<RouteDraft>);
+  const storedVersion =
+    'version' in parsed && typeof parsed.version === 'number' ? parsed.version : 0;
+  if (storedVersion < 5) {
+    return { draft: initialDraft, currentStep: 0 };
+  }
   const savedTrip = savedDraft.trip as Trip | undefined;
   const priorityPreset = isPriorityPreset(savedDraft.priorityPreset)
     ? savedDraft.priorityPreset
@@ -325,6 +319,11 @@ function restoreDraft(saved: string): { draft: RouteDraft; currentStep: number }
         ),
       ].slice(0, 3)
     : initialDraft.places;
+  const stays = Array.isArray(savedDraft.stays) ? savedDraft.stays : initialDraft.stays;
+  const firstDayStart: FirstDayStart =
+    savedDraft.firstDayStart === 'stay' || savedDraft.firstDayStart === 'other'
+      ? savedDraft.firstDayStart
+      : null;
   const requestedStep = 'currentStep' in parsed ? parsed.currentStep : REVIEW_STEP;
   const currentStep =
     typeof requestedStep === 'number'
@@ -335,6 +334,12 @@ function restoreDraft(saved: string): { draft: RouteDraft; currentStep: number }
     draft: {
       ...initialDraft,
       ...savedDraft,
+      stays,
+      firstDayStart,
+      transportOptions: SUPPORTED_TRANSPORT_OPTIONS,
+      transport: SUPPORTED_TRANSPORT_OPTIONS.includes(savedDraft.transport ?? '')
+        ? savedDraft.transport!
+        : '',
       places,
       priorityMode,
       priorityPreset: priorityMode === 'manual' ? 'balanced' : priorityPreset,
@@ -353,8 +358,18 @@ function validateStep(index: number, draft: RouteDraft): string | null {
     return '여행 일정을 다시 확인해주세요.';
   }
   if (index === 1 && !draft.transport) return '이동수단을 하나 선택해주세요.';
-  if (index === 3 && (!draft.pet.name || !draft.pet.species)) {
-    return '함께 여행할 반려동물 정보를 입력해주세요.';
+  if (
+    index === 2 &&
+    (draft.stays.length === 0 || draft.firstDayStart === 'other') &&
+    !draft.departureLocation.trim()
+  ) {
+    return '첫날 여행을 시작할 장소를 골라주세요.';
+  }
+  if (index === 2 && draft.stays.length > 0 && draft.firstDayStart === null) {
+    return '첫날 숙소에서 출발할지 다른 장소에서 출발할지 골라주세요.';
+  }
+  if (index === 3 && draft.selectedPetIds.length === 0) {
+    return '함께 여행할 반려동물을 한 마리 이상 골라주세요.';
   }
   if (index === 4 && draft.places.length === 0) {
     return '가고 싶은 장소 유형을 한 개 이상 선택해주세요.';
@@ -367,12 +382,16 @@ function validateStep(index: number, draft: RouteDraft): string | null {
 
 export function RouteInputScreen() {
   const router = useRouter();
+  const { data: pets = [], isPending: isPetsPending } = usePets();
   const [draft, setDraft] = useState<RouteDraft>(initialDraft);
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
-  const [pickerTarget, setPickerTarget] = useState<PickerTarget>(null);
+  const [tripPhase, setTripPhase] = useState<TripPhase>('dates');
   const [editingStayId, setEditingStayId] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
-  const [newTransport, setNewTransport] = useState('');
+  const [staySearchQuery, setStaySearchQuery] = useState('');
+  const [staySearchResults, setStaySearchResults] = useState<Place[]>([]);
+  const [staySearchLoading, setStaySearchLoading] = useState(false);
+  const [staySearchError, setStaySearchError] = useState('');
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [autoSaveError, setAutoSaveError] = useState('');
@@ -386,6 +405,7 @@ export function RouteInputScreen() {
   const [pendingStayDelete, setPendingStayDelete] = useState<Stay | null>(null);
   const [formError, setFormError] = useState('');
   const [pageError, setPageError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   /** 현재 표시하는 단계. STEPS.length 면 최종 확인 화면이다. */
   const [openIndex, setOpenIndex] = useState(0);
   const [returnToReview, setReturnToReview] = useState(false);
@@ -393,6 +413,15 @@ export function RouteInputScreen() {
   const isReviewStep = openIndex === REVIEW_STEP;
 
   const goNextStep = (index: number) => {
+    if (index === 0 && tripPhase === 'dates') {
+      if (!draft.trip.startAt || !draft.trip.endAt) {
+        setPageError('도착일과 출발일을 모두 골라주세요.');
+        return;
+      }
+      setPageError('');
+      setTripPhase('details');
+      return;
+    }
     const error = validateStep(index, draft);
     if (error) {
       setPageError(error);
@@ -404,11 +433,16 @@ export function RouteInputScreen() {
   };
 
   const nextStepLabel = (index: number) => {
+    if (index === 0 && tripPhase === 'dates') return '시간 선택';
     return index === STEPS.length - 1 ? '확인' : '다음';
   };
 
   const skipCurrentStep = () => {
-    if (openIndex === 2) updateDraft('stays', []);
+    if (openIndex === 2) {
+      updateDraft('stays', []);
+      updateDraft('firstDayStart', null);
+      if (!draft.departureLocation) updateDraft('departureLocation', '제주국제공항');
+    }
     if (openIndex === 5) updateDraft('pace', initialDraft.pace);
     if (openIndex === 6) {
       setDraft((current) => ({
@@ -463,7 +497,10 @@ export function RouteInputScreen() {
       : draft.stays.length === 1
         ? draft.stays[0].name
         : `${draft.stays[0].name} 외 ${draft.stays.length - 1}곳`,
-    draft.pet.name || '미입력',
+    pets
+      .filter((pet) => draft.selectedPetIds.includes(pet.petId))
+      .map((pet) => pet.name)
+      .join(', ') || '미선택',
     draft.places.join(', ') || '미선택',
     draft.pace,
     draft.priorityMode === 'manual'
@@ -485,24 +522,28 @@ export function RouteInputScreen() {
     setPageError('');
   };
 
-  const openTripEditor = () => {
-    setFormError('');
-    setFormValues(draft.trip);
-    setPickerTarget(null);
-    setEditTarget('trip');
-  };
-
-  const openPetEditor = () => {
-    setFormError('');
-    setFormValues(draft.pet);
-    setEditTarget('pet');
+  const loadStayOptions = async (query = '') => {
+    setStaySearchLoading(true);
+    setStaySearchError('');
+    try {
+      setStaySearchResults(await searchAccommodations(query));
+    } catch {
+      setStaySearchResults([]);
+      setStaySearchError('숙소 목록을 불러오지 못했어요. 직접 입력하거나 다시 시도해주세요.');
+    } finally {
+      setStaySearchLoading(false);
+    }
   };
 
   const openStayEditor = (stay?: Stay) => {
     setFormError('');
     setEditingStayId(stay?.id ?? null);
-    setFormValues(stay ?? { id: '', name: '', period: '', address: '' });
+    setFormValues(stay ?? { id: '', placeId: '', name: '', period: '', address: '' });
+    setStaySearchQuery(stay?.name ?? '');
+    setStaySearchResults([]);
+    setStaySearchError('');
     setEditTarget('stay');
+    void loadStayOptions(stay?.name ?? '');
   };
 
   const toggleStayPeriod = (period: string) => {
@@ -514,75 +555,40 @@ export function RouteInputScreen() {
     setFormError('');
   };
 
-  const updateTripDateTime = (target: Exclude<PickerTarget, null>, selectedDate: Date) => {
-    const field = target.startsWith('start') ? 'startAt' : 'endAt';
-    const current = new Date(formValues[field]);
-
-    current.setFullYear(
-      selectedDate.getFullYear(),
-      selectedDate.getMonth(),
-      selectedDate.getDate(),
-    );
-
-    setFormValues((values) => ({ ...values, [field]: current.toISOString() }));
-    if (Platform.OS === 'android') setPickerTarget(null);
+  const updateTripTime = (field: 'startAt' | 'endAt', hour: number, minute: number) => {
+    const current = new Date(draft.trip[field]);
+    current.setHours(hour, minute, 0, 0);
+    updateDraft('trip', { ...draft.trip, [field]: current.toISOString() });
   };
 
-  const updateTripTime = (field: 'startAt' | 'endAt', hour: number, minute: number) => {
-    const current = new Date(formValues[field]);
-    current.setHours(hour, minute, 0, 0);
-    setFormValues((values) => ({ ...values, [field]: current.toISOString() }));
+  const updateTripDates = (start: Date, end: Date | null) => {
+    const nextStart = new Date(start);
+    nextStart.setHours(10, 0, 0, 0);
+    const nextEnd = end ? new Date(end) : null;
+    nextEnd?.setHours(18, 0, 0, 0);
+    setDraft((current) => ({
+      ...current,
+      stays: [],
+      trip: {
+        ...current.trip,
+        startAt: nextStart.toISOString(),
+        endAt: nextEnd?.toISOString() ?? '',
+      },
+    }));
+    setPageError('');
   };
 
   const closeEditor = () => {
     setEditTarget(null);
-    setPickerTarget(null);
     setEditingStayId(null);
     setFormValues({});
     setFormError('');
+    setStaySearchQuery('');
+    setStaySearchResults([]);
+    setStaySearchError('');
   };
 
   const saveEditor = () => {
-    if (editTarget === 'trip') {
-      if (!formValues.title || !formValues.startAt || !formValues.endAt) {
-        setFormError('여행 이름과 도착·출발 일시를 모두 입력해주세요.');
-        return;
-      }
-      if (new Date(formValues.endAt) <= new Date(formValues.startAt)) {
-        setFormError('출발 일시는 도착 일시보다 이후여야 해요.');
-        return;
-      }
-      const nextTrip = {
-        title: formValues.title,
-        startAt: formValues.startAt,
-        endAt: formValues.endAt,
-      };
-      const validPeriods = new Set(getStayNightOptions(nextTrip).map((option) => option.value));
-      const nextStays = draft.stays.flatMap((stay) => {
-        const nextPeriod = formatStayPeriods(
-          parseStayPeriods(stay.period).filter((period) => validPeriods.has(period)),
-        );
-        if (nextPeriod === stay.period) return [stay];
-        return nextPeriod ? [{ ...stay, period: nextPeriod }] : [];
-      });
-
-      setDraft((current) => ({ ...current, stays: nextStays, trip: nextTrip }));
-      setPageError('');
-    }
-
-    if (editTarget === 'pet') {
-      if (!formValues.name || !formValues.species) {
-        setFormError('반려동물 이름과 종류를 입력해주세요.');
-        return;
-      }
-      updateDraft('pet', {
-        name: formValues.name,
-        species: formValues.species,
-        size: formValues.size,
-        weight: formValues.weight,
-      });
-    }
-
     if (editTarget === 'stay') {
       if (!formValues.name || !formValues.period) {
         setFormError('숙소 이름과 숙박 일차를 입력해주세요.');
@@ -604,6 +610,7 @@ export function RouteInputScreen() {
           editingStayId ??
           `stay-${formValues.period.replace(/\s+/g, '-')}-${formValues.name.replace(/\s+/g, '-')}`,
         name: formValues.name,
+        placeId: formValues.placeId || undefined,
         period: formValues.period,
         address: formValues.address,
       };
@@ -616,14 +623,6 @@ export function RouteInputScreen() {
     }
 
     closeEditor();
-  };
-
-  const addTransport = () => {
-    const value = newTransport.trim();
-    if (!value || draft.transportOptions.includes(value)) return;
-    updateDraft('transportOptions', [...draft.transportOptions, value]);
-    updateDraft('transport', value);
-    setNewTransport('');
   };
 
   const togglePlaceType = (place: string) => {
@@ -686,6 +685,7 @@ export function RouteInputScreen() {
     setResetConfirmOpen(false);
     setDraft(initialDraft);
     setOpenIndex(0);
+    setTripPhase('dates');
     setReturnToReview(false);
     setPageError('');
     try {
@@ -704,8 +704,19 @@ export function RouteInputScreen() {
       setPageError('이동수단을 하나 선택해주세요.');
       return;
     }
-    if (!draft.pet.name || !draft.pet.species) {
-      setPageError('함께 여행할 반려동물 정보를 입력해주세요.');
+    if (draft.selectedPetIds.length === 0) {
+      setPageError('함께 여행할 반려동물을 한 마리 이상 골라주세요.');
+      return;
+    }
+    if (
+      (draft.stays.length === 0 || draft.firstDayStart === 'other') &&
+      !draft.departureLocation.trim()
+    ) {
+      setPageError('첫날 여행을 시작할 장소를 입력해주세요.');
+      return;
+    }
+    if (draft.stays.length > 0 && draft.firstDayStart === null) {
+      setPageError('첫날 숙소에서 출발할지 다른 장소에서 출발할지 골라주세요.');
       return;
     }
     if (draft.places.length === 0) {
@@ -724,20 +735,59 @@ export function RouteInputScreen() {
       setAutoSaveError('입력 정보를 저장하지 못했어요.');
     }
 
+    const transportMap: Record<string, ServerTransportType> = {
+      렌터카: 'rental_car',
+      자가용: 'own_car',
+      택시: 'taxi',
+      도보: 'walk',
+    };
+    const paceMap: Record<string, ServerTripPace> = {
+      여유롭게: 'relaxed',
+      적당히: 'normal',
+      알차게: 'packed',
+    };
+    const selectedPets = pets.filter((pet) => draft.selectedPetIds.includes(pet.petId));
+    if (selectedPets.length !== draft.selectedPetIds.length) {
+      setPageError('선택한 반려동물 정보가 바뀌었어요. 반려동물을 다시 골라주세요.');
+      return;
+    }
+    setIsSubmitting(true);
     setPageError('');
-    router.push({
-      pathname: '/routes/result',
-      params: {
-        petName: draft.pet.name,
-        tripTitle: draft.trip.title,
+    try {
+      const request = {
+        title: draft.trip.title,
         startAt: draft.trip.startAt,
         endAt: draft.trip.endAt,
-        pace: draft.pace,
+        departureLocation:
+          draft.stays.length === 0 || draft.firstDayStart === 'other'
+            ? draft.departureLocation.trim()
+            : undefined,
+        pace: paceMap[draft.pace] ?? 'normal',
+        transport: transportMap[draft.transport],
+        companionCount: 1,
+        preferredTags: draft.places,
         priorityPreset: personalization.priorityPreset,
-        userCriteria: personalization.userCriteria.join(','),
-        selectedPlaces: draft.places.join(','),
-      },
-    });
+        userCriteria: personalization.userCriteria,
+        petIds: selectedPets.map((pet) => pet.petId),
+        stays: draft.stays.map((stay) => toStayRequest(stay, draft.trip)),
+      };
+      const accepted = await createRouteRecommendation(request);
+      await savePendingRoute({ routeId: accepted.routeId, startedAt: Date.now(), request });
+      router.push({
+        pathname: '/routes/result',
+        params: {
+          routeId: accepted.routeId,
+          petName: selectedPets.map((pet) => pet.name).join(', '),
+        },
+      });
+    } catch (error) {
+      const detail = isAxiosError<{ detail?: string }>(error)
+        ? error.response?.data?.detail
+        : null;
+      setPageError(detail ?? '루트 추천을 시작하지 못했어요. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -765,23 +815,53 @@ export function RouteInputScreen() {
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
             {openIndex === 0 ? (
               <QuestionStep
-                description="여행 기간과 도착·출발 시간을 확인해주세요."
+                description={
+                  tripPhase === 'dates'
+                    ? '첫 날은 도착일, 두 번째 날은 출발일로 선택해주세요.'
+                    : '여행 이름과 도착·출발 시간을 입력해주세요.'
+                }
                 icon="calendar-outline"
-                onEdit={openTripEditor}
-                title="여행 일정"
+                title={tripPhase === 'dates' ? '여행 날짜를 골라주세요' : '여행 시간을 알려주세요'}
               >
-                <View style={styles.valueBox}>
-                  <View style={styles.flexOne}>
-                    <Text style={styles.valueLabel}>{draft.trip.title}</Text>
-                    <Text numberOfLines={1} style={styles.valueText}>
-                      {formatShortDate(draft.trip.startAt)} {formatTime(draft.trip.startAt)} 도착 ~{' '}
-                      {formatShortDate(draft.trip.endAt)} {formatTime(draft.trip.endAt)} 출발
-                    </Text>
+                {tripPhase === 'dates' ? (
+                  <CalendarRangePicker
+                    endValue={draft.trip.endAt ? new Date(draft.trip.endAt) : null}
+                    onChange={updateTripDates}
+                    startValue={draft.trip.startAt ? new Date(draft.trip.startAt) : null}
+                  />
+                ) : (
+                  <View>
+                    <View style={styles.formField}>
+                      <Text style={styles.formLabel}>여행 이름</Text>
+                      <TextInput
+                        onChangeText={(title) => updateDraft('trip', { ...draft.trip, title })}
+                        placeholder="예: 우리 아이와 첫 제주 여행"
+                        placeholderTextColor={theme.textTertiary}
+                        style={styles.formInput}
+                        value={draft.trip.title}
+                      />
+                    </View>
+                    <View style={styles.inlineDateSummary}>
+                      <Ionicons color={colors.orange} name="calendar-outline" size={18} />
+                      <Text style={styles.inlineDateSummaryText}>
+                        {formatShortDate(draft.trip.startAt)} ~ {formatShortDate(draft.trip.endAt)}
+                      </Text>
+                      <Text style={styles.durationText}>
+                        {formatTripDuration(draft.trip.startAt, draft.trip.endAt)}
+                      </Text>
+                    </View>
+                    <Text style={styles.formGroupTitle}>도착 시간</Text>
+                    <TimeNumberInput
+                      onChange={(hour, minute) => updateTripTime('startAt', hour, minute)}
+                      value={draft.trip.startAt}
+                    />
+                    <Text style={styles.formGroupTitle}>출발 시간</Text>
+                    <TimeNumberInput
+                      onChange={(hour, minute) => updateTripTime('endAt', hour, minute)}
+                      value={draft.trip.endAt}
+                    />
                   </View>
-                  <Text style={styles.durationText}>
-                    {formatTripDuration(draft.trip.startAt, draft.trip.endAt)}
-                  </Text>
-                </View>
+                )}
               </QuestionStep>
             ) : null}
 
@@ -793,32 +873,15 @@ export function RouteInputScreen() {
                 title="이동수단"
               >
                 <View style={styles.chipRow}>
-                  {draft.transportOptions.map((item, index) => (
+                  {draft.transportOptions.slice(0, 4).map((item) => (
                     <ChoiceChip
                       key={item}
                       label={item}
-                      onDelete={
-                        index > 2
-                          ? () => {
-                              const options = draft.transportOptions.filter(
-                                (option) => option !== item,
-                              );
-                              updateDraft('transportOptions', options);
-                              if (draft.transport === item) updateDraft('transport', options[0]);
-                            }
-                          : undefined
-                      }
                       onPress={() => updateDraft('transport', item)}
                       selected={draft.transport === item}
                     />
                   ))}
                 </View>
-                <AddRow
-                  onAdd={addTransport}
-                  onChangeText={setNewTransport}
-                  placeholder="다른 이동수단 입력"
-                  value={newTransport}
-                />
               </QuestionStep>
             ) : null}
 
@@ -849,6 +912,45 @@ export function RouteInputScreen() {
                   <Ionicons color={colors.orange} name="add-circle" size={15} />
                   <Text style={styles.dashedButtonText}>숙소 추가</Text>
                 </Pressable>
+                {draft.stays.length > 0 ? (
+                  <>
+                    <Text style={styles.formGroupTitle}>첫날 출발 장소</Text>
+                    <View style={styles.chipRow}>
+                      <ChoiceChip
+                        label="숙소에서 출발"
+                        onPress={() => updateDraft('firstDayStart', 'stay')}
+                        selected={draft.firstDayStart === 'stay'}
+                      />
+                      <ChoiceChip
+                        label="다른 장소에서 출발"
+                        onPress={() => updateDraft('firstDayStart', 'other')}
+                        selected={draft.firstDayStart === 'other'}
+                      />
+                    </View>
+                  </>
+                ) : null}
+                {draft.stays.length === 0 || draft.firstDayStart === 'other' ? (
+                  <>
+                    <Text style={styles.formGroupTitle}>여행 시작 장소</Text>
+                    <View style={styles.chipRow}>
+                      {['제주국제공항', '제주항', '서귀포항'].map((place) => (
+                        <ChoiceChip
+                          key={place}
+                          label={place}
+                          onPress={() => updateDraft('departureLocation', place)}
+                          selected={draft.departureLocation === place}
+                        />
+                      ))}
+                    </View>
+                    <TextInput
+                      onChangeText={(value) => updateDraft('departureLocation', value)}
+                      placeholder="다른 시작 장소 입력"
+                      placeholderTextColor={theme.textTertiary}
+                      style={styles.formInput}
+                      value={draft.departureLocation}
+                    />
+                  </>
+                ) : null}
               </QuestionStep>
             ) : null}
 
@@ -857,22 +959,46 @@ export function RouteInputScreen() {
                 accent={colors.deepMint}
                 description="함께 여행할 반려동물의 정보를 확인해주세요."
                 icon="paw-outline"
-                onEdit={openPetEditor}
                 title="반려동물 정보"
               >
-                <View style={styles.petRow}>
-                  <View style={styles.petAvatar}>
-                    <Text style={styles.petEmoji}>🐶</Text>
-                  </View>
-                  <View style={styles.flexOne}>
-                    <Text style={styles.petName}>{draft.pet.name}</Text>
-                    <Text style={styles.petDescription}>
-                      {draft.pet.species} · {draft.pet.size || '크기 미입력'} ·{' '}
-                      {draft.pet.weight || '체중 미입력'}
-                    </Text>
-                  </View>
-                  <Ionicons color={colors.deepMint} name="checkmark-circle" size={18} />
-                </View>
+                {isPetsPending ? (
+                  <Text style={styles.valueText}>반려동물을 불러오는 중이에요...</Text>
+                ) : null}
+                {!isPetsPending && pets.length === 0 ? (
+                  <Text style={styles.valueText}>먼저 프로필에서 반려동물을 등록해주세요.</Text>
+                ) : null}
+                {pets.map((pet) => {
+                  const selected = draft.selectedPetIds.includes(pet.petId);
+                  return (
+                    <Pressable
+                      key={pet.petId}
+                      onPress={() =>
+                        updateDraft(
+                          'selectedPetIds',
+                          selected
+                            ? draft.selectedPetIds.filter((id) => id !== pet.petId)
+                            : [...draft.selectedPetIds, pet.petId],
+                        )
+                      }
+                      style={[styles.petRow, selected && styles.presetCardSelected]}
+                    >
+                      <View style={styles.petAvatar}>
+                        <Text style={styles.petEmoji}>🐾</Text>
+                      </View>
+                      <View style={styles.flexOne}>
+                        <Text style={styles.petName}>{pet.name}</Text>
+                        <Text style={styles.petDescription}>
+                          {pet.species} · {pet.size ?? '크기 미입력'}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        color={selected ? colors.deepMint : colors.gray}
+                        name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={20}
+                      />
+                    </Pressable>
+                  );
+                })}
               </QuestionStep>
             ) : null}
 
@@ -1003,7 +1129,11 @@ export function RouteInputScreen() {
               <View style={styles.reviewSection}>
                 <Text style={styles.reviewEyebrow}>입력 정보 확인</Text>
                 <Text style={styles.reviewTitle}>
-                  {draft.pet.name}와 함께하는 {draft.trip.title}
+                  {pets
+                    .filter((pet) => draft.selectedPetIds.includes(pet.petId))
+                    .map((pet) => pet.name)
+                    .join(', ') || '반려동물'}
+                  와 함께하는 {draft.trip.title}
                 </Text>
                 <Text style={styles.reviewDescription}>
                   추천 전에 입력한 내용을 한 번만 확인해주세요.
@@ -1014,6 +1144,7 @@ export function RouteInputScreen() {
                       key={step.key}
                       onPress={() => {
                         setReturnToReview(true);
+                        if (index === 0) setTripPhase('dates');
                         setOpenIndex(index);
                       }}
                       style={styles.reviewRow}
@@ -1071,12 +1202,16 @@ export function RouteInputScreen() {
           </ScrollView>
 
           <View style={styles.footerNavigation}>
-            {!isReviewStep && openIndex > 0 ? (
+            {!isReviewStep && (openIndex > 0 || tripPhase === 'details') ? (
               <Pressable
                 accessibilityLabel="이전 단계"
                 onPress={() => {
                   setPageError('');
-                  setOpenIndex((current) => Math.max(0, current - 1));
+                  if (openIndex === 0 && tripPhase === 'details') {
+                    setTripPhase('dates');
+                  } else {
+                    setOpenIndex((current) => Math.max(0, current - 1));
+                  }
                 }}
                 style={({ pressed }) => [styles.footerBackButton, pressed && styles.pressed]}
               >
@@ -1085,13 +1220,18 @@ export function RouteInputScreen() {
               </Pressable>
             ) : null}
             <Pressable
+              disabled={isSubmitting}
               onPress={() => (isReviewStep ? void requestRecommendation() : goNextStep(openIndex))}
               style={({ pressed }) => [styles.footerNextButton, pressed && styles.pressed]}
               testID={isReviewStep ? 'recommend-route-button' : 'route-next-button'}
             >
               {isReviewStep ? <Ionicons color={colors.white} name="paw" size={18} /> : null}
               <Text style={styles.footerNextText}>
-                {isReviewStep ? '루트 추천받기' : nextStepLabel(openIndex)}
+                {isSubmitting
+                  ? '추천을 준비하는 중...'
+                  : isReviewStep
+                    ? '루트 추천받기'
+                    : nextStepLabel(openIndex)}
               </Text>
             </Pressable>
           </View>
@@ -1111,106 +1251,94 @@ export function RouteInputScreen() {
           <Pressable onPress={closeEditor} style={styles.modalDismissArea} />
           <View style={styles.modalSheet}>
             <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>
-              {editTarget === 'trip'
-                ? '여행 일정 수정'
-                : editTarget === 'pet'
-                  ? '반려동물 정보 수정'
-                  : '숙소 정보'}
-            </Text>
-
-            {editTarget === 'trip' ? (
-              <>
-                <FormInput
-                  label="여행 이름"
-                  name="title"
-                  setValues={setFormValues}
-                  values={formValues}
-                />
-                <Text style={styles.formGroupTitle}>도착 일시</Text>
-                <View style={styles.dateTimeRow}>
-                  <DateTimeButton
-                    icon="calendar-outline"
-                    label={formatDate(formValues.startAt)}
-                    onPress={() => setPickerTarget('start-date')}
-                    selected={pickerTarget === 'start-date'}
-                  />
-                  <TimeNumberInput
-                    onChange={(hour, minute) => updateTripTime('startAt', hour, minute)}
-                    value={formValues.startAt}
-                  />
-                </View>
-
-                <Text style={styles.formGroupTitle}>출발 일시</Text>
-                <View style={styles.dateTimeRow}>
-                  <DateTimeButton
-                    icon="calendar-outline"
-                    label={formatDate(formValues.endAt)}
-                    onPress={() => setPickerTarget('end-date')}
-                    selected={pickerTarget === 'end-date'}
-                  />
-                  <TimeNumberInput
-                    onChange={(hour, minute) => updateTripTime('endAt', hour, minute)}
-                    value={formValues.endAt}
-                  />
-                </View>
-
-                {pickerTarget ? (
-                  <View style={styles.pickerPanel}>
-                    <View style={styles.pickerHeader}>
-                      <Text style={styles.pickerTitle}>날짜 선택</Text>
-                      <Pressable onPress={() => setPickerTarget(null)}>
-                        <Text style={styles.pickerDoneText}>완료</Text>
-                      </Pressable>
-                    </View>
-                    <CalendarPicker
-                      onChange={(selectedDate) => updateTripDateTime(pickerTarget, selectedDate)}
-                      value={
-                        new Date(
-                          pickerTarget.startsWith('start') ? formValues.startAt : formValues.endAt,
-                        )
-                      }
-                    />
-                  </View>
-                ) : null}
-              </>
-            ) : null}
-
-            {editTarget === 'pet' ? (
-              <>
-                <FormInput label="이름" name="name" setValues={setFormValues} values={formValues} />
-                <FormInput
-                  label="종류"
-                  name="species"
-                  setValues={setFormValues}
-                  values={formValues}
-                />
-                <View style={styles.twoColumns}>
-                  <View style={styles.column}>
-                    <FormInput
-                      label="크기"
-                      name="size"
-                      setValues={setFormValues}
-                      values={formValues}
-                    />
-                  </View>
-                  <View style={styles.column}>
-                    <FormInput
-                      label="체중"
-                      name="weight"
-                      setValues={setFormValues}
-                      values={formValues}
-                    />
-                  </View>
-                </View>
-              </>
-            ) : null}
+            <Text style={styles.modalTitle}>숙소 정보</Text>
 
             {editTarget === 'stay' ? (
               <>
+                <View style={styles.formField}>
+                  <Text style={styles.formLabel}>등록된 숙소 찾기</Text>
+                  <Text style={styles.formHelper}>
+                    숙소를 선택하면 저장된 주소와 위치를 루트 추천에 반영해요.
+                  </Text>
+                  <View style={styles.staySearchRow}>
+                    <TextInput
+                      onChangeText={setStaySearchQuery}
+                      onSubmitEditing={() => void loadStayOptions(staySearchQuery)}
+                      placeholder="숙소 이름으로 검색"
+                      placeholderTextColor={theme.textTertiary}
+                      returnKeyType="search"
+                      style={styles.staySearchInput}
+                      value={staySearchQuery}
+                    />
+                    <Pressable
+                      accessibilityLabel="숙소 검색"
+                      disabled={staySearchLoading}
+                      onPress={() => void loadStayOptions(staySearchQuery)}
+                      style={styles.staySearchButton}
+                    >
+                      <Ionicons color={colors.white} name="search" size={20} />
+                    </Pressable>
+                  </View>
+                  {staySearchLoading ? (
+                    <Text style={styles.staySearchMessage}>숙소를 찾고 있어요…</Text>
+                  ) : staySearchError ? (
+                    <Text style={styles.staySearchError}>{staySearchError}</Text>
+                  ) : staySearchResults.length === 0 ? (
+                    <Text style={styles.staySearchMessage}>
+                      검색 결과가 없어요. 아래에서 직접 입력할 수 있어요.
+                    </Text>
+                  ) : (
+                    <ScrollView
+                      keyboardShouldPersistTaps="handled"
+                      nestedScrollEnabled
+                      style={styles.staySearchList}
+                    >
+                      {staySearchResults.map((place) => {
+                        const selected = formValues.placeId === place.id;
+                        return (
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                            key={place.id}
+                            onPress={() => {
+                              setFormValues((current) => ({
+                                ...current,
+                                placeId: place.id,
+                                name: place.name,
+                                address: place.address,
+                              }));
+                              setFormError('');
+                            }}
+                            style={[
+                              styles.staySearchItem,
+                              selected && styles.staySearchItemSelected,
+                            ]}
+                          >
+                            <View style={styles.staySearchItemCopy}>
+                              <Text style={styles.staySearchItemName}>{place.name}</Text>
+                              <Text numberOfLines={1} style={styles.staySearchItemAddress}>
+                                {place.address || '주소 정보 없음'}
+                              </Text>
+                            </View>
+                            {selected ? (
+                              <Ionicons color={colors.deepMint} name="checkmark-circle" size={22} />
+                            ) : null}
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
+                </View>
+
+                <View style={styles.manualStayDivider}>
+                  <View style={styles.manualStayDividerLine} />
+                  <Text style={styles.manualStayDividerText}>목록에 없다면 직접 입력</Text>
+                  <View style={styles.manualStayDividerLine} />
+                </View>
                 <FormInput
                   label="숙소 이름"
                   name="name"
+                  onChange={() => setFormValues((current) => ({ ...current, placeId: '' }))}
                   setValues={setFormValues}
                   values={formValues}
                 />
@@ -1259,6 +1387,7 @@ export function RouteInputScreen() {
                 <FormInput
                   label="주소"
                   name="address"
+                  onChange={() => setFormValues((current) => ({ ...current, placeId: '' }))}
                   setValues={setFormValues}
                   values={formValues}
                 />
@@ -1312,33 +1441,6 @@ export function RouteInputScreen() {
         visible={resetConfirmOpen}
       />
     </SafeAreaView>
-  );
-}
-
-function DateTimeButton({
-  icon,
-  label,
-  onPress,
-  selected,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  onPress: () => void;
-  selected: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.dateTimeButton, selected && styles.dateTimeButtonSelected]}
-    >
-      <Ionicons color={selected ? colors.orange : colors.gray} name={icon} size={17} />
-      <Text
-        numberOfLines={1}
-        style={[styles.dateTimeText, selected && styles.dateTimeTextSelected]}
-      >
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -1396,11 +1498,13 @@ function TimeNumberInput({
 function FormInput({
   label,
   name,
+  onChange,
   values,
   setValues,
 }: {
   label: string;
   name: string;
+  onChange?: () => void;
   values: Record<string, string>;
   setValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }) {
@@ -1408,7 +1512,10 @@ function FormInput({
     <View style={styles.formField}>
       <Text style={styles.formLabel}>{label}</Text>
       <TextInput
-        onChangeText={(value) => setValues((current) => ({ ...current, [name]: value }))}
+        onChangeText={(value) => {
+          onChange?.();
+          setValues((current) => ({ ...current, [name]: value }));
+        }}
         placeholder={`${label} 입력`}
         placeholderTextColor={theme.textTertiary}
         style={styles.formInput}
@@ -1825,6 +1932,72 @@ const styles = StyleSheet.create({
     outlineStyle: 'none',
     paddingHorizontal: 12,
   } as never,
+  staySearchRow: { flexDirection: 'row', gap: 8 },
+  staySearchInput: {
+    borderColor: colors.line,
+    borderRadius: 10,
+    borderWidth: 1,
+    color: colors.ink,
+    flex: 1,
+    fontSize: typography.body.fontSize,
+    minHeight: 44,
+    outlineStyle: 'none',
+    paddingHorizontal: 12,
+  } as never,
+  staySearchButton: {
+    alignItems: 'center',
+    backgroundColor: colors.deepMint,
+    borderRadius: 10,
+    justifyContent: 'center',
+    width: 48,
+  },
+  staySearchList: {
+    borderColor: theme.divider,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 8,
+    maxHeight: 170,
+  },
+  staySearchItem: {
+    alignItems: 'center',
+    borderBottomColor: theme.divider,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    minHeight: 58,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  staySearchItemSelected: { backgroundColor: theme.seaSoftLight },
+  staySearchItemCopy: { flex: 1, paddingRight: 8 },
+  staySearchItemName: {
+    color: colors.ink,
+    fontSize: typography.label.fontSize,
+    fontWeight: '800',
+  },
+  staySearchItemAddress: {
+    color: colors.gray,
+    fontSize: typography.caption.fontSize,
+    marginTop: 3,
+  },
+  staySearchMessage: {
+    color: colors.gray,
+    fontSize: typography.caption.fontSize,
+    marginTop: 8,
+  },
+  staySearchError: {
+    color: colors.red,
+    fontSize: typography.caption.fontSize,
+    marginTop: 8,
+  },
+  manualStayDivider: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+    marginTop: 2,
+  },
+  manualStayDividerLine: { backgroundColor: theme.divider, flex: 1, height: 1 },
+  manualStayDividerText: { color: theme.textTertiary, fontSize: typography.caption.fontSize },
   stayPeriodChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   stayPeriodChip: {
     backgroundColor: theme.neutralGray,
@@ -1867,36 +2040,31 @@ const styles = StyleSheet.create({
     marginBottom: 7,
     marginTop: 2,
   },
-  dateTimeRow: { flexDirection: 'row', gap: 8, marginBottom: 13 },
-  dateTimeButton: {
+  inlineDateSummary: {
     alignItems: 'center',
-    borderColor: colors.line,
-    borderRadius: 10,
-    borderWidth: 1,
-    flex: 1,
+    backgroundColor: theme.primarySoft,
+    borderRadius: 11,
     flexDirection: 'row',
-    gap: 6,
-    minHeight: 44,
-    paddingHorizontal: 10,
+    gap: 8,
+    marginBottom: 16,
+    padding: 12,
   },
-  dateTimeButtonSelected: { backgroundColor: theme.primarySoft, borderColor: colors.orange },
-  dateTimeText: {
-    color: colors.gray,
-    flexShrink: 1,
+  inlineDateSummaryText: {
+    color: colors.ink,
+    flex: 1,
     fontSize: typography.label.fontSize,
-    fontWeight: '700',
+    fontWeight: '800',
   },
-  dateTimeTextSelected: { color: colors.orange },
   timeNumberGroup: {
     alignItems: 'center',
     borderColor: colors.line,
     borderRadius: 10,
     borderWidth: 1,
-    flex: 1,
     flexDirection: 'row',
     justifyContent: 'center',
     minHeight: 44,
     paddingHorizontal: 8,
+    width: '100%',
   },
   timeNumberInput: {
     color: colors.ink,
@@ -1915,25 +2083,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginHorizontal: 2,
   },
-  pickerPanel: {
-    backgroundColor: theme.surface,
-    borderColor: colors.line,
-    borderRadius: 13,
-    borderWidth: 1,
-    marginBottom: 12,
-    overflow: 'hidden',
-    padding: 10,
-  },
-  pickerHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingBottom: 6,
-  },
-  pickerTitle: { color: colors.ink, fontSize: typography.subtitle.fontSize, fontWeight: '800' },
-  pickerDoneText: { color: colors.orange, fontSize: typography.label.fontSize, fontWeight: '900' },
-  twoColumns: { flexDirection: 'row', gap: 9 },
-  column: { flex: 1 },
   modalActions: { flexDirection: 'row', gap: 9, marginTop: 8 },
   cancelButton: {
     alignItems: 'center',

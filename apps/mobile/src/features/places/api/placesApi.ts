@@ -9,7 +9,7 @@ import type { Place } from '../types/place';
 import { toPlace, toPlaceDetail } from './placeAdapter';
 
 /** 제주도 장소 수가 많지 않아 한 번에 받아 화면에서 거른다. */
-const LIST_LIMIT = 100;
+const LIST_LIMIT = 1000;
 
 /**
  * 공식 장소 목록.
@@ -30,6 +30,15 @@ export async function getPlaces(): Promise<Place[]> {
 export async function searchPlaces(query: string, limit = 20): Promise<Place[]> {
   const { data } = await apiClient.get<PlaceListResponse>('/places', {
     params: { q: query, limit },
+  });
+
+  return data.items.map(toPlace);
+}
+
+/** 루트 추천의 숙소 선택용 공식 숙박 장소 검색. */
+export async function searchAccommodations(query = '', limit = 30): Promise<Place[]> {
+  const { data } = await apiClient.get<PlaceListResponse>('/places', {
+    params: { category: 'accommodation', limit, q: query.trim() || undefined },
   });
 
   return data.items.map(toPlace);

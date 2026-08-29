@@ -10,5 +10,5 @@ def test_relaxed_pace_contract() -> None:
     relaxed = PACE[TripPace.RELAXED]
 
     assert relaxed["places_per_day"] == 3
-    assert relaxed["rest_min"] == 40
-    assert relaxed["window"] == ("10:00", "18:00")
+    assert relaxed["rest_min"] == 110
+    assert relaxed["window"] == ("10:00", "19:00")

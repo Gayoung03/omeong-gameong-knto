@@ -15,6 +15,7 @@ from pydantic import Field
 
 from app.db.models.enums import GenerationStatus, MomentMood, WritingStyle
 from app.schemas.base import APISchema
+from app.schemas.validators import ImageUrl
 
 
 class TravelLogCompanion(APISchema):
@@ -77,7 +78,7 @@ class TravelLogCreate(APISchema):
     place_name: str | None = None
     recorded_date: date
     visited_at: datetime | None = None
-    original_image_url: str = Field(min_length=1)
+    original_image_url: ImageUrl = Field(min_length=1)
     writing_style: WritingStyle
     mood: MomentMood | None = None
     personal_message: str | None = None

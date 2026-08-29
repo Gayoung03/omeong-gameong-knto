@@ -12,6 +12,7 @@ from pydantic import Field
 
 from app.db.models.enums import PetSize, PetSpecies
 from app.schemas.base import APISchema
+from app.schemas.validators import ImageUrl
 
 
 class ReviewAuthor(APISchema):
@@ -98,7 +99,7 @@ class ReviewCreate(APISchema):
     visited_at: date | None = None
     pet_id: uuid.UUID | None = None
     #: 배열 순서가 그대로 review_images.sort_order 가 된다.
-    image_urls: list[str] = Field(default_factory=list)
+    image_urls: list[ImageUrl] = Field(default_factory=list)
 
 
 class ReviewUpdate(APISchema):
@@ -113,4 +114,4 @@ class ReviewUpdate(APISchema):
     content: str | None = None
     pet_policy_accurate: bool | None = None
     visited_at: date | None = None
-    image_urls: list[str] | None = None
+    image_urls: list[ImageUrl] | None = None

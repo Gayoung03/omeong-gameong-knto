@@ -32,13 +32,29 @@
 import json
 import uuid
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 
 from openai import APITimeoutError, OpenAI
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.models.enums import MessageRole, PetPolicyType, PlaceEnvironment
+from app.db.models.enums import (
+    CarrierType,
+    GuideCategory,
+    MessageRole,
+    PetPolicyType,
+    PlaceEnvironment,
+)
 from app.rag.prompts.system import build_system_prompt
+from app.rag.retrieval.guide_search import (
+    DEFAULT_GUIDE_LIMIT,
+    MAX_GUIDE_LIMIT,
+    GuideHit,
+    TransportRuleHit,
+    Verdict,
+    search_guides,
+    search_transport_rules,
+)
 from app.rag.retrieval.place_search import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
@@ -98,6 +114,76 @@ SEARCH_TOOL = {
         },
     },
 }
+
+
+GUIDE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "search_guides",
+        "description": (
+            "반려동물과 제주를 오갈 때 필요한 안내 글을 찾는다. "
+            "준비물, 케이지, 제주 입도 절차, 렌터카, 항공사·여객선 이용 방법을 물으면 쓴다. "
+            "무게나 요금처럼 숫자로 따지는 질문은 search_transport_rules 를 쓴다."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": [c.value for c in GuideCategory],
+                    "description": "airline 항공사 / ferry 여객선 / preparation 준비물·절차",
+                },
+                "keywords": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "제목·본문에서 찾을 낱말. 하나라도 걸리면 나온다. "
+                        "'케이지', '입마개', '예방접종' 처럼 짧게 넣는다."
+                    ),
+                },
+                "limit": {"type": "integer", "minimum": 1, "maximum": MAX_GUIDE_LIMIT},
+            },
+            "additionalProperties": False,
+        },
+    },
+}
+
+TRANSPORT_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "search_transport_rules",
+        "description": (
+            "항공사·여객선의 반려동물 운송 규정을 조회한다. "
+            "기내 탑승 가능 여부, 무게 상한, 요금, 신청 기한을 물으면 반드시 이 도구를 쓴다. "
+            "무게를 알면 pet_weight_kg 에 넣는다 — 가능/불가 판정이 함께 나온다."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "carrier_type": {
+                    "type": "string",
+                    "enum": [c.value for c in CarrierType],
+                    "description": "airline 항공사 / ferry 여객선. 생략하면 둘 다.",
+                },
+                "carrier_name": {
+                    "type": "string",
+                    "description": (
+                        "'대한항공' 처럼 회사 이름 일부. 생략하면 전부 나오므로 "
+                        "비교하는 질문에는 생략한다."
+                    ),
+                },
+                "pet_weight_kg": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "반려동물 무게(kg). 케이지를 포함한 무게가 기준이다.",
+                },
+            },
+            "additionalProperties": False,
+        },
+    },
+}
+
+TOOLS = [SEARCH_TOOL, GUIDE_TOOL, TRANSPORT_TOOL]
 
 
 class ChatGenerationError(RuntimeError):
@@ -182,6 +268,192 @@ def _run_search(db: Session, raw_arguments: str) -> tuple[str, list[PlaceHit]]:
     return json.dumps([_describe(hit) for hit in hits], ensure_ascii=False), hits
 
 
+def _date(value) -> str | None:
+    """확인일은 날짜까지만 준다. 시·분은 답변에 쓸 일이 없다."""
+    return value.date().isoformat() if value else None
+
+
+def _describe_guide(hit: GuideHit) -> dict:
+    """가이드 글 하나. 본문이 400~1100자로 짧아 통째로 준다.
+
+    `sources` 와 `verified_at` 을 빼지 않는다 — 이걸 빼면 GPT 가 출처 없이
+    단정하게 되고, 그러라고 만든 도구가 아니다(설계 결정 A6).
+    """
+    return {
+        "title": hit.title,
+        "category": hit.category.value,
+        "body": hit.body,
+        "sources": [
+            {"name": name, "url": url} if url else {"name": name} for name, url in hit.sources
+        ],
+        "verified_at": _date(hit.verified_at),
+    }
+
+
+def _describe_rule(hit: TransportRuleHit) -> dict:
+    """운송 규정 하나.
+
+    **값이 없는 항목은 아예 넣지 않는다.** `null` 을 그대로 넘기면 GPT 가 그것을
+    "없다 = 불가"로 읽는다. 우리가 모르는 것은 말하지 않는 편이 낫다(설계 결정 A7).
+
+    다만 `cabin_allowed` 가 `False` 인 경우(불가라고 명시)는 반드시 남긴다 —
+    빠지면 안 되는 곳이 후보로 올라온다.
+    """
+    described: dict = {
+        "carrier_name": hit.carrier_name,
+        "carrier_type": hit.carrier_type.value,
+    }
+    optional = {
+        "route": hit.route,
+        "cabin_allowed": hit.cabin_allowed,
+        "cabin_max_weight_kg": (
+            float(hit.cabin_max_weight_kg) if hit.cabin_max_weight_kg is not None else None
+        ),
+        "cabin_fee_krw": hit.cabin_fee_krw,
+        "cargo_allowed": hit.cargo_allowed,
+        "cargo_max_weight_kg": (
+            float(hit.cargo_max_weight_kg) if hit.cargo_max_weight_kg is not None else None
+        ),
+        "cargo_fee_krw": hit.cargo_fee_krw,
+        "same_day_request_allowed": hit.same_day_request_allowed,
+        "request_deadline_hours": hit.request_deadline_hours,
+        "pledge_required": hit.pledge_required,
+        "duration_minutes": hit.duration_minutes,
+        "notes": hit.notes,
+        "source_url": hit.source_url,
+        "verified_at": _date(hit.verified_at),
+    }
+    described.update({key: value for key, value in optional.items() if value is not None})
+
+    # 판정은 무게를 넣어 불렀을 때만 붙는다. 숫자 비교를 모델에게 맡기지 않는다.
+    if hit.cabin_verdict is not None:
+        described["cabin_verdict"] = hit.cabin_verdict.value
+    if hit.cargo_verdict is not None:
+        described["cargo_verdict"] = hit.cargo_verdict.value
+    return described
+
+
+def _run_guide_search(db: Session, raw_arguments: str) -> str:
+    try:
+        arguments = json.loads(raw_arguments or "{}")
+    except json.JSONDecodeError:
+        return "검색 조건을 읽지 못했습니다. 다시 시도하세요."
+
+    try:
+        hits = search_guides(
+            db,
+            category=(
+                GuideCategory(arguments["category"]) if arguments.get("category") else None
+            ),
+            keywords=arguments.get("keywords"),
+            limit=int(arguments.get("limit") or DEFAULT_GUIDE_LIMIT),
+        )
+    except (ValueError, TypeError) as error:
+        return f"검색 조건이 잘못됐습니다: {error}"
+
+    if not hits:
+        return "해당하는 안내 글이 없습니다."
+    return json.dumps([_describe_guide(hit) for hit in hits], ensure_ascii=False)
+
+
+def _leg_phrase(kind: str, verdict: Verdict | None, max_weight: float | None) -> str:
+    """기내/위탁 한 쪽의 결론을 문장 조각으로.
+
+    **왜 안 되는지를 반드시 담는다.** `이용 불가` 라고만 보냈더니 GPT 가
+    "기내 탑승이 불가하다"로 옮겨 적었다 — 실제로는 기내는 되고 위탁이 없는
+    항공사였다. 이유가 빠지면 모델이 채워 넣는다.
+    """
+    if verdict is Verdict.ALLOWED:
+        return f"{kind} 가능"
+    if verdict is Verdict.OVER_WEIGHT:
+        limit = f"(상한 {max_weight:g}kg 초과)" if max_weight is not None else "(상한 초과)"
+        return f"{kind} 불가{limit}"
+    if verdict is Verdict.NOT_ALLOWED:
+        # 규정상 불가. 위탁은 "제도 자체가 없다" 는 뜻이라 문구를 나눈다.
+        return "위탁 제도 없음" if kind == "위탁" else f"{kind} 불가(규정상 불가)"
+    if verdict is Verdict.WEIGHT_UNKNOWN:
+        return f"{kind} 가능하나 무게 상한 미확인"
+    return f"{kind} 가능 여부 미확인"
+
+
+def _weight_conclusions(hits: list[TransportRuleHit]) -> list[dict]:
+    """무게를 넣어 부른 경우, **회사마다 결론 문장을 통째로 만들어** 보낸다.
+
+    모델에게 요약을 맡기지 않는다. 규정 7건을 그대로 주면
+    "모두 화물칸에 실을 수 있다" 로 묶어버리고, 분류만 주면
+    "기내 탑승이 불가하다" 로 뒤집어 적는 것을 화면에서 확인했다.
+    프롬프트로 두 번 막았지만 새어나갔다 — **문장을 여기서 완성한다.**
+    """
+    conclusions = []
+    for hit in hits:
+        cabin = _leg_phrase(
+            "기내",
+            hit.cabin_verdict,
+            float(hit.cabin_max_weight_kg) if hit.cabin_max_weight_kg is not None else None,
+        )
+        cargo = _leg_phrase(
+            "위탁",
+            hit.cargo_verdict,
+            float(hit.cargo_max_weight_kg) if hit.cargo_max_weight_kg is not None else None,
+        )
+        text = f"{cabin}, {cargo}"
+        blocked = {Verdict.OVER_WEIGHT, Verdict.NOT_ALLOWED}
+        if hit.cabin_verdict in blocked and hit.cargo_verdict in blocked:
+            text += " → 이 회사로는 이 무게로 갈 수 없음"
+        conclusions.append(
+            {
+                "carrier": f"{hit.carrier_name}({hit.route})" if hit.route else hit.carrier_name,
+                "결론": text,
+            }
+        )
+    return conclusions
+
+
+def _run_transport_search(db: Session, raw_arguments: str) -> str:
+    try:
+        arguments = json.loads(raw_arguments or "{}")
+    except json.JSONDecodeError:
+        return "검색 조건을 읽지 못했습니다. 다시 시도하세요."
+
+    try:
+        weight = arguments.get("pet_weight_kg")
+        hits = search_transport_rules(
+            db,
+            carrier_type=(
+                CarrierType(arguments["carrier_type"]) if arguments.get("carrier_type") else None
+            ),
+            carrier_name=arguments.get("carrier_name"),
+            pet_weight_kg=Decimal(str(weight)) if weight is not None else None,
+        )
+    except (ValueError, TypeError, InvalidOperation) as error:
+        return f"검색 조건이 잘못됐습니다: {error}"
+
+    if not hits:
+        return "해당하는 운송사 규정이 없습니다."
+
+    rules = [_describe_rule(hit) for hit in hits]
+    if weight is None:
+        return json.dumps(rules, ensure_ascii=False)
+    return json.dumps(
+        {"이 무게 기준 결론": _weight_conclusions(hits), "규정": rules}, ensure_ascii=False
+    )
+
+
+def _dispatch(db: Session, name: str, raw_arguments: str) -> tuple[str, list[PlaceHit]]:
+    """모델이 부른 도구를 실행한다.
+
+    장소 검색만 `PlaceHit` 을 함께 돌려준다 — 지도 핀을 찍는 것은 장소뿐이라
+    나머지는 빈 목록이다.
+    """
+    if name == "search_places":
+        return _run_search(db, raw_arguments)
+    if name == "search_guides":
+        return _run_guide_search(db, raw_arguments), []
+    if name == "search_transport_rules":
+        return _run_transport_search(db, raw_arguments), []
+    return f"'{name}' 이라는 도구는 없습니다.", []
+
+
 def _mentioned(content: str, seen: dict[uuid.UUID, PlaceHit]) -> list[uuid.UUID]:
     """답변에 **이름이 등장한** 장소만 고른다. 설계 결정 C4.
 
@@ -213,7 +485,7 @@ def generate_answer(db: Session, history: list[dict], question: str) -> Answer:
             completion = client.chat.completions.create(
                 model=settings.openai_model,
                 messages=messages,
-                tools=[SEARCH_TOOL],
+                tools=TOOLS,
             )
             choice = completion.choices[0].message
 
@@ -229,7 +501,7 @@ def generate_answer(db: Session, history: list[dict], question: str) -> Answer:
 
             messages.append(choice.model_dump(exclude_none=True))
             for call in choice.tool_calls:
-                result, hits = _run_search(db, call.function.arguments)
+                result, hits = _dispatch(db, call.function.name, call.function.arguments)
                 seen.update({hit.place_id: hit for hit in hits})
                 messages.append(
                     {"role": "tool", "tool_call_id": call.id, "content": result}

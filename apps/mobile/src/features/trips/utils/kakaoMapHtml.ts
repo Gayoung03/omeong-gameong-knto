@@ -66,6 +66,7 @@ export function buildKakaoMapHtml({
   candidates = [],
   initialFitMode = 'route',
 }: BuildKakaoMapHtmlParams): string {
+  const encodedKakaoKey = encodeURIComponent(KAKAO_JS_KEY);
   const markers = items.map((item) => ({
     placeId: item.place.id,
     order: item.order,
@@ -91,6 +92,7 @@ export function buildKakaoMapHtml({
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta name="referrer" content="no-referrer" />
     <style>
       html, body { margin: 0; padding: 0; height: 100%; background: ${colors.background}; }
       #map { width: 100%; height: 100%; }
@@ -155,8 +157,17 @@ export function buildKakaoMapHtml({
       function send(payload) {
         if (window.ReactNativeWebView) {
           window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+        } else if (window.parent !== window) {
+          window.parent.postMessage(JSON.stringify(payload), '*');
         }
       }
+
+      window.addEventListener('message', function (event) {
+        var message = event.data;
+        if (message && message.type === 'fitTo' && window.fitTo) {
+          window.fitTo(message.mode);
+        }
+      });
 
       window.onerror = function (message) {
         send({ type: 'error', message: String(message) });
@@ -165,7 +176,7 @@ export function buildKakaoMapHtml({
       // 스크립트 태그로 바로 넣지 않고 직접 만들어 붙인다.
       // 이렇게 해야 로드 실패를 onerror 로 잡아서 원인을 구분할 수 있다.
       var sdk = document.createElement('script');
-      sdk.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false';
+      sdk.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodedKakaoKey}&autoload=false';
 
       sdk.onerror = function () {
         // 왜 실패했는지 알 수 있도록 현재 페이지 출처도 함께 보낸다

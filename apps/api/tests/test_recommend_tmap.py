@@ -157,6 +157,31 @@ def test_get_route_caches_tmap_result(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cache.expires_at - cache.calculated_at == tmap.CACHE_TTL
 
 
+def test_get_cached_route_returns_latest_leg_without_requesting_tmap() -> None:
+    cached = SimpleNamespace(distance_meters=3400, duration_minutes=12, polyline="[]")
+    db = FakeSession(cached)
+
+    leg = tmap.get_cached_route(
+        db,  # type: ignore[arg-type]
+        (33.4996, 126.5312),
+        (33.3939, 126.2396),
+        TransportType.RENTAL_CAR,
+    )
+
+    assert leg == RouteLeg(distance_m=3400, duration_min=12, polyline="[]")
+
+
+def test_get_cached_route_returns_none_when_cache_is_missing() -> None:
+    leg = tmap.get_cached_route(
+        FakeSession(),  # type: ignore[arg-type]
+        (33.4996, 126.5312),
+        (33.3939, 126.2396),
+        TransportType.WALK,
+    )
+
+    assert leg is None
+
+
 def test_invalid_tmap_response_is_rejected() -> None:
     with pytest.raises(TMapError, match="거리·시간"):
         tmap._parse_route({"features": []})
