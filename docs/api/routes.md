@@ -196,6 +196,7 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 
 1. `stays[].placeId`가 있으면 `places.latitude/longitude`를 사용합니다.
 2. `placeId`가 없으면 `stays[].address`를 카카오 주소 검색 API로 변환합니다.
+   주소 결과가 없으면 카카오 키워드 검색 API로 장소명을 다시 조회합니다.
 
 둘 다 보내면 DB 장소 좌표가 우선입니다. 숙소에는 `placeId` 또는 `address` 중 하나가
 반드시 있어야 합니다. 현재 TMAP 일정 조립이 지원하는 이동수단은 `rental_car`,

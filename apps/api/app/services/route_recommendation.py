@@ -42,7 +42,7 @@ Geocoder = Callable[[str], GeocodedAddress]
 
 
 class LocationResolutionError(RuntimeError):
-    """DB 장소와 주소 모두에서 좌표를 얻지 못했다."""
+    """DB 장소와 주소·장소명 모두에서 좌표를 얻지 못했다."""
 
 
 class RecommendationGenerationError(RuntimeError):
@@ -68,7 +68,9 @@ def resolve_location(
         try:
             result = geocoder(address)
         except Exception as error:
-            raise LocationResolutionError("주소를 좌표로 변환하지 못했습니다") from error
+            raise LocationResolutionError(
+                "주소 또는 장소명을 좌표로 변환하지 못했습니다"
+            ) from error
         return result.latitude, result.longitude
 
     raise LocationResolutionError("장소 ID 또는 주소가 필요합니다")
