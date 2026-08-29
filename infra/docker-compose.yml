@@ -4,6 +4,9 @@ services:
     container_name: omeong-gameong-migrate
     environment:
       DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
+      # alembic 이 app 설정을 import 하므로 필수값만 채운다. 마이그레이션은
+      # 토큰을 서명하지 않아 실제 키가 필요 없다 — .env 값이 있으면 그걸 쓴다.
+      SECRET_KEY: ${SECRET_KEY:-migrate-only-not-a-real-secret}
     command:
       - /bin/sh
       - -ec
@@ -21,6 +24,10 @@ services:
       APP_NAME: ${APP_NAME:-Omeong Gameong API}
       ENVIRONMENT: ${ENVIRONMENT:-local}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL을 .env에 설정하세요.}
+      # 컨테이너 안에는 루트 .env 가 없다 — 여기서 넘겨주지 않으면 앱이
+      # "SECRET_KEY가 .env에 없습니다"로 기동 실패한다. compose 는
+      # --env-file .env(Makefile)로 이 값을 읽는다.
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY를 .env에 설정하세요. 생성법은 .env.example 참고}
       AWS_REGION: ${AWS_REGION:-ap-northeast-2}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
