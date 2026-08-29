@@ -61,6 +61,29 @@ DEFAULT_POLICIES: tuple[PetPolicyType, ...] = tuple(
 )
 
 
+#: 겸업 카테고리 — `restaurant_cafe`(식당 겸 카페)는 **식당으로도 카페로도** 찾아져야 한다.
+#:
+#: KCISA 원본에서 `반려동물식당카페 > 카페` 하나였던 것이 우리 쪽에서 `cafe` 와
+#: `restaurant_cafe` 로 갈렸다. 그대로 두면 "식당"을 물었을 때 `restaurant` 1건만
+#: 걸리고 옆의 `restaurant_cafe` 15건이 통째로 빠진다(2026-08-29 팀 DB 확인).
+#: 카페 질문도 14건 중 절반만 후보가 된다.
+#:
+#: **GPT 에게 "두 개를 넘겨라"고 가르치지 않는다.** 도구 인자는 `category` 하나로
+#: 두고 여기서 넓힌다 — 판단을 모델에 맡기면 어느 날 하나만 넘긴다. 무게 비교를
+#: 파이썬에서 하는 것과 같은 이유다.
+#:
+#: 데이터가 정리되어 `restaurant_cafe` 가 사라지면 이 표도 함께 지운다.
+_CATEGORY_ALIASES: dict[str, tuple[str, ...]] = {
+    "restaurant": ("restaurant", "restaurant_cafe"),
+    "cafe": ("cafe", "restaurant_cafe"),
+}
+
+
+def _expand_category(category: str) -> tuple[str, ...]:
+    """검색에 실제로 쓸 카테고리 목록. 겸업이 있으면 함께 본다."""
+    return _CATEGORY_ALIASES.get(category, (category,))
+
+
 class PlaceSort(StrEnum):
     """정렬 기준.
 
@@ -137,6 +160,9 @@ def search_places(
 
     조건은 전부 **AND** 로 걸린다. 태그를 둘 주면 둘 다 가진 장소만 나온다.
 
+    `category` 는 **겸업까지 넓혀서** 본다 — "식당"을 물으면 식당 겸 카페도
+    함께 나온다(`_CATEGORY_ALIASES`).
+
     `pet_policy` 를 지정하지 않으면 **`not_allowed` 만 빼고** 전부 본다
     (`DEFAULT_POLICIES`). 인자를 아예 안 주면 동반 불가인 곳을 뺀 채로
     평점 높은 순 다섯 곳이 나온다.
@@ -157,7 +183,7 @@ def search_places(
     if region is not None:
         conditions.append(Place.region == region)
     if category is not None:
-        conditions.append(Place.category == category)
+        conditions.append(Place.category.in_(_expand_category(category)))
     if environment is not None:
         conditions.append(Place.environment == environment)
     # 지정하지 않으면 `not_allowed` 만 빼고 전부 본다. 위 DEFAULT_POLICIES 참고.
