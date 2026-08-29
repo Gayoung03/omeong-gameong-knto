@@ -78,6 +78,20 @@ _CATEGORY_ALIASES: dict[str, tuple[str, ...]] = {
     "cafe": ("cafe", "restaurant_cafe"),
 }
 
+#: 카테고리를 지정하지 않은 검색에서 **빼는** 카테고리.
+#:
+#: `etc` 278건은 여행지가 아니라 **반려동물 인프라**다 — 동물약국 126 · 동물병원 75 ·
+#: 용품 51 · 미용 26(2026-08-29 팀 DB 확인). `vocabulary.py` 에서 `etc` 를 뺀 것은
+#: **모델이 `etc` 를 고를 수 없게** 한 것이지, **결과에 안 나오게** 한 것이 아니다.
+#: 그래서 카테고리를 안 넘긴 검색에는 그대로 섞여 나왔다.
+#:
+#: `"서귀포에 강아지랑 갈 수 있는 실내 장소 있어?"` 에 챗봇이 **동물약국 두 곳**을
+#: 추천한 것을 화면에서 확인했다(2026-08-29). 약국은 강아지와 놀러 가는 곳이 아니다.
+#:
+#: **카테고리를 집어 물으면 그때는 나온다.** 동물병원을 찾아달라는 요청은 막지 않는다 —
+#: A5(의료 금지)가 "제주 동물병원을 찾아드릴 수 있다"로 빠져나가는 통로다.
+_EXCLUDED_WITHOUT_CATEGORY: tuple[str, ...] = ("etc",)
+
 
 def _expand_category(category: str) -> tuple[str, ...]:
     """검색에 실제로 쓸 카테고리 목록. 겸업이 있으면 함께 본다."""
@@ -166,6 +180,9 @@ def search_places(
     `pet_policy` 를 지정하지 않으면 **`not_allowed` 만 빼고** 전부 본다
     (`DEFAULT_POLICIES`). 인자를 아예 안 주면 동반 불가인 곳을 뺀 채로
     평점 높은 순 다섯 곳이 나온다.
+
+    `category` 를 지정하지 않으면 **`etc` 를 뺀다**(`_EXCLUDED_WITHOUT_CATEGORY`).
+    여행지가 아니라 동물약국·용품점이라, 안 빼면 "갈 만한 곳"에 섞여 나온다.
     """
     if region is not None:
         _check(region, REGIONS, "지역")
@@ -184,6 +201,9 @@ def search_places(
         conditions.append(Place.region == region)
     if category is not None:
         conditions.append(Place.category.in_(_expand_category(category)))
+    else:
+        # 카테고리를 안 집으면 여행지가 아닌 것을 뺀다. 위 주석 참고.
+        conditions.append(Place.category.notin_(_EXCLUDED_WITHOUT_CATEGORY))
     if environment is not None:
         conditions.append(Place.environment == environment)
     # 지정하지 않으면 `not_allowed` 만 빼고 전부 본다. 위 DEFAULT_POLICIES 참고.
