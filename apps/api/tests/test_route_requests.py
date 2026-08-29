@@ -158,6 +158,41 @@ def test_route_request_generates_db_place_itinerary(
     assert status_response.json()["status"] == "generated"
 
 
+def test_route_request_before_dinner_time_does_not_require_restaurant(
+    client: TestClient,
+    db: Session,
+    place: Place,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(routes, "run_route_generation", lambda _route_id, _open: None)
+    payload = _payload(place.id)
+    payload["endAt"] = "2026-09-10T15:00:00+09:00"
+    created = client.post("/api/v1/route-requests", json=payload).json()
+    route_id = uuid.UUID(created["routeId"])
+    monkeypatch.setattr(
+        route_recommendation,
+        "get_route",
+        lambda *_args, **_kwargs: RouteLeg(distance_m=0, duration_min=0, polyline=None),
+    )
+    monkeypatch.setattr(
+        route_recommendation,
+        "get_precipitation_probabilities",
+        lambda *_args, **_kwargs: {},
+    )
+
+    route_recommendation.generate_route(db, route_id)
+    db.expire_all()
+
+    route = db.get(Route, route_id)
+    assert route is not None
+    assert route.status.value == "generated"
+    assert all(
+        item.item_type.value != "restaurant"
+        for day in route.route_days
+        for item in day.items
+    )
+
+
 def test_user_can_confirm_replacement_and_refresh_adjacent_routes(
     client: TestClient,
     db: Session,

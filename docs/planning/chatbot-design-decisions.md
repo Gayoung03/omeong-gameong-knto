@@ -373,6 +373,14 @@ DB 는 영문 코드를 쓰고 있을 뿐 같은 7종입니다.
 켜는 일은 `apps/api/scripts/activate_kakao_places.py` 가 합니다. 일회성 SQL 로
 처리하면 나중에 "장소가 왜 601개 늘었지?" 를 아무도 못 쫓기 때문입니다.
 
+카카오 장소 활성화와 확인된 숙소 오분류 4건을 함께 반영할 때는 통합 정정
+스크립트를 사용합니다. 기본 실행은 확인만 하며 `--apply`를 붙여야 반영합니다.
+
+```bash
+cd apps/api && uv run python -m scripts.repair_place_data
+cd apps/api && uv run python -m scripts.repair_place_data --apply
+```
+
 ```bash
 cd apps/api && uv run python -m scripts.activate_kakao_places          # 확인만
 cd apps/api && uv run python -m scripts.activate_kakao_places --apply  # 실제로 켜기
