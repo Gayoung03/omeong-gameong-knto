@@ -116,11 +116,39 @@ def test_each_day_ends_with_dinner_after_five() -> None:
     )
 
     assert len(result.days) == 2
+    assert all(day.dinner_required for day in result.days)
     assert all(
         day.items[-1].candidate.item_type == ScheduleItemType.RESTAURANT
         and day.items[-1].starts_at.time() >= DINNER_START
         for day in result.days
     )
+
+
+def test_last_day_before_five_does_not_require_dinner() -> None:
+    request = BuildRequest(
+        start_at=datetime(2026, 8, 31, 9, tzinfo=KST),
+        end_at=datetime(2026, 9, 1, 15, tzinfo=KST),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        start_coord=(33.5, 126.53),
+    )
+    candidates = [
+        *[_candidate(0.8 - index / 100, lat=33.5 + index / 1000) for index in range(6)],
+        _candidate(0.7, item_type=ScheduleItemType.RESTAURANT, lat=33.51),
+    ]
+
+    result = build(
+        candidates,
+        request,
+        lambda *_args: RouteLeg(distance_m=1000, duration_min=10, polyline=None),
+    )
+
+    assert len(result.days) == 2
+    assert result.days[0].dinner_required is True
+    assert result.days[0].items[-1].candidate.item_type == ScheduleItemType.RESTAURANT
+    assert result.days[1].dinner_required is False
+    assert result.days[1].items
+    assert result.days[1].items[-1].candidate.item_type != ScheduleItemType.RESTAURANT
 
 
 def test_candidate_closed_before_actual_arrival_is_skipped() -> None:
