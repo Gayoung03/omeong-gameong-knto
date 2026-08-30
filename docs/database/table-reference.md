@@ -94,6 +94,22 @@
 되지 않기 때문입니다. 현재 동의 상태는 `(user_id, consent_type)`별로 `created_at`이 가장 큰
 행입니다.
 
+### `user_social_accounts`
+
+소셜 로그인 수단(카카오·구글)을 회원에 연결합니다. 로그인 판정의 정본입니다.
+
+| 컬럼 | 설명 |
+| --- | --- |
+| `id` | 연결 PK |
+| `user_id` | 회원 FK (`ON DELETE CASCADE`) |
+| `provider` | 제공처 (`auth_provider` enum, `local` 금지 — CHECK) |
+| `provider_user_id` | 제공처가 준 사용자 식별자 |
+| `linked_at` | 연동 시각 |
+
+`(provider, provider_user_id)`에 UNIQUE가 걸려 같은 소셜 계정이 두 번 연결되지 않습니다.
+`users.auth_provider`는 하나뿐이라 "이메일 계정 + 카카오 연동" 같은 다중 수단을 표현할 수 없어
+이 연결 테이블을 둡니다. 근거와 로그인 흐름은 [`docs/api/auth.md`](../api/auth.md) 소셜 절을 참고하세요.
+
 ## 2. 장소
 
 ### `places`

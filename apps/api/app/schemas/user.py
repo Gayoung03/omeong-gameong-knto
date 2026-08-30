@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import Field, StringConstraints, field_validator
+from pydantic import Field, SecretStr, StringConstraints, field_validator
 
 from app.db.models.enums import AuthProvider
 from app.schemas.base import APISchema
@@ -58,3 +58,14 @@ class UserUpdate(APISchema):
         if value is None:
             raise ValueError("nickname은 null일 수 없습니다")
         return value
+
+
+class AccountDeleteRequest(APISchema):
+    """회원 탈퇴 요청.
+
+    `local` 계정은 `password` 로 재확인한다. 소셜 계정은 비밀번호가 없어 앱이 제공처
+    재인증으로 얻은 `providerAccessToken` 을 보내고 서버가 그 토큰의 소유를 확인한다.
+    """
+
+    password: SecretStr | None = None
+    provider_access_token: str | None = None
