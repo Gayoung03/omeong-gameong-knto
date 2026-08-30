@@ -118,6 +118,7 @@ def filter_candidates(
                 lat=float(place.latitude),
                 lng=float(place.longitude),
                 item_type=item_type,
+                source_category=place.category,
                 environment=place.environment,
                 average_stay_minutes=place.average_stay_minutes or DEFAULT_STAY_MINUTES,
                 tags=tags.get(place.id, []),
