@@ -6,7 +6,7 @@ import { colors, overlayColors, radius, spacing, typography } from '@/src/theme'
 
 import { placeThumbnails } from '../constants/placeThumbnail';
 import type { ScheduleItem, TransportType } from '../types/trip';
-import { formatMoveInfo, formatTimeLabel, getPlaceCategoryLabel } from '../utils/tripFormat';
+import { formatMoveInfo, getPlaceCategoryLabel } from '../utils/tripFormat';
 import { PetPolicyBadge } from './PetPolicyBadge';
 
 const TRANSPORT_ICONS: Record<TransportType, 'boat-outline' | 'car-outline' | 'walk-outline'> = {
@@ -17,6 +17,7 @@ const TRANSPORT_ICONS: Record<TransportType, 'boat-outline' | 'car-outline' | 'w
 
 type ScheduleTimelineItemProps = {
   item: ScheduleItem;
+  isFirst: boolean;
   isLast: boolean;
   /**
    * 이 장소를 저장했는지.
@@ -34,10 +35,11 @@ type ScheduleTimelineItemProps = {
  * 일정 카드.
  *
  * 루트 추천 결과 화면의 가로형 카드와 형태를 맞췄다.
- * 왼쪽 열(순번 + 시각) · 썸네일 · 본문 · 오른쪽 저장 버튼 순이고,
- * 순번 배지는 화면 전체에서 키 컬러(`colors.primary`) 하나로 통일한다.
+ * 왼쪽 순번 배지 · 썸네일 · 본문 · 오른쪽 저장 버튼 순이고,
+ * 시각은 추천 결과 카드처럼 본문 최상단에 강조해 표시한다.
  */
 export function ScheduleTimelineItem({
+  isFirst,
   isLast,
   item,
   isSaved,
@@ -47,110 +49,115 @@ export function ScheduleTimelineItem({
   const thumbnail = placeThumbnails[item.place.category];
 
   return (
-    <View>
-      <View style={styles.cardWrapper}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={item.place.isCustom ? undefined : () => onPressItem(item.place.id)}
-          style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-        >
-          <View style={styles.timelineColumn}>
-            <View style={styles.orderBadge}>
-              <Text style={styles.orderText}>{item.order}</Text>
-            </View>
-            {item.startTime ? (
-              <Text style={styles.timeText}>{formatTimeLabel(item.startTime)}</Text>
-            ) : null}
-          </View>
+    <View style={styles.timelineItem}>
+      <View style={styles.railColumn}>
+        {!isFirst ? <View style={styles.railTop} /> : null}
+        {!isLast ? <View style={styles.railBottom} /> : null}
+        <View style={styles.orderBadge}>
+          <Text style={styles.orderText}>{item.order}</Text>
+        </View>
+      </View>
 
-          {item.place.imageUrl ? (
-            <RemoteImage
-              borderRadius={radius.md}
-              style={styles.thumbnail}
-              uri={item.place.imageUrl}
-            />
-          ) : (
-            <View
-              style={[
-                styles.thumbnail,
-                styles.thumbnailFallback,
-                { backgroundColor: thumbnail.background },
-              ]}
-            >
-              <Text style={styles.thumbnailEmoji}>{thumbnail.emoji}</Text>
-            </View>
-          )}
+      <View style={styles.itemContent}>
+        <View style={styles.cardWrapper}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={item.place.isCustom ? undefined : () => onPressItem(item.place.id)}
+            style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+          >
+            {item.place.imageUrl ? (
+              <RemoteImage
+                borderRadius={radius.md}
+                style={styles.thumbnail}
+                uri={item.place.imageUrl}
+              />
+            ) : (
+              <View
+                style={[
+                  styles.thumbnail,
+                  styles.thumbnailFallback,
+                  { backgroundColor: thumbnail.background },
+                ]}
+              >
+                <Text style={styles.thumbnailEmoji}>{thumbnail.emoji}</Text>
+              </View>
+            )}
 
-          <View style={styles.content}>
-            <View style={styles.titleRow}>
-              <Text numberOfLines={1} style={styles.placeName}>
-                {item.place.name}
+            <View style={styles.content}>
+              <Text style={styles.timeText}>{item.startTime ?? '시간 미정'}</Text>
+              <View style={styles.titleRow}>
+                <Text numberOfLines={1} style={styles.placeName}>
+                  {item.place.name}
+                </Text>
+                <View style={styles.categoryBadge}>
+                  <Text style={styles.categoryText}>
+                    {getPlaceCategoryLabel(item.place.category)}
+                  </Text>
+                </View>
+              </View>
+
+              <Text numberOfLines={2} style={styles.description}>
+                {item.place.description}
               </Text>
-              <View style={styles.categoryBadge}>
-                <Text style={styles.categoryText}>
-                  {getPlaceCategoryLabel(item.place.category)}
-                </Text>
-              </View>
+
+              <PetPolicyBadge petPolicy={item.place.petPolicy} />
+
+              {item.memo.length > 0 ? (
+                <View style={styles.memoRow}>
+                  <Ionicons color={colors.textTertiary} name="create-outline" size={12} />
+                  <Text numberOfLines={2} style={styles.memo}>
+                    {item.memo}
+                  </Text>
+                </View>
+              ) : null}
             </View>
 
-            <Text numberOfLines={2} style={styles.description}>
-              {item.place.description}
-            </Text>
+            {/* 저장 버튼이 앉을 자리. 실제 버튼은 카드 Pressable 바깥에 있다 */}
+            <View style={styles.saveSlot} />
+          </Pressable>
 
-            <PetPolicyBadge petPolicy={item.place.petPolicy} />
-
-            {item.memo.length > 0 ? (
-              <View style={styles.memoRow}>
-                <Ionicons color={colors.textTertiary} name="create-outline" size={12} />
-                <Text numberOfLines={2} style={styles.memo}>
-                  {item.memo}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-
-          {/* 저장 버튼이 앉을 자리. 실제 버튼은 카드 Pressable 바깥에 있다 */}
-          <View style={styles.saveSlot} />
-        </Pressable>
-
-        {/*
+          {/*
           웹에서 <button> 안에 <button> 이 들어가면 안 되므로 카드 Pressable 의
           자식이 아니라 형제로 두고, 원래 자리에 겹쳐 놓는다.
         */}
-        {!item.place.isCustom ? (
-          <Pressable
-            accessibilityLabel={isSaved ? '저장 해제' : '저장'}
-            accessibilityRole="button"
-            onPress={() => onToggleSave(item.place.id, isSaved)}
-            style={styles.saveButton}
-          >
-            {/* 장소 탐색 화면과 같은 하트 아이콘·색을 쓴다. */}
-            <Ionicons
-              color={isSaved ? colors.primary : colors.textSecondary}
-              name={isSaved ? 'heart' : 'heart-outline'}
-              size={16}
-            />
-          </Pressable>
+          {!item.place.isCustom ? (
+            <Pressable
+              accessibilityLabel={isSaved ? '저장 해제' : '저장'}
+              accessibilityRole="button"
+              onPress={() => onToggleSave(item.place.id, isSaved)}
+              style={styles.saveButton}
+            >
+              {/* 장소 탐색 화면과 같은 하트 아이콘·색을 쓴다. */}
+              <Ionicons
+                color={isSaved ? colors.primary : colors.textSecondary}
+                name={isSaved ? 'heart' : 'heart-outline'}
+                size={16}
+              />
+            </Pressable>
+          ) : null}
+        </View>
+
+        {!isLast ? (
+          <View style={styles.travelRow}>
+            {item.moveToNext ? (
+              <>
+                <Ionicons
+                  color={colors.textTertiary}
+                  name={TRANSPORT_ICONS[item.moveToNext.transport]}
+                  size={13}
+                />
+                <Text style={styles.travelText}>
+                  {formatMoveInfo(
+                    item.moveToNext.transport,
+                    item.moveToNext.distanceMeters,
+                    item.moveToNext.durationMinutes,
+                  )}
+                </Text>
+              </>
+            ) : null}
+          </View>
         ) : null}
       </View>
-
-      {!isLast && item.moveToNext ? (
-        <View style={styles.travelRow}>
-          <View style={styles.travelLine} />
-          <Ionicons
-            color={colors.textTertiary}
-            name={TRANSPORT_ICONS[item.moveToNext.transport]}
-            size={13}
-          />
-          <Text style={styles.travelText}>
-            {formatMoveInfo(
-              item.moveToNext.transport,
-              item.moveToNext.distanceMeters,
-              item.moveToNext.durationMinutes,
-            )}
-          </Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -191,6 +198,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs + 1,
     paddingHorizontal: spacing.sm + 2,
   },
+  itemContent: {
+    flex: 1,
+  },
   description: {
     color: colors.textSecondary,
     fontSize: typography.micro.fontSize,
@@ -214,7 +224,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     height: 24,
     justifyContent: 'center',
+    marginLeft: 8,
+    marginTop: 12,
     width: 24,
+    zIndex: 1,
   },
   orderText: {
     color: colors.surface,
@@ -229,6 +242,26 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.85,
+  },
+  railBottom: {
+    backgroundColor: overlayColors.primaryBorder,
+    bottom: 0,
+    left: 19,
+    position: 'absolute',
+    top: 24,
+    width: 2,
+  },
+  railColumn: {
+    position: 'relative',
+    width: 40,
+  },
+  railTop: {
+    backgroundColor: overlayColors.primaryBorder,
+    height: 24,
+    left: 19,
+    position: 'absolute',
+    top: 0,
+    width: 2,
   },
   saveButton: {
     padding: spacing.sm,
@@ -253,37 +286,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   timeText: {
-    color: colors.basalt,
-    fontSize: typography.micro.fontSize - 1,
+    color: colors.primary,
+    fontSize: typography.caption.fontSize,
     fontWeight: '800',
-    marginTop: spacing.xs + 2,
-  },
-  timelineColumn: {
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    paddingTop: spacing.xs + 2,
-    width: 38,
   },
   titleRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.xs + 2,
   },
-  travelLine: {
-    backgroundColor: overlayColors.primaryBorder,
-    height: 26,
-    marginRight: spacing.sm + 2,
-    width: 2,
-  },
   travelRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    height: 26,
-    marginLeft: 18,
+    height: 34,
+    paddingLeft: spacing.sm + 2,
   },
   travelText: {
     color: colors.textTertiary,
     fontSize: typography.micro.fontSize - 1,
     marginLeft: spacing.xs,
+  },
+  timelineItem: {
+    flexDirection: 'row',
   },
 });

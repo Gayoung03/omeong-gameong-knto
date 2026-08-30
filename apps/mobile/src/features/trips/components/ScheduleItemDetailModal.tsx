@@ -66,8 +66,9 @@ export function ScheduleItemDetailModal({ item, onSubmit, onClose }: ScheduleIte
               </Pressable>
             </View>
 
-            <Text style={styles.sectionLabel}>방문 시각</Text>
+            <Text style={styles.sectionLabel}>방문 기준 시각</Text>
             <TimeField onChangeValue={setStartTime} value={startTime} />
+            <Text style={styles.timeHint}>이 시각을 기준으로 뒤 일정 시간이 조정돼요.</Text>
 
             <Text style={styles.sectionLabel}>메모</Text>
             <TextInput
@@ -163,6 +164,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     marginTop: spacing.md,
     paddingVertical: spacing.sm + 4,
+  },
+  timeHint: {
+    color: colors.textTertiary,
+    fontSize: typography.micro.fontSize,
+    marginTop: spacing.xs,
   },
   submitText: {
     color: colors.surface,
