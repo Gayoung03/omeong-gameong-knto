@@ -161,3 +161,32 @@ class UserTravelPreference(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class UserSocialAccount(Base):
+    """소셜 로그인 수단 연결 (docs/api/auth.md 소셜 절).
+
+    `users.auth_provider` 컬럼은 하나라 "이메일 계정 + 카카오 연동" 같은 다중 수단을
+    표현할 수 없어 이 연결 테이블이 필요하다. `users.auth_provider`·`provider_user_id`
+    는 "최초 가입 수단" 기록으로 의미를 고정하고, 로그인 판정은 여기의
+    `(provider, provider_user_id)` UNIQUE 로 한다.
+    """
+
+    __tablename__ = "user_social_accounts"
+    __table_args__ = (
+        # local 은 소셜 수단이 아니다 — 이 테이블에 들어오면 안 된다.
+        CheckConstraint("provider <> 'local'", name="social_provider_not_local"),
+        UniqueConstraint("provider", "provider_user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    provider: Mapped[AuthProvider] = mapped_column(
+        db_enum(AuthProvider, "auth_provider"), nullable=False
+    )
+    provider_user_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    linked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

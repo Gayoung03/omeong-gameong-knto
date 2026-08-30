@@ -2,6 +2,7 @@ import { Component, type ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { sanitizeErrorForLog } from '@/src/services/apiError';
 import { colors } from '@/src/theme';
 
 import { EmptyState } from './EmptyState';
@@ -23,7 +24,8 @@ export class AppErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: unknown) {
     // TODO: 크래시 리포팅 도구(Sentry 등) 연결 시 여기서 함께 전송한다.
-    console.error('[AppErrorBoundary]', error);
+    // 원본 error 를 그대로 찍으면 AxiosError 의 토큰·비밀번호가 로그에 샌다 — 새니타이즈.
+    console.error('[AppErrorBoundary]', sanitizeErrorForLog(error));
   }
 
   private handleRetry = () => {

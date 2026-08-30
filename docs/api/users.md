@@ -139,8 +139,9 @@ DB에 CHECK 제약(`species_detail_consistency`)이 걸려 있어 아래 두 경
 | `password` | 조건부 | `authProvider`가 `local`일 때만 필수 |
 | `providerAccessToken` | 조건부 | 소셜 계정일 때 필수 |
 
-소셜 계정은 비밀번호가 없으므로, 앱이 제공처 재인증을 먼저 수행하고 그 토큰을 보냅니다
-([`accountService.ts:21`](../../apps/mobile/src/features/auth/services/accountService.ts) 주석 기준).
+소셜 계정은 비밀번호가 없으므로, 앱이 제공처 재인증을 먼저 수행하고 그 토큰을 보냅니다.
+서버는 그 토큰을 제공처에 검증하고, 토큰이 **이 회원의 소셜 계정 소유인지**(연결
+테이블의 `provider_user_id` 일치)까지 확인합니다. 남의 토큰으로는 탈퇴할 수 없습니다.
 
 ```json
 { "providerAccessToken": "..." }
@@ -154,7 +155,8 @@ DB에 CHECK 제약(`species_detail_consistency`)이 걸려 있어 아래 두 경
 
 | 코드 | 상황 |
 | --- | --- |
-| 401 | 비밀번호 불일치 또는 재인증 실패 |
+| 401 | 비밀번호 불일치, 또는 재인증 실패(토큰 무효·다른 회원 소유·토큰 누락) |
+| 502 | 소셜 제공처가 재인증 확인에 응답하지 않음 |
 
 **같은 이메일로 재가입 [확정]** — 차단합니다. (2026-08-15)
 

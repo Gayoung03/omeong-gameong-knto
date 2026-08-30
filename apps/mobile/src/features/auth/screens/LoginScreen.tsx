@@ -12,6 +12,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { isAxiosError } from 'axios';
+
+import { getApiErrorMessage } from '@/src/services/apiError';
 import { brandColors, colors } from '@/src/theme';
 
 import { AuthBrand } from '../components/AuthBrand';
@@ -19,6 +22,7 @@ import { AuthHeader } from '../components/AuthHeader';
 import { IconTextField } from '../components/IconTextField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { getAuthSession, signIn } from '../services/authStorage';
+import { startKakaoLogin } from '../services/kakaoLogin';
 
 /**
  * 각 사의 브랜드 가이드라인에 규정된 색이라 theme 토큰으로 치환하지 않는다.
@@ -61,8 +65,19 @@ export function LoginScreen() {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
-    await signIn(email);
-    router.replace('/(tabs)/(home)');
+    setNoticeMessage(undefined);
+    try {
+      await signIn(email, password);
+      router.replace('/(tabs)/(home)');
+    } catch (error) {
+      // 이메일 없음·비번 불일치는 서버가 같은 401 로 준다(가입 이메일 노출 방지).
+      // 그 밖(네트워크·서버)은 apiError 관례 문구를 쓴다.
+      setNoticeMessage(
+        isAxiosError(error) && error.response?.status === 401
+          ? '이메일 또는 비밀번호가 올바르지 않아요.'
+          : getApiErrorMessage(error).title,
+      );
+    }
   };
 
   return (
@@ -142,7 +157,12 @@ export function LoginScreen() {
                 <Pressable
                   accessibilityLabel={`${provider.label} 로그인`}
                   key={provider.label}
-                  onPress={() => setNoticeMessage(`${provider.label} 로그인은 준비 중이에요.`)}
+                  onPress={() =>
+                    // 카카오만 연결됐다. 네이버·구글은 기존 "준비 중" 안내 유지.
+                    provider.label === '카카오'
+                      ? startKakaoLogin()
+                      : setNoticeMessage(`${provider.label} 로그인은 준비 중이에요.`)
+                  }
                   style={({ pressed }) => [
                     styles.socialButton,
                     { backgroundColor: provider.background },

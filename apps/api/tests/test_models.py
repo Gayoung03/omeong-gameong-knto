@@ -41,6 +41,7 @@ EXPECTED_TABLES = {
     "travel_log_pets",
     "travel_logs",
     "user_consents",
+    "user_social_accounts",
     "user_travel_preferences",
     "users",
     "weather_snapshots",

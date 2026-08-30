@@ -156,6 +156,18 @@ Table user_travel_preferences {
   updated_at timestamptz [not null]
 }
 
+Table user_social_accounts {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  provider auth_provider [not null, note: 'local 금지 (CHECK)']
+  provider_user_id varchar(255) [not null]
+  linked_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (provider, provider_user_id) [unique]
+  }
+}
+
 Table places {
   id uuid [pk]
   name varchar(200) [not null]
