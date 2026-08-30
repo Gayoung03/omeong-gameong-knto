@@ -32,6 +32,7 @@ export function ScheduleTimeline({
     <View style={styles.container}>
       {schedule.items.map((item, index) => (
         <ScheduleTimelineItem
+          isFirst={index === 0}
           isLast={index === schedule.items.length - 1}
           isSaved={savedPlaceIds.has(item.place.id)}
           item={item}
@@ -46,7 +47,6 @@ export function ScheduleTimeline({
 
 const styles = StyleSheet.create({
   container: {
-    gap: spacing.sm,
     paddingHorizontal: spacing.md,
   },
   empty: {

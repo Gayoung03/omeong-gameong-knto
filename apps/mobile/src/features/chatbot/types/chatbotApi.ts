@@ -71,13 +71,8 @@ export type ChatMessageListResponse = {
 };
 
 /**
- * 질문 하나에 저장된 **두 행**.
+ * 질문 전송은 SSE 라 이 파일에 응답 타입이 없다.
  *
- * 명세는 이 엔드포인트를 SSE 스트림으로 정해뒀지만(`start` → `delta` → `done`)
- * 서버가 아직 JSON 으로 준다. 두 필드가 각각 `start`·`done` 이 싣는 것과 같은
- * 모양이라, 스트리밍으로 바뀌어도 **이 타입은 그대로 쓴다.**
+ * `start` 와 `done` 이 싣는 것이 각각 `ChatMessageResponse` 하나라,
+ * 이벤트 타입은 그 둘을 감싸는 모양으로 `api/chatbotStream.ts` 에 있다.
  */
-export type ChatAnswerResponse = {
-  userMessage: ChatMessageResponse;
-  assistantMessage: ChatMessageResponse;
-};

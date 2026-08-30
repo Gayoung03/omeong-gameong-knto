@@ -35,19 +35,13 @@ export function StatTile({ icon, label, value, unit = '개', variant, onPress }:
         <Ionicons color={variantColors[variant].icon} name={icon} size={18} />
       </View>
       <View style={styles.textGroup}>
-        {/* 개수가 없어도 글자 크기는 다른 타일의 라벨과 똑같이 맞춘다. */}
         <Text style={styles.label}>{label}</Text>
-        {value === undefined ? (
-          // 숫자 줄 자리를 그대로 비워 옆 타일의 라벨과 같은 높이에 놓는다.
-          <Text accessibilityElementsHidden importantForAccessibility="no" style={styles.value}>
-            {' '}
-          </Text>
-        ) : (
+        {value !== undefined ? (
           <Text style={styles.value}>
             {value}
             {unit}
           </Text>
-        )}
+        ) : null}
       </View>
       <Ionicons color={colors.textSecondary} name="chevron-forward" size={16} />
     </Pressable>
@@ -78,8 +72,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.lg,
     borderWidth: 1,
-    flexBasis: '48%',
+    flexBasis: '45%',
     flexDirection: 'row',
+    flexGrow: 1,
     padding: spacing.md,
     ...shadow.sm,
   },
