@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { type ReactNode, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -23,10 +23,33 @@ import { chatbotSuggestions } from '../constants/chatbotSuggestions';
 import { entryKey, useChatbot } from '../hooks/useChatbot';
 import type { ChatEntry } from '../types/chatbot';
 
+/** 커서가 보였다 숨는 주기. */
+const CARET_BLINK_MS = 500;
+
+/**
+ * 타이핑 중인 자리에서 깜빡이는 커서.
+ *
+ * **자체 state 로 깜빡인다.** 부모가 글자마다 리렌더되는 것과 무관하게 제
+ * 주기를 지켜야 하기 때문이다.
+ *
+ * 숨길 때 글자를 지우지 않고 색만 투명하게 한다 — 문자를 빼면 그 폭만큼
+ * 문장 끝이 흔들린다.
+ */
+function TypingCaret() {
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const id = setInterval(() => setVisible((current) => !current), CARET_BLINK_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  return <Text style={[styles.caret, !visible && styles.caretHidden]}>|</Text>;
+}
+
 export function ChatbotScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [input, setInput] = useState('');
-  const { entries, isAnswering, ask, retry, stop } = useChatbot();
+  const { entries, isAnswering, ask, retry, stop, skip } = useChatbot();
   const hasMessages = entries.length > 0;
   const canSend = Boolean(input.trim()) && !isAnswering;
 
@@ -143,7 +166,7 @@ export function ChatbotScreen() {
               {entry.content ? (
                 <Text style={styles.messageText}>
                   {entry.content}
-                  <Text style={styles.caret}>▍</Text>
+                  <TypingCaret />
                 </Text>
               ) : (
                 <View style={styles.pendingRow}>
@@ -254,7 +277,20 @@ export function ChatbotScreen() {
                 showsVerticalScrollIndicator={false}
                 style={styles.activeChatScroll}
               >
-                <View style={styles.content}>{renderMessages()}</View>
+                {/*
+                  답변이 오는 동안에는 어디를 눌러도 타이핑을 건너뛴다. 글자당
+                  20~40ms 라 긴 답변은 10초까지 가므로 빠져나갈 길이 필요하다.
+                  답변 중이 아닐 때는 꺼 둬야 지도·버튼 터치를 가로채지 않는다.
+                */}
+                <Pressable
+                  accessibilityHint="답변을 끝까지 보여줍니다"
+                  accessibilityLabel="타이핑 건너뛰기"
+                  accessibilityRole="button"
+                  disabled={!isAnswering}
+                  onPress={skip}
+                >
+                  <View style={styles.content}>{renderMessages()}</View>
+                </Pressable>
               </ScrollView>
               <View style={styles.activeComposerBar}>
                 <View style={styles.content}>{renderComposer(false)}</View>
@@ -343,6 +379,9 @@ const styles = StyleSheet.create({
   caret: {
     color: colors.primary,
     fontSize: 13,
+  },
+  caretHidden: {
+    color: 'transparent',
   },
   failedBubble: {
     backgroundColor: colors.errorBg,

@@ -7,20 +7,18 @@ import type { ChatEntry, ChatMessage } from '../types/chatbot';
 const STOPPED_DESCRIPTION = '답변을 중지했어요.';
 const FALLBACK_DESCRIPTION = '답변을 받지 못했어요. 잠시 후 다시 시도해 주세요.';
 
-/** 화면을 몇 밀리초마다 갱신할지. 낮출수록 부드럽지만 리렌더가 잦아진다. */
-const TYPING_TICK_MS = 50;
+/** 글자 하나마다 쉬는 시간. 매번 이 범위에서 새로 뽑아 기계적인 느낌을 없앤다. */
+const TYPING_CHAR_MIN_MS = 20;
+const TYPING_CHAR_MAX_MS = 40;
 
-/**
- * 답변 전체를 대략 몇 틱에 걸쳐 그릴지. 기본값은 약 1.2초(24 × 50ms)다.
- * **키우면 느긋해지고, 줄이면 조급해진다.**
- *
- * 속도를 **전체 길이**에 맞춘다 — 짧은 답변은 한 글자씩 또박또박, 긴 답변은
- * 여러 글자씩. 그래야 길이와 상관없이 걸리는 시간이 비슷하다.
- *
- * 남은 양(`target.length - shown`)에 맞추면 안 된다. 남을수록 빨라지고 줄수록
- * 느려지는 **지수 감쇠**라 꼬리가 길게 늘어진다 — 300자가 2.6초씩 걸린다.
- */
-const TYPING_TARGET_TICKS = 24;
+/** 문장을 끊는 글자 **뒤에** 더 쉬는 시간. 읽는 호흡을 만든다. */
+const TYPING_PAUSE_MIN_MS = 100;
+const TYPING_PAUSE_MAX_MS = 200;
+
+/** 뒤에서 쉬어 가는 글자. */
+const TYPING_PAUSE_AFTER = /[.,?]/;
+
+const randomBetween = (min: number, max: number) => min + Math.random() * (max - min);
 
 /**
  * 챗봇 대화 하나를 굴린다.
@@ -36,9 +34,12 @@ const TYPING_TARGET_TICKS = 24;
  * 네트워크가 뭉치면 어절 하나가 통째로 툭 들어온다. 오는 대로 그리면
  * **네트워크 리듬이 그대로 화면 리듬이 되어** 글자가 왈칵왈칵 튀어나온다.
  *
- * 그래서 조각은 `target` 에 쌓아만 두고, 화면은 `TYPING_TICK_MS` 마다 제
- * 속도로 그것을 따라간다. 말풍선은 `pending`(서버가 아직 조용함) →
+ * 그래서 조각은 `target` 에 쌓아만 두고, 화면은 **글자 하나씩** 제 속도로
+ * 그것을 따라간다. 말풍선은 `pending`(서버가 아직 조용함) →
  * `streaming`(타이핑 중) → `message`(저장 완료) 순으로 바뀐다.
+ *
+ * **긴 답변은 오래 걸린다.** 글자당 20~40ms 라 300자면 10초 안팎이다.
+ * 그래서 `skip()` 이 곁들이가 아니라 **필수**다 — 화면을 누르면 건너뛴다.
  *
  * ## 중지는 연결을 끊는 것이다
  *
@@ -56,6 +57,8 @@ export function useChatbot() {
   const controller = useRef<AbortController | null>(null);
   /** `done` 뒤 타이핑만 남았을 때 "지금 끝내기". 그 구간에는 끊을 연결이 없다. */
   const finishNow = useRef<(() => void) | null>(null);
+  /** 화면을 눌렀을 때 타이핑을 건너뛰는 함수. 타이핑 중에만 들어 있다. */
+  const skipTyping = useRef<(() => void) | null>(null);
   const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [isAnswering, setIsAnswering] = useState(false);
 
@@ -91,13 +94,27 @@ export function useChatbot() {
       let target = '';
       /** 화면에 반영한 글자 수. */
       let shown = 0;
-      let typingTimer: ReturnType<typeof setInterval> | null = null;
+      let typingTimer: ReturnType<typeof setTimeout> | null = null;
       /** `done` 이 준 완성본. 타이핑이 다 끝나야 화면에 반영한다. */
       let finalAnswer: ChatMessage | null = null;
+      /** 사용자가 건너뛰었는지. 한 번 누르면 이후 조각도 타이핑 없이 바로 보여준다. */
+      let skipped = false;
 
       const stopTyping = () => {
-        if (typingTimer !== null) clearInterval(typingTimer);
+        if (typingTimer !== null) clearTimeout(typingTimer);
         typingTimer = null;
+      };
+
+      const showUpTo = (count: number) => {
+        shown = count;
+        const content = target.slice(0, shown);
+        setEntries((current) =>
+          current.map((entry) =>
+            entry.kind === 'streaming' && entry.localId === localId
+              ? { ...entry, content }
+              : entry,
+          ),
+        );
       };
 
       /**
@@ -114,31 +131,53 @@ export function useChatbot() {
         replaceTemporary([entry]);
         controller.current = null;
         finishNow.current = null;
+        skipTyping.current = null;
         setIsAnswering(false);
       };
 
-      const tick = () => {
-        if (shown < target.length) {
-          // 전체 길이에 맞춰 속도를 낸다. 한 틱에 `step` 자를 넘지 않으므로,
-          // 서버가 어절을 통째로 보내도 화면에는 나눠 그려진다.
-          const step = Math.max(1, Math.ceil(target.length / TYPING_TARGET_TICKS));
-          shown = Math.min(target.length, shown + step);
-          const content = target.slice(0, shown);
-          setEntries((current) =>
-            current.map((entry) =>
-              entry.kind === 'streaming' && entry.localId === localId
-                ? { ...entry, content }
-                : entry,
-            ),
-          );
+      /** 다음 글자까지 쉴 시간. **방금 찍은 글자**를 보고 정한다 — 부호는 찍고 나서 쉰다. */
+      const nextDelay = () => {
+        const justTyped = target[shown - 1] ?? '';
+        const pause = TYPING_PAUSE_AFTER.test(justTyped)
+          ? randomBetween(TYPING_PAUSE_MIN_MS, TYPING_PAUSE_MAX_MS)
+          : 0;
+        return randomBetween(TYPING_CHAR_MIN_MS, TYPING_CHAR_MAX_MS) + pause;
+      };
+
+      /** 글자 하나를 그리고 다음 호출을 예약한다. */
+      const typeOne = () => {
+        typingTimer = null;
+
+        if (shown >= target.length) {
+          // 서버가 더 보낼 게 있으면 onDelta 가 깨운다. 여기서 멈춰 둔다.
+          //
+          // 다 따라잡았고 서버도 끝났을 때만 확정 메시지로 바꾼다. 여기서
+          // 서두르면(= onDone 에서 바로 바꾸면) 못 따라간 나머지가 통째로
+          // 튀어나와, 없애려던 "왈칵"이 마지막에 그대로 재현된다.
+          if (finalAnswer !== null) settle({ kind: 'message', message: finalAnswer });
+          return;
         }
 
-        // 다 따라잡았고 서버도 끝났을 때만 확정 메시지로 바꾼다. 여기서
-        // 서두르면(= onDone 에서 바로 바꾸면) 못 따라간 나머지가 통째로
-        // 튀어나와, 고치려던 "왈칵"이 마지막에 그대로 재현된다.
-        if (finalAnswer !== null && shown >= target.length) {
-          settle({ kind: 'message', message: finalAnswer });
-        }
+        // 이모지는 UTF-16 두 칸을 차지한다. 한 칸씩 자르면 반쪽짜리 깨진
+        // 문자가 화면에 보인다.
+        const code = target.charCodeAt(shown);
+        const width = code >= 0xd800 && code <= 0xdbff ? 2 : 1;
+        showUpTo(Math.min(target.length, shown + width));
+
+        typingTimer = setTimeout(typeOne, nextDelay());
+      };
+
+      /**
+       * 타이핑을 건너뛰고 **받은 데까지 즉시** 보여준다.
+       *
+       * 한 번 누르면 `skipped` 로 남아 이후 조각도 기다리지 않는다 — 사용자가
+       * "빨리 보고 싶다"고 밝힌 것을 되돌리지 않는다.
+       */
+      const skip = () => {
+        skipped = true;
+        stopTyping();
+        showUpTo(target.length);
+        if (finalAnswer !== null) settle({ kind: 'message', message: finalAnswer });
       };
 
       const fail = (description: string) =>
@@ -151,6 +190,8 @@ export function useChatbot() {
           signal: abort.signal,
           onStart: (saved) => {
             questionSaved = true;
+            // 화면을 누르면 건너뛸 수 있게 여기서부터 열어 둔다.
+            skipTyping.current = skip;
             replaceTemporary([
               { kind: 'message', message: saved },
               { kind: 'streaming', localId, content: '' },
@@ -158,7 +199,13 @@ export function useChatbot() {
           },
           onDelta: (text) => {
             target += text;
-            if (typingTimer === null) typingTimer = setInterval(tick, TYPING_TICK_MS);
+            // 이미 건너뛴 뒤라면 기다리지 않는다.
+            if (skipped) {
+              showUpTo(target.length);
+              return;
+            }
+            // 쉬고 있던 타이머를 깨운다.
+            if (typingTimer === null) typeOne();
           },
           onDone: (answer) => {
             // 확정값을 기준으로 삼는다. 명세상 델타 누적과 같지만, 어긋나면
@@ -166,9 +213,9 @@ export function useChatbot() {
             target = answer.content;
             finalAnswer = answer;
             // 여기서부터 중지 버튼은 "끊기"가 아니라 "타이핑 건너뛰기"다.
-            finishNow.current = () => settle({ kind: 'message', message: answer });
-            // 타이핑이 이미 끝나 있으면(조각이 없었던 경우 등) 여기서 마무리된다.
-            if (typingTimer === null) tick();
+            finishNow.current = skip;
+            // 타이핑이 이미 끝나 있으면(건너뛰었거나 조각이 없었으면) 여기서 마무리된다.
+            if (typingTimer === null) typeOne();
           },
           onError: fail,
         });
@@ -206,6 +253,17 @@ export function useChatbot() {
   }, []);
 
   /**
+   * 타이핑을 건너뛰고 지금까지 받은 것을 한 번에 보여준다.
+   *
+   * 화면을 누르면 불린다. 글자당 20~40ms 라 긴 답변은 10초까지 가므로,
+   * **다 읽을 때까지 기다리게 두지 않는 장치**다. 타이핑 중이 아니면 아무 일도
+   * 하지 않아 평소 터치를 방해하지 않는다.
+   */
+  const skip = useCallback(() => {
+    skipTyping.current?.();
+  }, []);
+
+  /**
    * 실패한 질문을 다시 보낸다.
    *
    * 실패해도 **질문은 서버에 저장돼 있다**(`start` 시점에 저장된다). 그래서
@@ -228,7 +286,7 @@ export function useChatbot() {
     [ask, entries],
   );
 
-  return { entries, isAnswering, ask, retry, stop };
+  return { entries, isAnswering, ask, retry, stop, skip };
 }
 
 /** 말풍선 하나를 그릴 때 쓸 키. 서버 메시지는 UUID, 임시 말풍선은 지역 id 다. */
