@@ -100,8 +100,9 @@ export function AddScheduleSheet({
                 selectedScheduleId={scheduleId}
               />
 
-              <Text style={styles.sectionLabel}>방문 시각</Text>
+              <Text style={styles.sectionLabel}>방문 기준 시각 · 선택</Text>
               <TimeField onChangeValue={setStartTime} value={startTime} />
+              <Text style={styles.timeHint}>비워두면 현재 순서를 기준으로 시간을 계산해요.</Text>
 
               <Text style={styles.sectionLabel}>메모</Text>
               <TextInput
@@ -220,5 +221,10 @@ const styles = StyleSheet.create({
     color: colors.surface,
     fontSize: typography.label.fontSize + 2,
     fontWeight: '700',
+  },
+  timeHint: {
+    color: colors.textTertiary,
+    fontSize: typography.micro.fontSize,
+    marginTop: spacing.xs,
   },
 });
