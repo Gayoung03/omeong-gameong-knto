@@ -15,6 +15,9 @@ from app.recommend.tmap import RouteLeg
 
 KST = ZoneInfo("Asia/Seoul")
 DINNER_START = time(17)
+DINNER_START_BY = time(19, 30)
+LUNCH_START = time(11, 30)
+LUNCH_START_BY = time(14)
 Coordinate = tuple[float, float]
 RouteProvider = Callable[[Coordinate, Coordinate, TransportType, datetime | None], RouteLeg]
 
@@ -35,6 +38,7 @@ class BuildRequest:
     pace: TripPace
     transport: TransportType
     start_coord: Coordinate
+    restaurant_preferred: bool = False
     day_start_anchors: dict[date, "RouteAnchor"] = field(default_factory=dict)
     day_end_anchors: dict[date, "RouteAnchor"] = field(default_factory=dict)
 
@@ -69,6 +73,7 @@ class ItineraryDay:
     items: tuple[ScheduledItem, ...]
     moves: tuple[ScheduledMove, ...]
     dinner_required: bool
+    restaurant_required: bool
     start_anchor: RouteAnchor | None = None
     end_anchor: RouteAnchor | None = None
     day_start: datetime | None = None
@@ -107,40 +112,69 @@ def build(
         end_anchor = request.day_end_anchors.get(route_date)
         current_coord = start_anchor.coord if start_anchor else request.start_coord
         current_time = day_start
+        dinner_required = day_end.time() >= DINNER_START
+        lunch_start = datetime.combine(route_date, LUNCH_START, KST)
+        lunch_start_by = datetime.combine(route_date, LUNCH_START_BY, KST)
+        lunch_required = (
+            request.restaurant_preferred
+            and not dinner_required
+            and day_start <= lunch_start_by
+            and day_end >= lunch_start
+        )
+        restaurant_scheduled = False
 
         while remaining and len(items) < rule["places_per_day"] and current_time < day_end:
-            dinner_slot = len(items) == rule["places_per_day"] - 1
+            dinner_start = datetime.combine(route_date, DINNER_START, KST)
+            dinner_start_by = datetime.combine(route_date, DINNER_START_BY, KST)
+            dinner_slot = dinner_required and (
+                len(items) == rule["places_per_day"] - 1 or current_time >= dinner_start
+            )
+            lunch_slot = lunch_required and not restaurant_scheduled and current_time >= lunch_start
+            meal_slot = dinner_slot or lunch_slot
             blocked_types = (
                 {ScheduleItemType.CAFE}
                 if any(item.candidate.item_type == ScheduleItemType.CAFE for item in items)
                 else set()
             )
-            if not dinner_slot:
+            if not meal_slot or restaurant_scheduled:
                 blocked_types.add(ScheduleItemType.RESTAURANT)
-            not_before = datetime.combine(route_date, DINNER_START, KST) if dinner_slot else None
+            not_before = dinner_start if dinner_slot else lunch_start if lunch_slot else None
+            start_by = dinner_start_by if dinner_slot else lunch_start_by if lunch_slot else None
+            # 식사 전 관광 일정이 식사 시작 시각을 침범하지 않게 슬롯을 미리 비워둔다.
+            visit_deadline = day_end
+            if dinner_required and not restaurant_scheduled and not meal_slot:
+                visit_deadline = min(visit_deadline, dinner_start)
+            elif lunch_required and not restaurant_scheduled and not meal_slot:
+                visit_deadline = min(visit_deadline, lunch_start)
             choice = _best_candidate(
                 remaining,
                 rejected_today,
                 blocked_types,
-                ScheduleItemType.RESTAURANT if dinner_slot else None,
+                ScheduleItemType.RESTAURANT if meal_slot else None,
                 not_before,
+                start_by,
                 current_coord,
                 current_time,
-                day_end,
+                visit_deadline,
                 request.transport,
                 rule["rest_min"] if items else 0,
                 end_anchor.coord if end_anchor else None,
             )
-            # 낮 일정이 부족해도 저녁 식사는 마지막 일정으로 시도한다.
-            if choice is None and not dinner_slot:
-                dinner_slot = True
-                not_before = datetime.combine(route_date, DINNER_START, KST)
+            # 낮 일정이 부족하거나 식사 시간이 오면 필요한 식사를 우선 배치한다.
+            if choice is None and not meal_slot and (dinner_required or lunch_required):
+                dinner_slot = dinner_required
+                lunch_slot = lunch_required and not dinner_required
+                meal_slot = True
+                not_before = dinner_start if dinner_slot else lunch_start
+                start_by = dinner_start_by if dinner_slot else lunch_start_by
+                visit_deadline = day_end
                 choice = _best_candidate(
                     remaining,
                     rejected_today,
                     set(),
                     ScheduleItemType.RESTAURANT,
                     not_before,
+                    start_by,
                     current_coord,
                     current_time,
                     day_end,
@@ -163,9 +197,9 @@ def build(
             visit = _fit_visit(
                 choice,
                 max(arrival, not_before) if not_before is not None else arrival,
-                day_end,
+                visit_deadline,
             )
-            if visit is None:
+            if visit is None or (start_by is not None and visit[0] > start_by):
                 rejected_today.add(choice.place_id)
                 continue
 
@@ -181,6 +215,9 @@ def build(
             remaining.remove(choice)
             current_coord = (choice.lat, choice.lng)
             current_time = ends_at
+            restaurant_scheduled = restaurant_scheduled or (
+                choice.item_type == ScheduleItemType.RESTAURANT
+            )
             if dinner_slot:
                 break
 
@@ -200,7 +237,8 @@ def build(
                 route_date,
                 tuple(items),
                 tuple(moves),
-                dinner_required=day_end.time() >= DINNER_START,
+                dinner_required=dinner_required,
+                restaurant_required=dinner_required or lunch_required,
                 start_anchor=start_anchor if items else None,
                 end_anchor=end_anchor if items else None,
                 day_start=day_start if items and start_anchor else None,
@@ -217,6 +255,7 @@ def _best_candidate(
     blocked_types: set[ScheduleItemType],
     required_type: ScheduleItemType | None,
     not_before: datetime | None,
+    start_by: datetime | None,
     current_coord: Coordinate,
     current_time: datetime,
     day_end: datetime,
@@ -252,6 +291,8 @@ def _best_candidate(
             day_end - timedelta(minutes=return_min),
         )
         if visit is None:
+            continue
+        if start_by is not None and visit[0] > start_by:
             continue
         cost = rest_min + travel_min + candidate.average_stay_minutes
         choices.append((candidate.total_score / max(cost, 1), candidate.total_score, candidate))

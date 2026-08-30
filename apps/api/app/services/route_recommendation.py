@@ -138,6 +138,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
             pace=request.pace,
             transport=request.transport,
             start_coord=start_coord,
+            restaurant_preferred="category:restaurant" in (request.preferred_tags or []),
             day_start_anchors=day_start_anchors,
             day_end_anchors=day_end_anchors,
         ),
@@ -156,6 +157,16 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     ):
         raise RecommendationGenerationError(
             "저녁 식사가 필요한 날짜에 배치할 수 있는 반려동물 동반 식당이 부족합니다"
+        )
+    if request.preferred_tags and "category:restaurant" in request.preferred_tags and any(
+        day.restaurant_required
+        and not any(
+            item.candidate.item_type == ScheduleItemType.RESTAURANT for item in day.items
+        )
+        for day in itinerary.days
+    ):
+        raise RecommendationGenerationError(
+            "맛집 선호를 반영할 수 있는 반려동물 동반 식당이 부족합니다"
         )
 
     _save_itinerary(db, route, itinerary)
