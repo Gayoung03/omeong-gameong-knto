@@ -1,15 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import {
-  createElement,
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
+import { HtmlFrame } from '@/src/components/web/HtmlFrame.web';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
 import { KAKAO_JS_KEY } from '../constants/map';
@@ -42,7 +35,10 @@ const MAP_COLORS = {
   candidateMarker: colors.leaf,
 };
 
-/** react-native-webview가 지원하지 않는 웹에서는 srcDoc iframe을 사용한다. */
+/**
+ * react-native-webview 가 웹을 지원하지 않아 iframe 으로 지도를 띄운다.
+ * 프레임 방식은 HtmlFrame 주석 참고 (srcDoc 을 쓰면 HTTPS 배포에서 지도가 차단된다).
+ */
 export const TripMapView = forwardRef<TripMapViewHandle, Props>(function TripMapView(
   { items, redrawKey, initialSelectedPlaceId, onSelectPlace, candidates, initialFitMode = 'route' },
   ref,
@@ -68,7 +64,8 @@ export const TripMapView = forwardRef<TripMapViewHandle, Props>(function TripMap
 
   useEffect(() => {
     const receiveMessage = (event: MessageEvent) => {
-      if (event.source !== iframeRef.current?.contentWindow || typeof event.data !== 'string') return;
+      if (event.source !== iframeRef.current?.contentWindow || typeof event.data !== 'string')
+        return;
       let message: KakaoMapMessage;
       try {
         message = JSON.parse(event.data) as KakaoMapMessage;
@@ -93,7 +90,9 @@ export const TripMapView = forwardRef<TripMapViewHandle, Props>(function TripMap
   }, [html, redrawKey, onSelectPlace]);
 
   if (!KAKAO_JS_KEY) {
-    return <MapNotice description="카카오 JavaScript 키를 설정해주세요." title="지도 연결이 필요해요" />;
+    return (
+      <MapNotice description="카카오 JavaScript 키를 설정해주세요." title="지도 연결이 필요해요" />
+    );
   }
   if (errorMessage) {
     return <MapNotice description={errorMessage} title="지도를 불러오지 못했어요" />;
@@ -101,18 +100,19 @@ export const TripMapView = forwardRef<TripMapViewHandle, Props>(function TripMap
 
   return (
     <View style={styles.container}>
-      {createElement('iframe', {
-        'aria-label': '여행 경로 지도',
-        key: redrawKey,
-        onLoad: () => {
+      <HtmlFrame
+        backgroundColor={colors.background}
+        html={html}
+        key={redrawKey}
+        onFrame={(frame) => {
+          iframeRef.current = frame;
+        }}
+        onWrite={() => {
           setIsLoading(false);
           setErrorMessage(null);
-        },
-        ref: iframeRef,
-        srcDoc: html,
-        style: { width: '100%', height: '100%', border: 0, backgroundColor: colors.background },
-        title: '여행 경로 지도',
-      })}
+        }}
+        title="여행 경로 지도"
+      />
       {isLoading ? (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator color={colors.primary} />
