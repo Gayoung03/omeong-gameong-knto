@@ -4,7 +4,6 @@ import { StyleSheet, View } from 'react-native';
 import { StatTile } from '@/src/components/ui/StatTile';
 import { useMyReviews } from '@/src/features/reviews/hooks/useMyReviews';
 import { useSavedPlaces } from '@/src/features/saved/hooks/useSavedPlaces';
-import { useSavedRoutes } from '@/src/features/saved/hooks/useSavedRoutes';
 import { spacing } from '@/src/theme';
 import type { ActivitySummary } from '@/src/types/profile';
 
@@ -15,9 +14,8 @@ type TravelSummarySectionProps = {
 export function TravelSummarySection({ summary }: TravelSummarySectionProps) {
   const router = useRouter();
   // 저장 개수는 기기에 실제로 저장된 목록에서 센다.
-  // summary 의 savedPlacesCount·savedCoursesCount 는 목데이터라 쓰지 않는다.
+  // summary 의 savedPlacesCount 는 목데이터라 쓰지 않는다.
   const { data: savedPlaces = [] } = useSavedPlaces();
-  const { data: savedRoutes = [] } = useSavedRoutes();
   // 리뷰 개수는 서버가 센 total 을 쓴다. items 는 20건짜리 한 페이지다.
   const { data: myReviews } = useMyReviews();
 
@@ -32,13 +30,6 @@ export function TravelSummarySection({ summary }: TravelSummarySectionProps) {
         onPress={() => router.push('/saved/places')}
         value={savedPlaces.length}
         variant="orange"
-      />
-      <StatTile
-        icon="map-outline"
-        label="저장한 코스"
-        onPress={() => router.push('/saved/routes')}
-        value={savedRoutes.length}
-        variant="yellow"
       />
       <StatTile
         icon="camera-outline"
