@@ -47,7 +47,7 @@ export function TravelSummarySection({ summary }: TravelSummarySectionProps) {
       />
       <StatTile
         icon="book-outline"
-        label="여행 준비 가이드"
+        label={'여행 준비\n가이드'}
         onPress={() => router.push('/travel-guides/preparation')}
         variant="green"
       />

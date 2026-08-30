@@ -28,7 +28,11 @@ function EmptyPetState() {
   const router = useRouter();
 
   return (
-    <Pressable accessibilityLabel="반려동물 등록" accessibilityRole="button" onPress={() => router.push('/pets/new')}>
+    <Pressable
+      accessibilityLabel="반려동물 등록"
+      accessibilityRole="button"
+      onPress={() => router.push('/pets/new')}
+    >
       <Card style={styles.emptyCard}>
         <Ionicons color={colors.primary} name="add" size={22} />
         <Text style={styles.emptyLabel}>반려동물을 등록해주세요</Text>
@@ -41,7 +45,9 @@ export function PetProfileSection({ pets }: PetProfileSectionProps) {
   const [containerWidth, setContainerWidth] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
   const pageCount = pets.length;
-  const snapInterval = containerWidth > 0 ? containerWidth * PEEK_RATIO + spacing.sm : undefined;
+  const cardWidth = containerWidth > 0 ? containerWidth * (pageCount > 1 ? PEEK_RATIO : 1) : '100%';
+  const snapInterval =
+    containerWidth > 0 && pageCount > 1 ? containerWidth * PEEK_RATIO + spacing.sm : undefined;
 
   const handleLayout = (event: LayoutChangeEvent) => {
     setContainerWidth(event.nativeEvent.layout.width);
@@ -72,7 +78,7 @@ export function PetProfileSection({ pets }: PetProfileSectionProps) {
         {pets.map((pet, index) => (
           <View
             key={pet.petId}
-            style={[styles.page, index < pets.length - 1 && styles.pageSpacing]}
+            style={[{ width: cardWidth }, index < pets.length - 1 && styles.pageSpacing]}
           >
             <PetProfileCard pet={pet} />
           </View>
@@ -115,9 +121,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: typography.body.fontSize,
     fontWeight: '700',
-  },
-  page: {
-    width: `${PEEK_RATIO * 100}%`,
   },
   pageSpacing: {
     marginRight: spacing.sm,
