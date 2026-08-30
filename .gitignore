@@ -68,3 +68,6 @@ design-assets/
 # 실행한 사람의 로컬에만 있으면 되고, DB 상태에 따라 매번 달라진다.
 apps/api/activated-*.txt
 apps/api/region-fixed-*.txt
+
+# 리허설용 DB 덤프. 프로덕션·dev 실데이터가 들어 있으므로 절대 커밋하지 않는다.
+infra/dumps/
