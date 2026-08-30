@@ -26,7 +26,7 @@ import type { ChatEntry } from '../types/chatbot';
 export function ChatbotScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [input, setInput] = useState('');
-  const { entries, isAnswering, ask, retry } = useChatbot();
+  const { entries, isAnswering, ask, retry, stop } = useChatbot();
   const hasMessages = entries.length > 0;
   const canSend = Boolean(input.trim()) && !isAnswering;
 
@@ -47,36 +47,42 @@ export function ChatbotScreen() {
         <TextInput
           accessibilityLabel="혼디에게 질문 입력"
           blurOnSubmit={false}
-          // 답변을 만드는 동안은 잠근다(설계 결정 F3). 두 질문이 겹치면
-          // 어느 답변이 어느 질문의 것인지 화면에서 구분할 수 없다.
-          editable={!isAnswering}
+          // 답변을 만드는 동안에도 **입력은 열어둔다**(설계 결정 F3). 기다리는
+          // 사이에 다음 질문을 미리 적어둘 수 있다. 다만 보내지는 못한다 —
+          // 두 질문이 겹치면 어느 답변이 어느 질문의 것인지 알 수 없다.
           onChangeText={setInput}
           onSubmitEditing={() => sendMessage(input)}
-          placeholder={
-            isAnswering ? '혼디가 답변을 만들고 있어요…' : '제주 여행에 대해 궁금한 점을 입력해보세요'
-          }
+          placeholder="제주 여행에 대해 궁금한 점을 입력해보세요"
           placeholderTextColor={colors.textTertiary}
           returnKeyType="send"
           style={styles.input}
           value={input}
         />
-        <Pressable
-          accessibilityLabel="질문 보내기"
-          accessibilityState={{ disabled: !canSend }}
-          disabled={!canSend}
-          onPress={() => sendMessage(input)}
-          style={({ pressed }) => [
-            styles.sendButton,
-            !canSend && styles.sendButtonDisabled,
-            pressed && styles.pressed,
-          ]}
-        >
-          {isAnswering ? (
-            <ActivityIndicator color={colors.surface} size="small" />
-          ) : (
+        {isAnswering ? (
+          <Pressable
+            accessibilityHint="만들고 있던 답변을 버립니다"
+            accessibilityLabel="답변 생성 중지"
+            accessibilityRole="button"
+            onPress={stop}
+            style={({ pressed }) => [styles.sendButton, pressed && styles.pressed]}
+          >
+            <Ionicons color={colors.surface} name="stop" size={18} />
+          </Pressable>
+        ) : (
+          <Pressable
+            accessibilityLabel="질문 보내기"
+            accessibilityState={{ disabled: !canSend }}
+            disabled={!canSend}
+            onPress={() => sendMessage(input)}
+            style={({ pressed }) => [
+              styles.sendButton,
+              !canSend && styles.sendButtonDisabled,
+              pressed && styles.pressed,
+            ]}
+          >
             <Ionicons color={colors.surface} name="paper-plane" size={20} />
-          )}
-        </Pressable>
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -120,12 +126,46 @@ export function ChatbotScreen() {
       );
     }
 
+    if (entry.kind === 'streaming') {
+      // 질문 말풍선은 `start` 때 확정 메시지로 자리를 잡았다. 여기는 답변만이다.
+      //
+      // `content` 가 비어 있는 구간이 **짧은 답변에서는 끝까지 유지된다** —
+      // 훅이 임계 시간 안에 끝난 답변은 흘리지 않고 모아두기 때문이다
+      // (useChatbot.ts 의 STREAM_BUFFER_MS). 그동안은 대기 말풍선과 똑같이
+      // 보여야 단계가 바뀐 것처럼 깜빡이지 않는다.
+      return (
+        <View style={styles.messageGroup}>
+          {renderHondi(
+            <View style={[styles.messageBubble, styles.assistantBubble]}>
+              <View style={styles.assistantLabel}>
+                <Text style={styles.assistantLabelText}>혼디</Text>
+              </View>
+              {entry.content ? (
+                <Text style={styles.messageText}>
+                  {entry.content}
+                  <Text style={styles.caret}>▍</Text>
+                </Text>
+              ) : (
+                <View style={styles.pendingRow}>
+                  <ActivityIndicator color={colors.primary} size="small" />
+                  <Text style={styles.pendingText}>혼디가 장소를 찾고 있어요…</Text>
+                </View>
+              )}
+            </View>,
+          )}
+        </View>
+      );
+    }
+
     if (entry.kind === 'failed') {
       return (
         <>
-          <View style={[styles.messageGroup, styles.userMessageGroup]}>
-            {renderUserBubble(entry.question)}
-          </View>
+          {/* 질문이 이미 저장됐으면 제 말풍선이 있다. 여기서 또 그리면 두 번 나온다. */}
+          {entry.questionSaved ? null : (
+            <View style={[styles.messageGroup, styles.userMessageGroup]}>
+              {renderUserBubble(entry.question)}
+            </View>
+          )}
           <View style={styles.messageGroup}>
             {renderHondi(
               <View style={[styles.messageBubble, styles.failedBubble]}>
@@ -203,7 +243,13 @@ export function ChatbotScreen() {
                 keyboardShouldPersistTaps="handled"
                 // 말풍선이 늘어날 때마다 맨 아래로 붙인다. 대기 말풍선이 진짜
                 // 답변으로 바뀌면서 높이가 커지는 경우까지 이걸로 덮인다.
-                onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+                //
+                // **답변이 오는 동안은 애니메이션을 끈다.** 긴 답변은 글자가
+                // 늘 때마다 여기가 불리는데, 애니메이션 스크롤이 끝나기 전에
+                // 계속 새로 시작되면 화면이 덜덜 떨린다.
+                onContentSizeChange={() =>
+                  scrollRef.current?.scrollToEnd({ animated: !isAnswering })
+                }
                 ref={scrollRef}
                 showsVerticalScrollIndicator={false}
                 style={styles.activeChatScroll}
@@ -285,9 +331,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
+  pendingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   pendingText: {
     color: colors.textSecondary,
     fontSize: 14,
+  },
+  caret: {
+    color: colors.primary,
+    fontSize: 13,
   },
   failedBubble: {
     backgroundColor: colors.errorBg,
