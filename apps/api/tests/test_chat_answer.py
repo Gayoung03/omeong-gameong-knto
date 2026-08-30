@@ -1,16 +1,21 @@
 """챗봇 답변 생성 엔드포인트 테스트.
 
-**OpenAI 를 부르지 않는다.** `generate_answer` 를 갈아끼워서 검사한다 —
+**OpenAI 를 부르지 않는다.** `stream_answer` 를 갈아끼워서 검사한다 —
 진짜로 부르면 테스트마다 요금이 나가고, 답변이 매번 달라져 단언할 수가 없다.
 
 모델이 실제로 어떤 인자를 고르는지는 여기서 검사할 수 없다. 그건 사람이
 직접 물어보며 볼 부분이고, **고른 뒤의 동작**은 test_chat_place_search.py 에 있다.
+
+응답은 SSE 라 `_events()` 로 풀어서 본다.
 """
 
+import asyncio
+import json
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import datetime, timedelta
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -19,13 +24,18 @@ from app.api.v1.endpoints import chatbot
 from app.core.config import settings
 from app.db.models import ChatConversation, ChatMessage, Place, User
 from app.db.models.enums import MessageRole
-from app.integrations.llm.chat import Answer, ChatGenerationError, ChatTimeoutError
+from app.integrations.llm.chat import (
+    Answer,
+    AnswerDelta,
+    ChatGenerationError,
+    ChatTimeoutError,
+)
 from app.services.chat_access import KST
 
 
 @pytest.fixture
 def answering(monkeypatch: pytest.MonkeyPatch) -> Callable[..., list[list[dict]]]:
-    """`generate_answer` 를 가짜로 바꾼다. 모델에게 간 대화 맥락을 기록해 둔다."""
+    """`stream_answer` 를 가짜로 바꾼다. 모델에게 간 대화 맥락을 기록해 둔다."""
 
     def install(
         content: str = "애월 쪽 카페 세 곳을 찾았어요.",
@@ -34,17 +44,22 @@ def answering(monkeypatch: pytest.MonkeyPatch) -> Callable[..., list[list[dict]]
     ) -> list[list[dict]]:
         seen_history: list[list[dict]] = []
 
-        def fake(db: Session, history: list[dict], question: str) -> Answer:
+        def fake(
+            db: Session, history: list[dict], question: str
+        ) -> Iterator[AnswerDelta | Answer]:
             seen_history.append(history)
             if error is not None:
                 raise error
-            return Answer(
+            # 조각으로 나눠 보내야 앱이 이어 붙이는 것까지 검사된다.
+            for piece in (content[: len(content) // 2], content[len(content) // 2 :]):
+                yield AnswerDelta(piece)
+            yield Answer(
                 content=content,
                 model_name="test-model",
                 referenced_place_ids=place_ids or [],
             )
 
-        monkeypatch.setattr(chatbot, "generate_answer", fake)
+        monkeypatch.setattr(chatbot, "stream_answer", fake)
         return seen_history
 
     return install
@@ -63,23 +78,56 @@ def _ask(client: TestClient, conversation_id: str, question: str = "애월 카�
     )
 
 
+def _events(response: httpx.Response) -> list[dict]:
+    """SSE 본문을 이벤트 목록으로. 각 덩어리는 `data: {...}` 한 줄이다."""
+    return [
+        json.loads(block.removeprefix("data: "))
+        for block in response.text.split("\n\n")
+        if block.strip()
+    ]
+
+
+def _answer_of(response: httpx.Response) -> dict:
+    """`done` 이 실은 답변 메시지."""
+    done = [event for event in _events(response) if event["event"] == "done"]
+    assert done, f"done 이벤트가 없다: {_events(response)}"
+    return done[0]["assistantMessage"]
+
+
 def test_질문과_답변_두_행이_저장된다(
     client: TestClient, answering: Callable[..., list[list[dict]]]
 ) -> None:
     answering()
     conversation_id = _conversation(client)
 
-    body = _ask(client, conversation_id).json()
+    events = _events(_ask(client, conversation_id))
 
-    assert body["userMessage"]["role"] == "user"
-    assert body["userMessage"]["content"] == "애월 카페 알려줘"
-    assert body["assistantMessage"]["role"] == "assistant"
-    assert body["assistantMessage"]["modelName"] == "test-model"
+    assert events[0]["event"] == "start"
+    assert events[0]["userMessage"]["role"] == "user"
+    assert events[0]["userMessage"]["content"] == "애월 카페 알려줘"
+    assert events[-1]["event"] == "done"
+    assert events[-1]["assistantMessage"]["role"] == "assistant"
+    assert events[-1]["assistantMessage"]["modelName"] == "test-model"
 
     listed = client.get(f"/api/v1/chat/conversations/{conversation_id}/messages").json()
     assert listed["total"] == 2
     # 채팅 화면 순서대로 — 질문이 먼저다.
     assert [item["role"] for item in listed["items"]] == ["user", "assistant"]
+
+
+def test_답변이_조각으로_흘러온다(
+    client: TestClient, answering: Callable[..., list[list[dict]]]
+) -> None:
+    """`delta` 를 이어 붙인 것과 `done` 의 본문이 같아야 한다(docs/api/chatbot.md)."""
+    answering(content="애월 쪽 카페 세 곳을 찾았어요.")
+    conversation_id = _conversation(client)
+
+    events = _events(_ask(client, conversation_id))
+    deltas = [event["text"] for event in events if event["event"] == "delta"]
+
+    assert len(deltas) > 1
+    assert "".join(deltas) == "애월 쪽 카페 세 곳을 찾았어요."
+    assert events[-1]["assistantMessage"]["content"] == "".join(deltas)
 
 
 def test_답변이_언급한_장소가_지도핀으로_내려간다(
@@ -88,7 +136,7 @@ def test_답변이_언급한_장소가_지도핀으로_내려간다(
     answering(place_ids=[place.id])
     conversation_id = _conversation(client)
 
-    answer = _ask(client, conversation_id).json()["assistantMessage"]
+    answer = _answer_of(_ask(client, conversation_id))
 
     assert [ref["id"] for ref in answer["referencedPlaces"]] == [str(place.id)]
     assert answer["referencedPlaces"][0]["name"] == place.name
@@ -100,10 +148,10 @@ def test_질문에는_지도핀이_붙지_않는다(
     answering(place_ids=[place.id])
     conversation_id = _conversation(client)
 
-    body = _ask(client, conversation_id).json()
+    start = _events(_ask(client, conversation_id))[0]
 
-    assert body["userMessage"]["referencedPlaces"] == []
-    assert body["userMessage"]["modelName"] is None
+    assert start["userMessage"]["referencedPlaces"] == []
+    assert start["userMessage"]["modelName"] is None
 
 
 def test_지난_대화가_맥락으로_함께_간다(
@@ -173,20 +221,25 @@ def test_system_메시지는_맥락에서_빠진다(
     assert all(message["role"] != "system" for message in seen[0])
 
 
-def test_실패하면_질문도_저장하지_않는다(
+def test_실패하면_질문만_남고_답변은_저장되지_않는다(
     client: TestClient, answering: Callable[..., list[list[dict]]]
 ) -> None:
-    """실패한 질문만 쌓이면 다음 질문의 맥락이 어긋난다."""
+    """스트림이 시작된 뒤 실패라 상태코드를 못 바꾼다 — `error` 이벤트로 알린다.
+
+    질문은 `start` 시점에 이미 저장돼 있어 그대로 남는다. 앱은 재시도 버튼을
+    띄우면 된다(docs/api/chatbot.md).
+    """
     answering(error=ChatGenerationError("모델이 응답하지 않음"))
     conversation_id = _conversation(client)
 
-    response = _ask(client, conversation_id)
+    events = _events(_ask(client, conversation_id))
 
-    assert response.status_code == 502
-    assert "다시 시도" in response.json()["detail"]
+    assert events[-1]["event"] == "error"
+    assert events[-1]["code"] == "llm_failed"
+    assert "다시 시도" in events[-1]["detail"]
 
     listed = client.get(f"/api/v1/chat/conversations/{conversation_id}/messages").json()
-    assert listed["total"] == 0
+    assert [item["role"] for item in listed["items"]] == ["user"]
 
 
 def test_시간초과는_따로_구분된다(
@@ -195,10 +248,41 @@ def test_시간초과는_따로_구분된다(
     answering(error=ChatTimeoutError("시간 초과"))
     conversation_id = _conversation(client)
 
-    response = _ask(client, conversation_id)
+    events = _events(_ask(client, conversation_id))
 
-    assert response.status_code == 504
-    assert "늦어지고" in response.json()["detail"]
+    assert events[-1]["code"] == "llm_timeout"
+    assert "늦어지고" in events[-1]["detail"]
+
+
+def test_중지하면_답변을_저장하지_않는다(
+    client: TestClient, db: Session, owner: User, answering: Callable[..., list[list[dict]]]
+) -> None:
+    """중지 버튼은 연결을 끊는 것뿐이다. 서버는 네트워크 끊김과 구분하지 않는다.
+
+    `delta` 를 받은 상태에서 끊으므로 **만들다 만 답변이 있는데도** 저장되지 않아야
+    한다. 질문은 남아 앱이 다시 물어볼 수 있다.
+
+    `TestClient` 로는 검사할 수 없다 — 스트림을 끝까지 받아버려서 연결이 끊기는
+    상황이 재현되지 않는다. 그래서 **엔드포인트를 직접 불러** 본문을 조각까지만
+    읽고 멈춘다. 실제로 연결이 끊기면 Starlette 도 여기서 멈춘다.
+    """
+    answering()
+    conversation_id = uuid.UUID(_conversation(client))
+
+    response = chatbot.create_message(
+        conversation_id, chatbot.MessageCreate(content="애월 카페 알려줘"), owner, db
+    )
+
+    async def read_until_delta() -> None:
+        stream = response.body_iterator
+        assert '"start"' in await stream.__anext__()
+        assert '"delta"' in await stream.__anext__()
+        await stream.aclose()  # 여기서 연결이 끊긴다 = 중지 버튼
+
+    asyncio.run(read_until_delta())
+
+    listed = client.get(f"/api/v1/chat/conversations/{conversation_id}/messages").json()
+    assert [item["role"] for item in listed["items"]] == ["user"]
 
 
 def test_빈_질문은_거부한다(client: TestClient) -> None:
@@ -236,8 +320,8 @@ def test_하루_상한을_넘기면_막는다(
     monkeypatch.setattr(settings, "chat_daily_limit", 2)
     conversation_id = _conversation(client)
 
-    assert _ask(client, conversation_id).status_code == 201
-    assert _ask(client, conversation_id).status_code == 201
+    assert _ask(client, conversation_id).status_code == 200
+    assert _ask(client, conversation_id).status_code == 200
     blocked = _ask(client, conversation_id)
 
     assert blocked.status_code == 429
@@ -252,8 +336,8 @@ def test_개발환경에서는_상한을_세지_않는다(
     monkeypatch.setattr(settings, "chat_daily_limit", 1)
     conversation_id = _conversation(client)
 
-    assert _ask(client, conversation_id).status_code == 201
-    assert _ask(client, conversation_id).status_code == 201
+    assert _ask(client, conversation_id).status_code == 200
+    assert _ask(client, conversation_id).status_code == 200
 
 
 def test_사라진_장소는_지도핀에서_빠진다(
@@ -263,7 +347,7 @@ def test_사라진_장소는_지도핀에서_빠진다(
     answering(place_ids=[place.id, uuid.uuid4()])
     conversation_id = _conversation(client)
 
-    answer = _ask(client, conversation_id).json()["assistantMessage"]
+    answer = _answer_of(_ask(client, conversation_id))
 
     assert [ref["id"] for ref in answer["referencedPlaces"]] == [str(place.id)]
 

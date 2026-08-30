@@ -4,9 +4,17 @@
 
 ## 부르는 쪽은 OpenAI 를 몰라도 된다
 
-엔드포인트는 `generate_answer()` 하나만 부르고 `Answer` 를 받는다. 벤더를 바꾸거나
-스트리밍으로 옮길 때 **이 파일 안만 고치면 된다** — `travel_log_image.py` 와 같은
-방식이다.
+엔드포인트는 `stream_answer()` 하나만 부르고 `AnswerDelta` 조각들과 마지막 `Answer` 를
+받는다. 벤더를 바꿔도 **이 파일 안만 고치면 된다** — `travel_log_image.py` 와 같은 방식이다.
+
+## 스트리밍과 도구 호출이 한 라운드 안에서 섞이지 않는다
+
+OpenAI 응답은 `tool_calls` 가 있는 메시지에는 `content` 가 없고, `content` 가 있는
+메시지에는 `tool_calls` 가 없다. 그래서 도구 라운드는 화면에 보이지 않게 조각을 모아서만
+처리하고, **텍스트를 실제로 만드는 마지막 라운드만** 조각이 오는 대로 그 자리에서
+내보낸다(`AnswerDelta`). `generate_answer()` 는 `stream_answer()` 를 끝까지 돌려 최종
+`Answer` 만 받는 얇은 래퍼다 — 스트리밍이 필요 없는 곳(`scripts/chat_quality_check.py`)이
+쓴다.
 
 ## 흐름
 
@@ -31,6 +39,7 @@
 
 import json
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
@@ -464,11 +473,28 @@ def _mentioned(content: str, seen: dict[uuid.UUID, PlaceHit]) -> list[uuid.UUID]
     return [place_id for place_id, hit in seen.items() if hit.name in content]
 
 
-def generate_answer(db: Session, history: list[dict], question: str) -> Answer:
-    """질문 하나에 대한 답변을 만든다.
+@dataclass(frozen=True)
+class AnswerDelta:
+    """스트리밍 중 도착한 답변 조각. 엔드포인트가 그대로 SSE `delta` 이벤트로 내보낸다."""
+
+    text: str
+
+
+def stream_answer(
+    db: Session, history: list[dict], question: str
+) -> Iterator[AnswerDelta | Answer]:
+    """질문 하나에 대한 답변을 스트리밍으로 만든다.
+
+    `AnswerDelta` 를 여러 번 내보내다가 마지막에 `Answer` 를 한 번 내보내고 끝난다.
+    도구 라운드는 조각을 모아서만 쓰고 내보내지 않는다 — 볼 것이 없어서다.
 
     `history` 는 오래된 순으로 정렬된 `{"role", "content"}` 목록이다.
     `HISTORY_LIMIT` 개까지만 쓴다.
+
+    호출부가 중간에 순회를 멈추면(중지 버튼·연결 끊김) 이 제너레이터에
+    `GeneratorExit` 이 던져진다. 열려 있는 OpenAI 스트림을 닫는 것 말고는 할 일이
+    없다 — 저장은 호출부 몫이고, 여기까지 오면 아직 저장할 `Answer` 를 안 만든
+    상태라 "중지하면 저장하지 않는다"가 자연히 지켜진다.
     """
     client = _client()
     messages: list[dict] = [
@@ -482,30 +508,75 @@ def generate_answer(db: Session, history: list[dict], question: str) -> Answer:
 
     try:
         for _round in range(MAX_TOOL_ROUNDS):
-            completion = client.chat.completions.create(
+            stream = client.chat.completions.create(
                 model=settings.openai_model,
                 messages=messages,
                 tools=TOOLS,
+                stream=True,
             )
-            choice = completion.choices[0].message
+            content_parts: list[str] = []
+            #: 인덱스별로 조각을 모은다 — `arguments` 는 여러 청크에 걸쳐 문자열로 쪼개져 온다.
+            tool_calls: dict[int, dict] = {}
+            model_name = settings.openai_model
+            try:
+                for chunk in stream:
+                    if not chunk.choices:
+                        continue
+                    model_name = chunk.model or model_name
+                    delta = chunk.choices[0].delta
+                    if delta.tool_calls:
+                        for piece in delta.tool_calls:
+                            call = tool_calls.setdefault(
+                                piece.index, {"id": None, "name": None, "arguments": ""}
+                            )
+                            if piece.id:
+                                call["id"] = piece.id
+                            if piece.function and piece.function.name:
+                                call["name"] = piece.function.name
+                            if piece.function and piece.function.arguments:
+                                call["arguments"] += piece.function.arguments
+                    elif delta.content:
+                        content_parts.append(delta.content)
+                        yield AnswerDelta(delta.content)
+            finally:
+                close = getattr(stream, "close", None)
+                if close:
+                    close()
 
-            if not choice.tool_calls:
-                content = (choice.content or "").strip()
-                if not content:
-                    raise ChatGenerationError("빈 답변을 받았습니다")
-                return Answer(
-                    content=content,
-                    model_name=completion.model,
-                    referenced_place_ids=_mentioned(content, seen),
-                )
-
-            messages.append(choice.model_dump(exclude_none=True))
-            for call in choice.tool_calls:
-                result, hits = _dispatch(db, call.function.name, call.function.arguments)
-                seen.update({hit.place_id: hit for hit in hits})
+            if tool_calls:
                 messages.append(
-                    {"role": "tool", "tool_call_id": call.id, "content": result}
+                    {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": call["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": call["name"],
+                                    "arguments": call["arguments"],
+                                },
+                            }
+                            for call in tool_calls.values()
+                        ],
+                    }
                 )
+                for call in tool_calls.values():
+                    result, hits = _dispatch(db, call["name"], call["arguments"])
+                    seen.update({hit.place_id: hit for hit in hits})
+                    messages.append(
+                        {"role": "tool", "tool_call_id": call["id"], "content": result}
+                    )
+                continue
+
+            content = "".join(content_parts).strip()
+            if not content:
+                raise ChatGenerationError("빈 답변을 받았습니다")
+            yield Answer(
+                content=content,
+                model_name=model_name,
+                referenced_place_ids=_mentioned(content, seen),
+            )
+            return
     except APITimeoutError as error:
         raise ChatTimeoutError("답변 생성이 시간을 초과했습니다") from error
     except ChatGenerationError:
@@ -515,6 +586,17 @@ def generate_answer(db: Session, history: list[dict], question: str) -> Answer:
 
     # 도구만 계속 부르고 답을 안 한 경우. 여기까지 오면 모델이 헤매는 중이다.
     raise ChatGenerationError("검색만 반복하고 답변을 만들지 못했습니다")
+
+
+def generate_answer(db: Session, history: list[dict], question: str) -> Answer:
+    """`stream_answer()` 를 끝까지 돌려 최종 `Answer` 만 받는다.
+
+    스트리밍이 필요 없는 곳(`scripts/chat_quality_check.py`)이 쓴다.
+    """
+    for piece in stream_answer(db, history, question):
+        if isinstance(piece, Answer):
+            return piece
+    raise ChatGenerationError("답변을 받지 못했습니다")
 
 
 def to_history(role: MessageRole, content: str) -> dict:
