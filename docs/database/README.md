@@ -29,15 +29,19 @@ make dev
 ## 전체 규모
 
 ```text
-테이블 30개
-Enum 12개
+테이블 37개
+Enum 18개
 ```
+
+숫자는 `alembic upgrade head` 후 실제 DB 를 세어 맞춘 값입니다(2026-08-29, `user_social_accounts`
+추가 시점). 이전 값(30·12)은 이후 마이그레이션(가이드·운송규정·동의이력·추천 가중치 스냅샷·
+루트 위치 스냅샷 등)이 쌓이며 낡아 있었습니다.
 
 ## 도메인별 테이블
 
 | 도메인 | 테이블 |
 | --- | --- |
-| 회원/반려동물 | `users`, `pets`, `user_travel_preferences` |
+| 회원/반려동물 | `users`, `pets`, `user_travel_preferences`, `user_social_accounts` |
 | 장소 | `places`, `place_external_refs`, `place_business_hours`, `place_pet_policies`, `place_tags`, `place_tag_links` |
 | 루트 입력 | `route_requests`, `route_request_pets`, `route_request_stays` |
 | 루트 결과/내 여행 | `routes`, `route_days`, `route_items`, `route_moves` |
@@ -101,6 +105,28 @@ Enum 12개
 
 추천 당시 최종 적용된 속도, 이동수단과 태그를 `route_requests`에 스냅샷으로 저장합니다. 나중에 사용자의 기본 취향이 바뀐다고 과거 추천 조건이 바뀌지 않습니다.
 
+## 소셜 로그인 계정 연결
+
+카카오·구글 로그인 수단은 `users`에 직접 두지 않고 `user_social_accounts` 연결 테이블에 저장합니다.
+
+**왜 별도 테이블인가.** `users.auth_provider`는 컬럼이 하나라 "이메일 계정 + 카카오 연동"처럼
+한 회원이 여러 로그인 수단을 갖는 상태를 표현할 수 없습니다. 로그인 수단이 늘어나는 축이라 행으로
+쌓는 연결 테이블이 맞습니다.
+
+**UNIQUE(provider, provider_user_id).** 로그인 판정의 정본입니다. 같은 소셜 계정이 서로 다른 회원에
+두 번 붙는 것을 DB가 막습니다(동시 콜백 경합도 여기서 걸러 애플리케이션은 `IntegrityError`를 409/재조회로
+받습니다). `provider`에는 `CHECK (provider <> 'local')`를 걸어 이메일 계정이 이 테이블에 새지 않게 합니다.
+
+**`users.auth_provider`·`users.provider_user_id`의 의미.** 이 두 컬럼은 "최초 가입 수단" 기록으로만
+남기고 로그인 판정에는 쓰지 않습니다. 소셜 신규 가입 시 `users.provider_user_id`는 채우지 않고 식별자는
+`user_social_accounts`에만 둡니다 — 그래서 `users.provider_user_id`(및 `(auth_provider, provider_user_id)`
+유니크 인덱스)는 **추후 드롭을 검토**합니다. 이번 마이그레이션 범위에는 넣지 않습니다.
+
+**탈퇴·익명화 배치와의 연계.** 회원 soft delete 시 연결 행은 `ON DELETE CASCADE`가 아니라 회원 행이 남는
+동안 함께 남습니다(회원 물리 삭제 시에만 CASCADE). 탈퇴 30일 뒤 이메일·닉네임을 익명화하는 배치
+([`users.md`](../api/users.md))는 `user_social_accounts`를 건드리지 않습니다 — 탈퇴한 `(provider,
+provider_user_id)`로의 소셜 재로그인은 애플리케이션이 401로 막습니다(탈퇴 이메일 재가입 차단과 같은 규칙).
+
 ## 여행 속도
 
 | 속도 | 하루 장소 | 기본 휴식 | 일정 시간대 |
@@ -129,6 +155,9 @@ breed: varchar
 ## 장소 데이터 통합
 
 TourAPI, KCISA CSV, 비짓제주, 카카오별로 장소 테이블을 만들지 않습니다. 실제 장소는 `places`에 한 번만 저장하고 제공처 ID를 `place_external_refs`에 연결합니다.
+
+루트 추천에서 사용하는 TourAPI 응답은 공모전 조건에 따라 예외적으로 적재하지 않습니다.
+추천 요청마다 실시간 조회한 뒤 메모리에서 `places`와 대조하고 응답 원문은 버립니다.
 
 ```text
 places: 함덕해수욕장

@@ -4,6 +4,7 @@ services:
     container_name: omeong-gameong-migrate
     environment:
       DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY를 .env에 설정하세요.}
     command:
       - /bin/sh
       - -ec
@@ -21,6 +22,7 @@ services:
       APP_NAME: ${APP_NAME:-Omeong Gameong API}
       ENVIRONMENT: ${ENVIRONMENT:-local}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL을 .env에 설정하세요.}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY를 .env에 설정하세요.}
       AWS_REGION: ${AWS_REGION:-ap-northeast-2}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
@@ -29,6 +31,15 @@ services:
       # 챗봇. 키가 없으면 답변 생성만 502 로 실패하고 나머지 API 는 정상 동작한다.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      TMAP_API: ${TMAP_API:-}
+      KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
+      # 소셜 로그인(Phase 5) — SECRET_KEY 때와 같은 이유로 compose 가 넘겨줘야 한다.
+      KAKAO_REDIRECT_URI: ${KAKAO_REDIRECT_URI:-}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
+      KAKAO_APP_ID: ${KAKAO_APP_ID:-}
+      OAUTH_RETURN_URL_PREFIXES: ${OAUTH_RETURN_URL_PREFIXES:-}
+      WEATHER_API_KEY: ${WEATHER_API_KEY:-}
+      TOUR_API_KEY: ${TOUR_API_KEY:-}
     ports:
       - "8000:8000"
     volumes:

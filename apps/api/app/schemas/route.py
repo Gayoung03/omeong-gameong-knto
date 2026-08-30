@@ -16,6 +16,7 @@ from app.db.models.enums import (
     TripPace,
 )
 from app.schemas.base import APISchema
+from app.schemas.validators import OptionalImageUrl
 
 
 class RouteListItem(APISchema):
@@ -65,8 +66,8 @@ class RouteListResponse(APISchema):
 # ---------------------------------------------------------------------------
 # 상세 (GET /routes/{routeId})
 # ---------------------------------------------------------------------------
-# 아직 못 넣은 명세 필드: weather · moveToNext · distanceSummary · stays.
-# 각각 기상청·TMAP·TMAP·추천 요청서가 있어야 채워진다.
+# 아직 못 넣은 명세 필드: weather · stays.
+# 각각 기상청·추천 요청서가 있어야 채워진다.
 #
 # logCount 와 place 의 rating/reviewCount/petPolicyType 은 2026-08-23 에 채웠다 —
 # 리뷰·즐겨찾기 API 를 만들면서 집계식(services/place_query.py)이 생겼기 때문이다.
@@ -96,6 +97,32 @@ class PlaceSummary(APISchema):
     pet_policy_type: PetPolicyType = PetPolicyType.UNKNOWN
 
 
+class RouteMoveResponse(APISchema):
+    """다음 일정까지의 이동 정보. TMAP 계산 캐시에서 채운다."""
+
+    transport: TransportType
+    distance_meters: int
+    duration_minutes: int
+
+
+class RouteDistanceSummary(APISchema):
+    """여행 전체 이동 구간의 합계."""
+
+    total_distance_meters: int = 0
+    total_duration_minutes: int = 0
+
+
+class TourAPIPlaceResponse(APISchema):
+    """DB에 저장하지 않고 상세 조회 시점에만 내려주는 관광공사 장소."""
+
+    content_id: str
+    title: str
+    address: str | None
+    latitude: float
+    longitude: float
+    image_url: str | None
+
+
 class RouteItemResponse(APISchema):
     """하루 안의 방문 한 건. DB 의 route_items 한 줄이다."""
 
@@ -110,7 +137,11 @@ class RouteItemResponse(APISchema):
     recommendation_score: float | None
     recommendation_reason: str | None
     custom_place_name: str | None
+    custom_address: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     place: PlaceSummary | None
+    move_to_next: RouteMoveResponse | None = None
 
 
 class RouteDayResponse(APISchema):
@@ -141,6 +172,8 @@ class RouteDetail(RouteListItem):
     memo: str | None
     share_token: str | None
     pets: list[RoutePetResponse]
+    distance_summary: RouteDistanceSummary = Field(default_factory=RouteDistanceSummary)
+    tour_api_places: list[TourAPIPlaceResponse] = Field(default_factory=list)
     route_days: list[RouteDayResponse]
 
 
@@ -191,6 +224,12 @@ class RouteItemUpdate(APISchema):
     is_selected: bool | None = None
 
 
+class RouteItemPlaceReplace(APISchema):
+    """AI 추천과 직접 선택이 공통으로 보내는 장소 교체 요청."""
+
+    place_id: uuid.UUID
+
+
 class RouteItemOrderUpdate(APISchema):
     """드래그로 순서를 바꿨을 때. 그 날짜의 항목 전체를 순서대로 보낸다."""
 
@@ -213,7 +252,7 @@ class RouteUpdate(APISchema):
     status: RouteStatus | None = None
     style_keywords: list[str] | None = None
     memo: str | None = None
-    cover_image_url: str | None = None
+    cover_image_url: OptionalImageUrl = None
     is_public: bool | None = None
 
 
@@ -235,6 +274,8 @@ class SharedRouteDetail(RouteListItem):
     explanation: str | None
     total_score: float | None
     pets: list[RoutePetResponse]
+    distance_summary: RouteDistanceSummary = Field(default_factory=RouteDistanceSummary)
+    tour_api_places: list[TourAPIPlaceResponse] = Field(default_factory=list)
     route_days: list[RouteDayResponse]
 
 
@@ -338,7 +379,7 @@ class RouteCreate(APISchema):
     #: 함께 가는 반려동물. 본인 소유가 아니면 403.
     pet_ids: list[uuid.UUID] = Field(default_factory=list)
     style_keywords: list[str] | None = None
-    cover_image_url: str | None = None
+    cover_image_url: OptionalImageUrl = None
     memo: str | None = None
 
     @model_validator(mode="after")
@@ -347,3 +388,85 @@ class RouteCreate(APISchema):
         if self.end_at <= self.start_at:
             raise ValueError("endAt 은 startAt 보다 뒤여야 합니다")
         return self
+
+
+# ---------------------------------------------------------------------------
+# 추천 생성 (POST /route-requests)
+# ---------------------------------------------------------------------------
+
+
+class RouteRequestStayCreate(APISchema):
+    place_id: uuid.UUID | None = None
+    name: str = Field(min_length=1, max_length=200)
+    address: str | None = None
+    check_in_at: datetime | None = None
+    check_out_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _check_location_and_period(self) -> "RouteRequestStayCreate":
+        if self.place_id is None and not (self.address or "").strip():
+            raise ValueError("숙소는 placeId 또는 address 중 하나가 있어야 합니다")
+        if self.check_in_at and self.check_out_at and self.check_out_at <= self.check_in_at:
+            raise ValueError("숙소 checkOutAt은 checkInAt보다 뒤여야 합니다")
+        return self
+
+
+class RouteRequestCreate(APISchema):
+    title: str | None = Field(default=None, max_length=150)
+    start_at: datetime
+    end_at: datetime
+    departure_location: str | None = Field(default=None, max_length=100)
+    departure_place_id: uuid.UUID | None = None
+    pace: TripPace
+    transport: TransportType
+    companion_count: int = Field(default=1, ge=1)
+    preferred_tags: list[str] = Field(default_factory=list)
+    priority_preset: str = Field(default="balanced", max_length=30)
+    user_criteria: list[str] = Field(default_factory=list)
+    request_text: str | None = None
+    pet_ids: list[uuid.UUID] = Field(default_factory=list)
+    stays: list[RouteRequestStayCreate] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_request(self) -> "RouteRequestCreate":
+        if self.end_at <= self.start_at:
+            raise ValueError("endAt은 startAt보다 뒤여야 합니다")
+        has_departure = self.departure_place_id or (self.departure_location or "").strip()
+        if not has_departure and not self.stays:
+            raise ValueError("출발 장소나 숙소가 하나 이상 필요합니다")
+        return self
+
+
+class RouteRequestAccepted(APISchema):
+    route_id: uuid.UUID
+    route_request_id: uuid.UUID
+    status: RouteStatus
+    version: int
+
+
+class RouteGenerationStatus(APISchema):
+    route_id: uuid.UUID
+    status: RouteStatus
+    version: int
+    failure_reason: str | None = None
+
+
+class RouteEditSuggestionRequest(APISchema):
+    instruction: str = Field(min_length=1, max_length=500)
+    target_item_id: uuid.UUID | None = None
+
+
+class RouteReplacementSuggestion(APISchema):
+    place_id: uuid.UUID
+    name: str
+    category: str
+    address: str | None
+    primary_image_url: str | None
+    recommendation_score: float
+    recommendation_reason: str
+
+
+class RouteEditSuggestionResponse(APISchema):
+    target_item_id: uuid.UUID
+    interpretation: str
+    suggestions: list[RouteReplacementSuggestion]

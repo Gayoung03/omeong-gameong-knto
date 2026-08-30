@@ -62,15 +62,36 @@ export type PendingMessage = {
   content: string;
 };
 
+/**
+ * 도착하는 중인 답변.
+ *
+ * 서버가 답변을 한 글자씩 흘려보내므로(SSE) 다 오기 전에도 그려야 한다.
+ * `done` 을 받으면 서버 id 와 지도 핀이 확정돼 진짜 메시지로 바뀐다.
+ */
+export type StreamingMessage = {
+  kind: 'streaming';
+  localId: string;
+  content: string;
+};
+
 /** 답변을 만들지 못했을 때. 질문 말풍선은 남기고 재시도 버튼을 붙인다. */
 export type FailedMessage = {
   kind: 'failed';
   localId: string;
   question: string;
   description: string;
+  /**
+   * 질문이 서버에 저장됐는지. **말풍선을 두 번 그리지 않으려고 있다.**
+   *
+   * 저장됐으면(`start` 를 받았으면) 질문은 이미 제 말풍선을 갖고 있어서, 이
+   * 항목은 에러만 그린다. 저장 전에 실패했으면(권한·사용량 등) 질문 말풍선이
+   * 아직 없으므로 여기서 함께 그린다.
+   */
+  questionSaved: boolean;
 };
 
 export type ChatEntry =
   | { kind: 'message'; message: ChatMessage }
   | PendingMessage
+  | StreamingMessage
   | FailedMessage;

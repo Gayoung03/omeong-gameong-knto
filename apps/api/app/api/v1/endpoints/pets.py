@@ -13,6 +13,7 @@ from app.db.models import Pet, User
 from app.db.models.enums import PetSpecies
 from app.db.session import get_db
 from app.schemas.pet import PetCreate, PetListResponse, PetResponse, PetUpdate, calculate_age
+from app.services import pets as pet_service
 
 router = APIRouter()
 DbSession = Annotated[Session, Depends(get_db)]
@@ -77,15 +78,9 @@ def list_pets(
     summary="반려동물 등록",
 )
 def create_pet(payload: PetCreate, current_user: CurrentUser, db: DbSession) -> PetResponse:
-    has_active_pet = db.scalar(
-        select(Pet.id).where(Pet.user_id == current_user.id, Pet.deleted_at.is_(None)).limit(1)
-    )
-    pet = Pet(
-        user_id=current_user.id,
-        is_primary=has_active_pet is None,
-        **payload.model_dump(),
-    )
-    db.add(pet)
+    # 첫 활성 펫 자동 대표 규칙은 서비스가 갖는다(가입도 같은 규칙을 재사용).
+    # 여기서는 트랜잭션 경계(commit)만 소유한다.
+    pet = pet_service.create_pet(db, current_user.id, payload)
     db.commit()
     db.refresh(pet)
     return _to_response(pet)

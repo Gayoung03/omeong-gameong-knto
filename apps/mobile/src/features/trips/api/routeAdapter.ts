@@ -5,7 +5,7 @@
  * 화면·훅은 `../types/trip.ts` 만 보고, 서버 생김새를 몰라야 한다.
  * (`features/places/api/placesApi.ts` 의 장소 상세 어댑터와 같은 방식이다.)
  *
- * 서버에 아직 없는 값은 화면이 그리지 않는 빈 값(null·0·'')으로 채운다.
+ * 서버에 아직 없는 값은 화면이 그리지 않는 빈 값(null·'')으로 채운다.
  * 서버가 값을 내려주기 시작하면 이 파일만 고치면 된다.
  */
 
@@ -32,6 +32,7 @@ import type {
   TripListItem,
   TripPet,
   TripTransport,
+  TransportType,
 } from '../types/trip';
 
 /**
@@ -75,12 +76,11 @@ const PACE_LABEL: Record<ServerTripPace, string> = {
   packed: '부지런히 많이 보는 여행',
 };
 
-/** 이동 요약은 TMAP 연동 전까지 서버에 없다. 화면은 0 을 그대로 그린다 */
-const EMPTY_DISTANCE_SUMMARY: TripDistanceSummary = {
-  totalDistanceKm: 0,
-  carMinutes: 0,
-  walkMinutes: 0,
-};
+function toMoveTransport(transport: ServerTransportType): TransportType {
+  if (transport === 'walk') return 'walk';
+  if (transport === 'ferry' || transport === 'airplane') return 'ferry';
+  return 'car';
+}
 
 /**
  * ISO 8601 → 'YYYY-MM-DD'.
@@ -109,9 +109,32 @@ function toTripPet(pet: RoutePetResponse): TripPet {
   };
 }
 
-function toSchedulePlace(item: RouteItemResponse, place: PlaceSummaryResponse): SchedulePlace {
+function toSchedulePlace(
+  item: RouteItemResponse,
+  place: PlaceSummaryResponse | null,
+): SchedulePlace | null {
+  if (place === null) {
+    if (item.latitude === null || item.longitude === null || !item.customPlaceName) return null;
+    return {
+      id: item.id,
+      isCustom: true,
+      name: item.customPlaceName,
+      category: CATEGORY_MAP[item.itemType] ?? 'etc',
+      description: '',
+      petPolicy: toPetPolicy('unknown'),
+      address: item.customAddress ?? '',
+      rating: null,
+      reviewCount: 0,
+      savedCount: 0,
+      imageUrl: null,
+      latitude: item.latitude,
+      longitude: item.longitude,
+      isReservable: false,
+    };
+  }
   return {
     id: place.id,
+    isCustom: false,
     // 직접 입력한 이름이 있으면 그쪽이 사용자가 실제로 적은 이름이다.
     name: item.customPlaceName ?? place.name,
     // place.category 는 자유 문자열이라 앱 union 을 보장하지 못한다.
@@ -132,19 +155,28 @@ function toSchedulePlace(item: RouteItemResponse, place: PlaceSummaryResponse): 
   };
 }
 
-function toScheduleItem(item: RouteItemResponse, index: number): ScheduleItem {
+function toScheduleItem(
+  item: RouteItemResponse,
+  place: SchedulePlace,
+  index: number,
+): ScheduleItem {
   return {
     id: item.id,
     // 서버 sortOrder 는 0 부터, 화면 순번 배지는 1 부터다.
     // useScheduleEdit·useAddSchedule 도 index + 1 로 다시 매긴다 — 같은 규칙을 쓴다.
     order: index + 1,
-    place: toSchedulePlace(item, item.place as PlaceSummaryResponse),
+    place,
     // 즐겨찾기 여부는 AsyncStorage(features/saved) 가 갖고 있고 서버 응답에 없다.
     isSaved: false,
     startTime: toKstTime(item.startsAt),
     memo: item.note ?? '',
-    // 일정 사이 이동 정보는 TMAP 연동 전까지 없다.
-    moveToNext: null,
+    moveToNext: item.moveToNext
+      ? {
+          transport: toMoveTransport(item.moveToNext.transport),
+          distanceMeters: item.moveToNext.distanceMeters,
+          durationMinutes: item.moveToNext.durationMinutes,
+        }
+      : null,
   };
 }
 
@@ -153,14 +185,15 @@ function toSchedule(day: RouteDayResponse): Schedule {
    * 공식 장소가 연결되지 않은 일정은 좌표가 없어 지도 탭이 깨진다.
    * 지금은 걸러내되 조용히 삼키지 않는다 — 일정 편집 API 를 만들 때 제대로 다뤄야 할 지점이다.
    */
-  const items = day.items.filter((item) => {
-    if (item.place) return true;
+  const items = day.items.flatMap((item) => {
+    const place = toSchedulePlace(item, item.place);
+    if (place) return [{ item, place }];
     if (__DEV__) {
       console.warn(
         `[trips] 좌표가 없어 일정을 건너뜁니다: ${item.customPlaceName ?? item.id} (day ${day.dayNumber})`,
       );
     }
-    return false;
+    return [];
   });
 
   return {
@@ -170,7 +203,7 @@ function toSchedule(day: RouteDayResponse): Schedule {
     date: day.routeDate,
     // 날씨는 기상청 연동 전까지 없다. null 이면 화면이 날씨 칸을 그리지 않는다.
     weather: null,
-    items: items.map(toScheduleItem),
+    items: items.map(({ item, place }, index) => toScheduleItem(item, place, index)),
   };
 }
 
@@ -203,6 +236,19 @@ export function toTripListItem(route: RouteListItemResponse): TripListItem {
 
 /** 상세 변환 */
 export function toTrip(route: RouteDetailResponse): Trip {
+  const moves = route.routeDays.flatMap((day) => day.items.map((item) => item.moveToNext));
+  const distanceSummary: TripDistanceSummary = {
+    totalDistanceKm: Math.round((route.distanceSummary.totalDistanceMeters / 1000) * 10) / 10,
+    carMinutes: moves.reduce(
+      (total, move) => total + (move && move.transport !== 'walk' ? move.durationMinutes : 0),
+      0,
+    ),
+    walkMinutes: moves.reduce(
+      (total, move) => total + (move?.transport === 'walk' ? move.durationMinutes : 0),
+      0,
+    ),
+  };
+
   return {
     ...toTripListItem(route),
     transport: TRANSPORT_MAP[route.transport] ?? 'rentalCar',
@@ -211,7 +257,7 @@ export function toTrip(route: RouteDetailResponse): Trip {
     travelStyle: PACE_LABEL[route.pace] ?? '',
     styleKeywords: route.styleKeywords ?? [],
     memo: route.memo ?? '',
-    distanceSummary: EMPTY_DISTANCE_SUMMARY,
+    distanceSummary,
     schedules: route.routeDays.map(toSchedule),
   };
 }

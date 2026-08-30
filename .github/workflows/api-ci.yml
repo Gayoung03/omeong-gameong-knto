@@ -12,6 +12,31 @@ jobs:
     defaults:
       run:
         working-directory: apps/api
+    # 통합 테스트는 진짜 PostgreSQL 이 있어야 돈다(모델이 UUID·ARRAY 등 PG 전용).
+    # 이 서비스가 없으면 conftest 가 TEST_DATABASE_URL 을 못 찾아 158개를 건너뛴다.
+    # pgvector 확장은 아직 어느 마이그레이션도 쓰지 않으므로 순정 postgres:16 이면 된다.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: omeong
+          POSTGRES_PASSWORD: omeong
+          POSTGRES_DB: omeong_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U omeong -d omeong_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # SECRET_KEY 는 이제 필수 설정이라 없으면 앱 import 자체가 실패한다.
+      # CI 전용 더미 값 — 실제 서명 키가 아니다.
+      SECRET_KEY: ci-only-not-a-real-secret-0000000000
+      # 마이그레이션(alembic)은 settings.database_url 을 읽는다. 테스트 DB 를
+      # 여기로 올린 뒤, 같은 DB 를 TEST_DATABASE_URL 로 pytest 에 넘긴다.
+      DATABASE_URL: postgresql+psycopg://omeong:omeong@localhost:5432/omeong_test
+      TEST_DATABASE_URL: postgresql+psycopg://omeong:omeong@localhost:5432/omeong_test
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -19,4 +44,7 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen
       - run: uv run ruff check .
+      # conftest 는 스키마를 만들지 않는다 — 트랜잭션만 열고 롤백한다. 그래서
+      # pytest 전에 스키마를 미리 올려둬야 한다.
+      - run: uv run alembic upgrade head
       - run: uv run pytest

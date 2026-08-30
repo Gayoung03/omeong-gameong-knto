@@ -1,6 +1,11 @@
 # 인증 API
 
-작성일: 2026-08-12 · 갱신: 2026-08-15 · 상태: **미정 항목 없음 — 구현 착수 가능**
+작성일: 2026-08-12 · 갱신: 2026-08-29 · 상태: **소셜 절 개정안 — 팀 리뷰 필요** (그 외 절은 확정)
+
+> **2026-08-29 소셜 절 전면 개정 (제안)** — 근거는 [변경 이력](#변경-이력) 참고. 요약:
+> ① 애플 제외(Android·웹만 출시), ② SDK 토큰 전달 방식 → **서버 콜백 방식**으로 교체
+> (웹·앱이 한 흐름 공유, 시크릿이 서버에만 존재, Expo Go 유지),
+> ③ 이메일이 겹치면 자동 연동이 아니라 **비밀번호 확인 후 연동** (GitHub #129).
 
 공통 규약은 [`README.md`](./README.md)를 따릅니다. 이 문서에 적용된 확정 사항은 다음과 같습니다.
 
@@ -21,10 +26,16 @@
 | --- | --- | --- | --- |
 | POST | `/auth/signup` | 이메일 회원가입 | — |
 | POST | `/auth/login` | 이메일 로그인 | — |
-| POST | `/auth/social` | 소셜 로그인·가입 | — |
+| GET | `/auth/{provider}/authorize` | 소셜 로그인 시작 (제공처로 리다이렉트) | — |
+| GET | `/auth/{provider}/callback` | 제공처 리다이렉트 수신 (앱이 직접 호출하지 않음) | — |
+| POST | `/auth/social/exchange` | 콜백이 준 일회용 코드를 우리 토큰으로 교환 | — |
+| POST | `/auth/social/complete` | 이메일 겹침 시 연동 확정 또는 별도 계정 생성 | — |
 | POST | `/auth/refresh` | access token 재발급 | — |
 | POST | `/auth/logout` | 로그아웃 | 필요 |
 | GET | `/auth/check-email` | 이메일 중복 확인 | — |
+
+`{provider}`는 `kakao` `google` 두 값입니다. **애플은 지원하지 않습니다** —
+iOS 미출시 결정(2026-08-28)에 따라 제외했습니다.
 
 회원 탈퇴는 `DELETE /users/me` 입니다. [`users.md`](./users.md) 참고.
 
@@ -63,6 +74,17 @@ Authorization: Bearer <accessToken>
 | access token | 30분 (`expiresIn: 1800`) | 유출되더라도 유효 시간이 짧음 |
 | refresh token | 14일 | 시연·심사 기간에 재로그인 화면이 뜨지 않도록 넉넉히 잡음 |
 
+**JWT 구현 규약** (2026-08-29 추가 — 구현 전 보안 검토 결과 반영)
+
+| 항목 | 규약 |
+| --- | --- |
+| 서명 | HS256 고정. 검증 시 `algorithms=["HS256"]` 명시 (알고리즘 혼동 공격 차단) |
+| 키 | `SECRET_KEY` 환경변수 — 기본값 없음, 없으면 서버 기동 실패 |
+| 클레임 | `sub`(user id 문자열) · `typ`(`access` \| `refresh` — 용도 불일치는 `401`) · `jti` · `iat` · `exp` |
+| 검증 여유 | clock skew `leeway` 10초 |
+| 탈퇴 계정 | **모든 인증 요청과 `POST /auth/refresh`에서 `deleted_at` 확인** — 탈퇴했으면 토큰이 유효해도 `401` |
+| 만료 vs 위조 | 외부 응답은 둘 다 같은 `401` (구분해 주면 위조 시도에 힌트). 내부 로그만 구분 |
+
 ---
 
 ## POST /auth/signup
@@ -99,7 +121,7 @@ Authorization: Bearer <accessToken>
 | 필드 | 타입 | 필수 | 설명 |
 | --- | --- | --- | --- |
 | `email` | string | ✅ | `users.email`. 중복 불가 |
-| `password` | string | ✅ | 서버에서 해시 후 `users.password_hash`에 저장 |
+| `password` | string | ✅ | **최소 8자·최대 128자.** 서버에서 argon2 해시 후 `users.password_hash`에 저장 |
 | `nickname` | string(50) | ✅ | `users.nickname` |
 | `pet` | object | — | 없으면 반려동물 없이 가입 |
 | `pet.name` | string(50) | ✅ | `pet`을 보낼 때 필수 |
@@ -196,68 +218,106 @@ UNIQUE 제약을 건드리지 않고 자리를 비울 수 있습니다. 지금 �
 
 ---
 
-## POST /auth/social
+## 소셜 로그인 (카카오·구글) — 서버 콜백 방식
 
-카카오·애플·구글 로그인입니다. **가입과 로그인을 구분하지 않습니다.**
-`(auth_provider, provider_user_id)` 조합으로 기존 계정을 찾고, 없으면 새로 만듭니다.
-`users` 테이블에 이 조합의 UNIQUE 제약이 걸려 있습니다.
+**가입과 로그인을 구분하지 않습니다.** 소셜 계정 식별은 신설 예정인
+`user_social_accounts` 테이블의 `(provider, provider_user_id)` UNIQUE 로 합니다.
+`users`는 `auth_provider` 컬럼이 하나라 "이메일 계정 + 카카오 연동" 같은 다중 수단을
+표현할 수 없어 연결 테이블이 필요합니다 — 컬럼 안은 아래와 같고, **실제 추가는
+DB 규약대로 `docs/database/README.md` 논의 → 모델+Alembic+DBML 동시 갱신 절차를 따릅니다.**
+
+| 컬럼 | 타입 | 제약 |
+| --- | --- | --- |
+| `id` | UUID | PK |
+| `user_id` | UUID | FK → `users.id` ON DELETE CASCADE |
+| `provider` | `auth_provider` enum | `local` 금지 (CHECK) |
+| `provider_user_id` | varchar(255) | `UNIQUE(provider, provider_user_id)` |
+| `linked_at` | timestamptz | NOT NULL, 기본 now() |
+
+`users.auth_provider`·`provider_user_id`는 **"최초 가입 수단" 기록으로 의미를 고정**하고
+로그인 판정에는 쓰지 않습니다 — 연동된 계정은 두 수단을 모두 가지기 때문입니다.
+
+### 왜 SDK 토큰 전달이 아니라 서버 콜백인가 (2026-08-29)
+
+| 이유 | 설명 |
+| --- | --- |
+| 웹·앱 한 흐름 | 웹 출시가 확정되어 브라우저 리다이렉트 흐름이 어차피 필수. 앱도 같은 흐름을 시스템 브라우저로 타면 구현이 한 벌 |
+| Expo Go 유지 | 네이티브 SDK 없이 동작 — 프론트 개발 환경 그대로. 구글 클라이언트 ID도 web 1개로 충분 |
+| 시크릿 위치 | 인가 코드 교환이 서버에서 일어나 `client_secret`·REST 키가 앱 번들에 들어가지 않음 |
+| 검증 일원화 | 제공처 토큰을 서버만 만지므로 aud/앱 ID 검증 누락 여지가 없음 |
+
+### 흐름
 
 ```text
-앱: 소셜 SDK 로그인
-  → 서버에 provider와 providerAccessToken 전달
-  → 서버가 제공처 API로 검증하고 사용자 정보 조회
-  → users 조회 또는 생성
-  → 자체 access token + refresh token 발급
+앱/웹: GET /auth/kakao/authorize?returnUrl=<복귀주소> 를 시스템 브라우저로 연다
+  → 서버: state 발급(CSRF 방지) 후 제공처 로그인 페이지로 302
+  → 사용자: 카카오톡 간편로그인 / 구글 계정 선택
+  → 제공처 → GET /auth/kakao/callback?code=...&state=...
+  → 서버: state 검증 → 인가 코드를 제공처 토큰으로 교환 → 사용자 정보 조회
+       → 일회용 교환 코드(60초, 1회) 발급 → returnUrl 로 302 (?code=<교환코드>)
+  → 앱/웹: POST /auth/social/exchange { code }
+       → 우리 access/refresh 토큰 수령 (또는 linkRequired — 아래)
 ```
 
-제공처 토큰을 앱이 계속 들고 있지 않도록, 서버가 검증 후 자체 토큰으로 교환합니다.
+- `returnUrl`은 **서버 허용 목록**과 대조합니다 — 개발: `exp://*`(Expo Go), 배포 앱: 앱 스킴, 웹: 등록된 오리진. 목록 밖이면 `422`.
+- 교환 코드를 쓰는 이유: 우리 토큰을 리다이렉트 URL에 직접 실으면 브라우저 히스토리·로그에 남습니다.
+- 서버 검증 의무: **구글은 id_token의 `aud`가 우리 클라이언트 ID인지**, **카카오는 `GET /v1/user/access_token_info`의 앱 ID가 우리 앱인지** 확인합니다. 실패는 `401`, 제공처 무응답은 `502`.
 
-### 요청
+### POST /auth/social/exchange
+
+```json
+{ "code": "일회용 교환 코드" }
+```
+
+**응답 `200` — 기본 (로그인 완료)**: [토큰 규약](#토큰-규약) 공통 응답 + `isNewUser` + `user`.
+`isNewUser: true`면 앱이 반려동물·여행 취향 입력 화면으로 보냅니다
+(입력값은 `POST /pets`, `PUT /users/me/travel-preference`로 저장).
+
+**응답 `200` — 이메일이 기존 이메일 계정과 겹칠 때 (로그인 미완료)**:
 
 ```json
 {
-  "provider": "kakao",
-  "providerAccessToken": "..."
+  "linkRequired": true,
+  "linkToken": "eyJhbGciOi...",
+  "maskedEmail": "tra*****@example.com"
 }
 ```
 
-| 필드 | 타입 | 필수 | 설명 |
-| --- | --- | --- | --- |
-| `provider` | enum | ✅ | `kakao` `apple` `google` (`local` 불가) |
-| `providerAccessToken` | string | ✅ | 소셜 SDK가 발급한 토큰 |
+| 조건 | 결과 |
+| --- | --- |
+| 제공처가 **검증한** 이메일 = 살아 있는 local 계정 이메일 | `linkRequired` — 즉시 연동하지 않고 비밀번호 확인을 요구 |
+| 이메일이 탈퇴 계정과 일치 | 연동 제안 없음 — 새 계정 생성 (`email` 은 비워둠). 탈퇴 계정 부활 금지 |
+| 이메일 미제공·미검증 (카카오 `is_email_verified` 확인) | 새 계정 생성 (`email = null`) |
+| `(provider, provider_user_id)`가 탈퇴 계정 소유 | `401` — 탈퇴 이메일 재가입 차단과 같은 규칙 |
 
-### 응답 `200`
+`linkToken`은 5분짜리 일회용 JWT(`typ: link`)입니다. **자동 연동을 하지 않는 이유**:
+local 가입에 이메일 소유 확인이 없어서, 공격자가 남의 이메일로 먼저 가입해두면
+피해자의 소셜 로그인이 공격자 계정에 붙습니다. 비밀번호 확인이 소유 증명을 대신합니다 (#129).
+
+### POST /auth/social/complete
+
+`linkRequired`를 받은 앱이 사용자의 선택을 전달합니다.
 
 ```json
-{
-  "accessToken": "eyJhbGciOi...",
-  "refreshToken": "eyJhbGciOi...",
-  "tokenType": "bearer",
-  "expiresIn": 1800,
-  "isNewUser": true,
-  "user": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "email": null,
-    "nickname": "카카오사용자",
-    "profileImageUrl": "https://...",
-    "authProvider": "kakao",
-    "status": "active"
-  }
-}
+{ "linkToken": "...", "action": "link", "password": "********" }
 ```
 
-`isNewUser`가 `true`면 앱이 반려동물·여행 취향 입력 화면으로 보냅니다.
-소셜 가입은 그 정보를 받을 수 없기 때문입니다.
+| `action` | 동작 | 성공 응답 |
+| --- | --- | --- |
+| `link` | 비밀번호 검증 → 기존 계정에 소셜 연동 추가 | 토큰 공통 응답 + `user` (`isNewUser: false`) |
+| `separate` | 연동하지 않고 별도 계정 생성 (`email = null`) | 토큰 공통 응답 + `user` (`isNewUser: true`) |
 
-`email`은 `null`일 수 있습니다. 애플 로그인은 이메일 제공을 거부할 수 있고,
-`users.email`도 nullable로 설계되어 있습니다.
-
-### 에러
+### 에러 (소셜 공통)
 
 | 코드 | 상황 |
 | --- | --- |
-| 401 | 제공처 토큰이 유효하지 않음 |
+| 401 | 제공처 토큰 무효 · 교환/링크 코드 만료·재사용 · `action: link` 비밀번호 불일치 · 탈퇴 계정의 소셜 재로그인 |
+| 422 | `returnUrl` 허용 목록 밖 · `provider` 값 오류 · `state` 불일치 |
 | 502 | 제공처 서버 응답 없음 |
+
+응답의 `user.email`은 `null`일 수 있습니다 (`users.email` nullable).
+`user.authProvider`는 최초 가입 수단입니다. 연동된 수단 목록(`linkedProviders`)은
+마이페이지 연동 관리 화면과 함께 **데모 후** 추가합니다 — 그때까지 응답 계약 불변.
 
 ---
 
@@ -377,4 +437,6 @@ GET /api/v1/auth/check-email?email=traveler@example.com
 | 2026-08-12 | 초안 작성 |
 | 2026-08-12 | 확정 규약 반영 — camelCase 응답, refresh token 분리, `POST /auth/refresh` 추가, 반려동물 종류 3종 |
 | 2026-08-15 | PR #29 머지 반영 — 회원가입 요청의 `pet`에 `speciesDetail` 추가, 필드 표에 반영. "저장할 컬럼이 없다"는 확인 필요 항목은 `pets.species_detail` 추가로 해소 |
-| 2026-08-15 | 남은 `[확인 필요]` 5건 확정 — 토큰 만료(30분/14일), 탈퇴 이메일 재가입 차단, refresh 회전 없음, 로그아웃 서버 무효화 없음, `check-email` 유지. **이 문서에 미정 항목이 없습니다** |
+| 2026-08-15 | 남은 `[확인 필요]` 5건 확정 — 토큰 만료(30분/14일), 탈퇴 이메일 재가입 차단, refresh 회전 없음, 로그아웃 서버 무효화 없음, `check-email` 유지 |
+| 2026-08-29 | 비밀번호 규칙 확정 — **최소 8자·최대 128자**, 해시는 argon2 (구현 Phase 3, #137) |
+| 2026-08-29 | **소셜 절 전면 개정 (팀 리뷰 대기 — GitHub #129)** — ① 애플 제외(Android·웹만 출시), ② `POST /auth/social`(SDK 토큰 전달) → 서버 콜백 방식(`authorize`/`callback`/`exchange`/`complete`)으로 교체, ③ 이메일 겹침 시 비밀번호 확인 후 연동(자동 연동은 구현 전 보안 검토로 기각 — local 가입에 이메일 소유 확인이 없어 계정 탈취 경로가 됨), ④ 탈퇴 계정은 연동·소셜 재로그인 모두 차단, ⑤ JWT 구현 규약 표 추가(HS256·typ·deleted_at 확인), ⑥ `user_social_accounts` 테이블 안(컬럼 표 포함 — 실제 추가는 DB 규약 절차로). 근거: 웹 출시 확정(08-28), 보안·설계 리뷰(08-28) |

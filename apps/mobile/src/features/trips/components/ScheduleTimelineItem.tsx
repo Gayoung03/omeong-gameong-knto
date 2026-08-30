@@ -51,7 +51,7 @@ export function ScheduleTimelineItem({
       <View style={styles.cardWrapper}>
         <Pressable
           accessibilityRole="button"
-          onPress={() => onPressItem(item.place.id)}
+          onPress={item.place.isCustom ? undefined : () => onPressItem(item.place.id)}
           style={({ pressed }) => [styles.card, pressed && styles.pressed]}
         >
           <View style={styles.timelineColumn}>
@@ -117,19 +117,21 @@ export function ScheduleTimelineItem({
           웹에서 <button> 안에 <button> 이 들어가면 안 되므로 카드 Pressable 의
           자식이 아니라 형제로 두고, 원래 자리에 겹쳐 놓는다.
         */}
-        <Pressable
-          accessibilityLabel={isSaved ? '저장 해제' : '저장'}
-          accessibilityRole="button"
-          onPress={() => onToggleSave(item.place.id, isSaved)}
-          style={styles.saveButton}
-        >
-          {/* 장소 탐색 화면과 같은 하트 아이콘·색을 쓴다. */}
-          <Ionicons
-            color={isSaved ? colors.primary : colors.textSecondary}
-            name={isSaved ? 'heart' : 'heart-outline'}
-            size={16}
-          />
-        </Pressable>
+        {!item.place.isCustom ? (
+          <Pressable
+            accessibilityLabel={isSaved ? '저장 해제' : '저장'}
+            accessibilityRole="button"
+            onPress={() => onToggleSave(item.place.id, isSaved)}
+            style={styles.saveButton}
+          >
+            {/* 장소 탐색 화면과 같은 하트 아이콘·색을 쓴다. */}
+            <Ionicons
+              color={isSaved ? colors.primary : colors.textSecondary}
+              name={isSaved ? 'heart' : 'heart-outline'}
+              size={16}
+            />
+          </Pressable>
+        ) : null}
       </View>
 
       {!isLast && item.moveToNext ? (

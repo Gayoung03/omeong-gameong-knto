@@ -94,6 +94,22 @@
 되지 않기 때문입니다. 현재 동의 상태는 `(user_id, consent_type)`별로 `created_at`이 가장 큰
 행입니다.
 
+### `user_social_accounts`
+
+소셜 로그인 수단(카카오·구글)을 회원에 연결합니다. 로그인 판정의 정본입니다.
+
+| 컬럼 | 설명 |
+| --- | --- |
+| `id` | 연결 PK |
+| `user_id` | 회원 FK (`ON DELETE CASCADE`) |
+| `provider` | 제공처 (`auth_provider` enum, `local` 금지 — CHECK) |
+| `provider_user_id` | 제공처가 준 사용자 식별자 |
+| `linked_at` | 연동 시각 |
+
+`(provider, provider_user_id)`에 UNIQUE가 걸려 같은 소셜 계정이 두 번 연결되지 않습니다.
+`users.auth_provider`는 하나뿐이라 "이메일 계정 + 카카오 연동" 같은 다중 수단을 표현할 수 없어
+이 연결 테이블을 둡니다. 근거와 로그인 흐름은 [`docs/api/auth.md`](../api/auth.md) 소셜 절을 참고하세요.
+
 ## 2. 장소
 
 ### `places`
@@ -204,6 +220,7 @@
 | `start_at`, `end_at` | 여행 시작·종료 일시 |
 | `departure_location` | 사용자가 입력한 출발지 문자열 |
 | `departure_place_id` | 출발지가 장소 마스터에 있을 때 FK |
+| `departure_latitude`, `departure_longitude` | DB 장소 또는 카카오 주소 변환으로 확정한 출발 좌표 스냅샷 |
 | `pace` | 이번 여행에 적용한 속도 |
 | `transport` | 이번 여행 이동수단 |
 | `preferred_tags` | 이번 여행 선호 태그 배열 |
@@ -228,6 +245,7 @@
 | `route_request_id` | 루트 요청 FK |
 | `place_id` | 장소 DB에 있는 숙소 FK |
 | `name`, `address` | 사용자가 직접 입력한 숙소도 지원 |
+| `latitude`, `longitude` | DB 장소 또는 카카오 주소 변환으로 확정한 숙소 좌표 스냅샷 |
 | `check_in_at`, `check_out_at` | 숙박 기간 |
 
 숙소를 직접 입력하면 `place_id` 없이 이름·주소를 저장할 수 있습니다.
@@ -288,6 +306,8 @@ generating → generated → saved → ongoing → completed
 | `route_day_id` | 일자 FK |
 | `place_id` | 장소 마스터 FK |
 | `custom_place_name` | DB에 없는 사용자 직접 입력 장소 |
+| `custom_address` | 직접 입력한 출발지·숙소 주소 |
+| `latitude`, `longitude` | 일정 생성 당시 경로 계산에 사용한 좌표 스냅샷 |
 | `item_type` | 관광지, 식당, 카페, 숙소 등 |
 | `sort_order` | 해당 일자 내 순서 |
 | `starts_at`, `ends_at` | 방문 예정 일시 |

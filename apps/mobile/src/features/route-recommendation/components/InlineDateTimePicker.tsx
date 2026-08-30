@@ -33,7 +33,142 @@ const isSameDate = (left: Date, right: Date) =>
   left.getMonth() === right.getMonth() &&
   left.getDate() === right.getDate();
 
-export function CalendarPicker({ value, onChange }: { value: Date; onChange: (date: Date) => void }) {
+const startOfDay = (date: Date) =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+
+export function CalendarRangePicker({
+  startValue,
+  endValue,
+  onChange,
+}: {
+  startValue: Date | null;
+  endValue: Date | null;
+  onChange: (start: Date, end: Date | null) => void;
+}) {
+  const initialMonth = startValue ?? new Date();
+  const [visibleMonth, setVisibleMonth] = useState(
+    () => new Date(initialMonth.getFullYear(), initialMonth.getMonth(), 1),
+  );
+  const calendarCells = useMemo(() => {
+    const year = visibleMonth.getFullYear();
+    const month = visibleMonth.getMonth();
+    const firstWeekday = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    return [
+      ...Array.from({ length: firstWeekday }, () => null),
+      ...Array.from({ length: daysInMonth }, (_, index) => new Date(year, month, index + 1)),
+    ];
+  }, [visibleMonth]);
+  const today = startOfDay(new Date());
+  const startTime = startValue ? startOfDay(startValue) : null;
+  const endTime = endValue ? startOfDay(endValue) : null;
+
+  const selectDate = (date: Date) => {
+    const selectedTime = startOfDay(date);
+    if (startTime === null || endTime !== null || selectedTime < startTime) {
+      onChange(date, null);
+      return;
+    }
+    onChange(startValue!, date);
+  };
+
+  return (
+    <View style={styles.calendar}>
+      <View style={styles.calendarHeader}>
+        <Pressable
+          accessibilityLabel="이전 달"
+          onPress={() =>
+            setVisibleMonth((month) => new Date(month.getFullYear(), month.getMonth() - 1, 1))
+          }
+          style={styles.monthButton}
+        >
+          <Ionicons color={palette.ink} name="chevron-back" size={18} />
+        </Pressable>
+        <Text style={styles.monthTitle}>
+          {visibleMonth.getFullYear()}년 {visibleMonth.getMonth() + 1}월
+        </Text>
+        <Pressable
+          accessibilityLabel="다음 달"
+          onPress={() =>
+            setVisibleMonth((month) => new Date(month.getFullYear(), month.getMonth() + 1, 1))
+          }
+          style={styles.monthButton}
+        >
+          <Ionicons color={palette.ink} name="chevron-forward" size={18} />
+        </Pressable>
+      </View>
+      <View style={styles.rangeHintRow}>
+        <View style={styles.rangeHint}>
+          <Text style={styles.rangeHintLabel}>도착</Text>
+          <Text style={styles.rangeHintValue}>
+            {startValue ? `${startValue.getMonth() + 1}/${startValue.getDate()}` : '날짜 선택'}
+          </Text>
+        </View>
+        <Ionicons color={palette.gray} name="arrow-forward" size={15} />
+        <View style={styles.rangeHint}>
+          <Text style={styles.rangeHintLabel}>출발</Text>
+          <Text style={styles.rangeHintValue}>
+            {endValue ? `${endValue.getMonth() + 1}/${endValue.getDate()}` : '날짜 선택'}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.calendarGrid}>
+        {WEEKDAYS.map((weekday, index) => (
+          <View key={weekday} style={styles.calendarCell}>
+            <Text
+              style={[
+                styles.weekdayText,
+                index === 0 && styles.sundayText,
+                index === 6 && styles.saturdayText,
+              ]}
+            >
+              {weekday}
+            </Text>
+          </View>
+        ))}
+        {calendarCells.map((date, index) => {
+          const time = date ? startOfDay(date) : 0;
+          const past = date ? time < today : false;
+          const edge = time === startTime || time === endTime;
+          const inRange =
+            startTime !== null && endTime !== null && time > startTime && time < endTime;
+          return (
+            <View
+              key={date?.toISOString() ?? `empty-${index}`}
+              style={[styles.calendarCell, inRange && styles.rangeCell]}
+            >
+              {date ? (
+                <Pressable
+                  disabled={past}
+                  onPress={() => selectDate(date)}
+                  style={[styles.dayButton, edge && styles.dayButtonSelected]}
+                >
+                  <Text
+                    style={[
+                      styles.dayText,
+                      past && styles.pastDayText,
+                      edge && styles.selectedDayText,
+                    ]}
+                  >
+                    {date.getDate()}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+export function CalendarPicker({
+  value,
+  onChange,
+}: {
+  value: Date;
+  onChange: (date: Date) => void;
+}) {
   const [visibleMonth, setVisibleMonth] = useState(
     () => new Date(value.getFullYear(), value.getMonth(), 1),
   );
@@ -51,21 +186,27 @@ export function CalendarPicker({ value, onChange }: { value: Date; onChange: (da
   }, [visibleMonth]);
 
   const moveMonth = (amount: number) => {
-    setVisibleMonth(
-      (month) => new Date(month.getFullYear(), month.getMonth() + amount, 1),
-    );
+    setVisibleMonth((month) => new Date(month.getFullYear(), month.getMonth() + amount, 1));
   };
 
   return (
     <View style={styles.calendar}>
       <View style={styles.calendarHeader}>
-        <Pressable accessibilityLabel="이전 달" onPress={() => moveMonth(-1)} style={styles.monthButton}>
+        <Pressable
+          accessibilityLabel="이전 달"
+          onPress={() => moveMonth(-1)}
+          style={styles.monthButton}
+        >
           <Ionicons color={palette.ink} name="chevron-back" size={18} />
         </Pressable>
         <Text style={styles.monthTitle}>
           {visibleMonth.getFullYear()}년 {visibleMonth.getMonth() + 1}월
         </Text>
-        <Pressable accessibilityLabel="다음 달" onPress={() => moveMonth(1)} style={styles.monthButton}>
+        <Pressable
+          accessibilityLabel="다음 달"
+          onPress={() => moveMonth(1)}
+          style={styles.monthButton}
+        >
           <Ionicons color={palette.ink} name="chevron-forward" size={18} />
         </Pressable>
       </View>
@@ -201,8 +342,14 @@ function WheelColumn({
   );
 }
 
-export function WheelTimePicker({ value, onChange }: { value: Date; onChange: (date: Date) => void }) {
-  const roundedMinute = Math.round(value.getMinutes() / 5) * 5 % 60;
+export function WheelTimePicker({
+  value,
+  onChange,
+}: {
+  value: Date;
+  onChange: (date: Date) => void;
+}) {
+  const roundedMinute = (Math.round(value.getMinutes() / 5) * 5) % 60;
 
   const changeTime = (hour: number, minute: number) => {
     const next = new Date(value);
@@ -240,27 +387,93 @@ export function WheelTimePicker({ value, onChange }: { value: Date; onChange: (d
 
 const styles = StyleSheet.create({
   calendar: { paddingTop: 4 },
-  calendarHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  monthButton: { alignItems: 'center', borderColor: palette.line, borderRadius: 9, borderWidth: 1, height: 34, justifyContent: 'center', width: 34 },
+  calendarHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  monthButton: {
+    alignItems: 'center',
+    borderColor: palette.line,
+    borderRadius: 9,
+    borderWidth: 1,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
+  },
   monthTitle: { color: palette.ink, fontSize: 14, fontWeight: '900' },
   calendarGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  rangeHintRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  rangeHint: {
+    alignItems: 'center',
+    backgroundColor: palette.paleOrange,
+    borderRadius: 10,
+    minWidth: 92,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  rangeHintLabel: { color: palette.orange, fontSize: 9, fontWeight: '800' },
+  rangeHintValue: { color: palette.ink, fontSize: 12, fontWeight: '800', marginTop: 2 },
+  rangeCell: { backgroundColor: palette.paleOrange },
   calendarCell: { alignItems: 'center', height: 38, justifyContent: 'center', width: '14.2857%' },
   weekdayText: { color: palette.gray, fontSize: 10, fontWeight: '800' },
   sundayText: { color: colors.calendarSunday },
   saturdayText: { color: colors.calendarSaturday },
-  dayButton: { alignItems: 'center', borderRadius: 16, height: 32, justifyContent: 'center', width: 32 },
+  dayButton: {
+    alignItems: 'center',
+    borderRadius: 16,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
   dayButtonSelected: { backgroundColor: palette.orange },
   dayText: { color: palette.ink, fontSize: 11, fontWeight: '700' },
   pastDayText: { color: colors.textTertiary },
   selectedDayText: { color: palette.white, fontWeight: '900' },
   timePicker: { paddingTop: 2 },
-  timePreview: { alignItems: 'center', alignSelf: 'center', backgroundColor: palette.paleOrange, borderRadius: 999, flexDirection: 'row', gap: 7, marginBottom: 7, paddingHorizontal: 15, paddingVertical: 8 },
+  timePreview: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: palette.paleOrange,
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 7,
+    marginBottom: 7,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+  },
   timePreviewText: { color: palette.orange, fontSize: 16, fontWeight: '900' },
   wheelHint: { color: palette.gray, fontSize: 9, marginBottom: 8, textAlign: 'center' },
   wheels: { alignItems: 'center', flexDirection: 'row', gap: 8, justifyContent: 'center' },
-  wheelColumn: { borderColor: palette.line, borderRadius: 12, borderWidth: 1, height: 154, overflow: 'hidden', position: 'relative', width: 112 },
+  wheelColumn: {
+    borderColor: palette.line,
+    borderRadius: 12,
+    borderWidth: 1,
+    height: 154,
+    overflow: 'hidden',
+    position: 'relative',
+    width: 112,
+  },
   wheelContent: { paddingVertical: 56 },
-  selectionBand: { backgroundColor: palette.paleOrange, borderBottomColor: colors.primarySoftStrong, borderBottomWidth: 1, borderTopColor: colors.primarySoftStrong, borderTopWidth: 1, height: 42, left: 0, position: 'absolute', right: 0, top: 55 },
+  selectionBand: {
+    backgroundColor: palette.paleOrange,
+    borderBottomColor: colors.primarySoftStrong,
+    borderBottomWidth: 1,
+    borderTopColor: colors.primarySoftStrong,
+    borderTopWidth: 1,
+    height: 42,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 55,
+  },
   wheelScroll: { zIndex: 1 },
   wheelItem: { alignItems: 'center', height: 42, justifyContent: 'center' },
   wheelText: { color: colors.textTertiary, fontSize: 13, fontWeight: '600' },

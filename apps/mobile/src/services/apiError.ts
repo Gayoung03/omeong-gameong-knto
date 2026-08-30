@@ -147,6 +147,27 @@ export function getApiErrorDetail(error: unknown): string | undefined {
   return typeof detail === 'string' ? detail : undefined;
 }
 
+/**
+ * 로깅 안전한 오류 요약.
+ *
+ * AxiosError 를 그대로 로깅하면 `config.headers.Authorization`(토큰)·`config.data`
+ * (비밀번호 등)·`response.data`(서버가 되돌린 입력값)까지 찍혀 민감 정보가 샌다.
+ * 그래서 진단에 필요한 필드(메서드·경로·상태·메시지)만 남긴 객체로 바꾼다.
+ * Axios 가 아닌 오류는 그대로 둔다(민감 정보를 담지 않는다).
+ */
+export function sanitizeErrorForLog(error: unknown): unknown {
+  if (!isAxiosError(error)) return error;
+
+  return {
+    name: error.name,
+    message: error.message,
+    code: error.code,
+    method: error.config?.method,
+    url: error.config?.url,
+    status: error.response?.status,
+  };
+}
+
 /** docs/api의 HTTP 상태 규약과 Axios 전송 오류를 사용자 안내 문구로 변환한다. */
 export function getApiErrorMessage(error: unknown): ApiErrorMessage {
   if (!isAxiosError(error)) return ERROR_MESSAGES.unknown;
