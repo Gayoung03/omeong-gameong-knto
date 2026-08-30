@@ -3,7 +3,7 @@
 import logging
 import uuid
 from collections.abc import Callable
-from datetime import date, datetime, timedelta
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -20,7 +20,7 @@ from app.db.models import (
     RouteRequestPet,
     RouteRequestStay,
 )
-from app.db.models.enums import RouteStatus, ScheduleItemType
+from app.db.models.enums import RouteStatus, ScheduleItemType, TransportType
 from app.integrations.llm.route_edit import RouteEditIntent
 from app.integrations.maps.kakao import GeocodedAddress, geocode_address
 from app.integrations.tour_api.kto import TourAPIError, TourPlace, get_nearby_places
@@ -29,7 +29,6 @@ from app.integrations.weather.kma import (
     get_precipitation_probabilities,
 )
 from app.recommend.common.geo import haversine_m
-from app.recommend.config.pace import PACE
 from app.recommend.filters import filter_candidates
 from app.recommend.itinerary import BuildRequest, Itinerary, RouteAnchor, build
 from app.recommend.schemas import Candidate, ScoredCandidate, Weights
@@ -394,9 +393,8 @@ def replace_route_item(
         )
     db.flush()
 
-    for changed_day, _changed_item in changed_items:
-        ordered = sorted(changed_day.items, key=lambda route_item: route_item.sort_order)
-        resync_item_times(db, route, ordered, ordered[0].starts_at if ordered else None)
+    for changed_day, changed_item in changed_items:
+        _refresh_adjacent_routes(db, changed_day, changed_item, route.transport)
 
     route_items = list(
         db.scalars(
@@ -457,102 +455,40 @@ def _paired_stay_anchor(
     return (adjacent, candidate) if candidate.item_type == ScheduleItemType.ACCOMMODATION else None
 
 
-def resync_item_times(
+def _refresh_adjacent_routes(
     db: Session,
-    route: Route,
-    ordered_items: list[RouteItem],
-    anchor_starts_at: datetime | None,
+    day: RouteDay,
+    changed: RouteItem,
+    default_transport: TransportType,
 ) -> None:
-    """순서·장소가 바뀐 뒤 하루 전체 항목의 시각을 앵커부터 다시 잇는다.
-
-    `ordered_items[0]`을 그날의 시작 앵커(day start)에 고정하고, 그 뒤로는
-    `_cascade_item_times`가 "이전 항목 종료 시각 + 휴식시간 + 이동시간"만
-    반영한다. 순서 변경·장소 교체·항목 추가/삭제처럼 **그날 첫 항목의 시각
-    자체가 그대로인** 편집에서 쓴다.
-    """
-    if not ordered_items or anchor_starts_at is None:
-        return
-
-    first = ordered_items[0]
-    first.starts_at = anchor_starts_at
-    # stay_minutes 가 0 이면(숙소·출발지 앵커) ends_at 을 안 쓴다 — 0 분을 더하면
-    # ends_at == starts_at 이 되어 DB CheckConstraint(date_order, "ends_at > starts_at")
-    # 를 위반한다. 앵커 저장 관례(_save_anchor)도 이 경우 ends_at 을 아예 안 쓴다.
-    first.ends_at = (
-        anchor_starts_at + timedelta(minutes=first.stay_minutes) if first.stay_minutes else None
+    ordered = sorted(day.items, key=lambda route_item: route_item.sort_order)
+    position = next(
+        index for index, route_item in enumerate(ordered) if route_item.id == changed.id
     )
-    _cascade_item_times(
-        db,
-        route,
-        first.ends_at or anchor_starts_at,
-        _route_item_coord(db, first),
-        ordered_items[1:],
-    )
+    pairs = []
+    if position > 0:
+        pairs.append((ordered[position - 1], changed))
+    if position + 1 < len(ordered):
+        pairs.append((changed, ordered[position + 1]))
 
-
-def resync_items_after(
-    db: Session,
-    route: Route,
-    item: RouteItem,
-    following_items: list[RouteItem],
-) -> None:
-    """방금 직접 수정한 `item` 자신의 값은 그대로 두고, 그 뒤 항목들만 다시 잇는다.
-
-    `update_route_item`처럼 사용자가 특정 항목의 `starts_at`/`stay_minutes`를
-    직접 바꾼 경우에 쓴다 — `item`의 값을 재계산으로 덮어쓰면 사용자가 보낸
-    값(예: 모바일의 `shiftEndsAt`이 계산한 `endsAt`)을 잃어버리게 된다.
-    """
-    if item.starts_at is None:
-        return
-    _cascade_item_times(
-        db,
-        route,
-        item.ends_at or item.starts_at,
-        _route_item_coord(db, item),
-        following_items,
-    )
-
-
-def _cascade_item_times(
-    db: Session,
-    route: Route,
-    current_time: datetime,
-    current_coord: Coordinate | None,
-    items: list[RouteItem],
-) -> None:
-    """"이전 항목 종료 시각 + 휴식시간 + 이동시간"만 반영해 `items`를 순서대로 다시 잇는다.
-
-    영업시간·식사 슬롯은 재검증하지 않는다 — 편집 API는 원래 이런 검증이
-    없었고, 여기서 하는 건 확정 시각이 아니라 예상 시각이다. 좌표를 모르는
-    커스텀 항목은 이동시간을 구할 수 없으니 건너뛰고 이전 항목 종료 시각을
-    그대로 물려받는다.
-    """
-    if not items:
-        return
-
-    rest_min = PACE[route.pace.value]["rest_min"]
-    for item in items:
-        coord = _route_item_coord(db, item)
-        if coord is None or current_coord is None:
-            item.starts_at = current_time
-            item.ends_at = (
-                current_time + timedelta(minutes=item.stay_minutes) if item.stay_minutes else None
-            )
-            current_time = item.ends_at or current_time
-            current_coord = coord or current_coord
+    for origin, destination in pairs:
+        origin_coord = _route_item_coord(db, origin)
+        destination_coord = _route_item_coord(db, destination)
+        if origin_coord is None or destination_coord is None:
             continue
-
-        leg = get_route(db, current_coord, coord, route.transport, current_time)
-        depart_at = current_time + timedelta(minutes=rest_min)
-        starts_at = depart_at + timedelta(minutes=leg.duration_min)
-        item.starts_at = starts_at
-        item.ends_at = (
-            starts_at + timedelta(minutes=item.stay_minutes) if item.stay_minutes else None
+        move = db.scalar(
+            select(RouteMove).where(
+                RouteMove.from_item_id == origin.id,
+                RouteMove.to_item_id == destination.id,
+            )
         )
-        current_time = item.ends_at or starts_at
-        current_coord = coord
-
-    db.flush()
+        get_route(
+            db,
+            origin_coord,
+            destination_coord,
+            move.transport if move is not None else default_transport,
+            origin.ends_at,
+        )
 
 
 def _route_item_coord(db: Session, item: RouteItem) -> Coordinate | None:
