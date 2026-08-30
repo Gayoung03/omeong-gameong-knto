@@ -7,6 +7,16 @@ function serializeForInlineScript(value: unknown) {
 }
 
 /**
+ * 개발 모드에서만 출처(Referer)를 보내지 않게 한다.
+ *
+ * 카카오 콘솔의 사이트 도메인에는 배포 주소가 등록돼 있고 `http://localhost:8081` 은 없다.
+ * 개발 서버에서 출처를 그대로 보내면 SDK 로드가 거부되므로, 이때만 출처를 숨긴다.
+ * (카카오는 출처가 아예 없는 요청은 허용한다.)
+ * 배포 빌드에서는 등록된 도메인이 그대로 전달되도록 이 태그를 넣지 않는다.
+ */
+const DEV_REFERRER_META = __DEV__ ? '<meta name="referrer" content="no-referrer" />' : '';
+
+/**
  * WebView 안의 HTML 은 theme 토큰을 직접 참조할 수 없다.
  * 그래서 필요한 색만 이 객체로 추려서 문자열에 끼워 넣는다.
  * (개발 가이드 9항 — `trips/utils/kakaoMapHtml.ts` 와 같은 방식)
@@ -29,13 +39,7 @@ export function buildKakaoMapDocument(appKey: string, places: KakaoMapPlace[]) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-    <!--
-      카카오 지도 SDK 를 부를 때 출처(Referer)를 보내지 않는다.
-      웹에서는 이 문서가 iframe(srcdoc)으로 뜨면서 부모 주소(localhost:8081)를 출처로 물고 가는데,
-      카카오 콘솔은 localhost 를 사이트 도메인으로 받아주지 않아 SDK 로드가 거부된다.
-      배포 도메인을 콘솔에 등록한 뒤에는 이 meta 를 지워도 된다.
-    -->
-    <meta name="referrer" content="no-referrer" />
+    ${DEV_REFERRER_META}
     <style>
       html, body, #map { width: 100%; height: 100%; margin: 0; overflow: hidden; }
       body { background: ${mapColors.canvas}; font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; }
