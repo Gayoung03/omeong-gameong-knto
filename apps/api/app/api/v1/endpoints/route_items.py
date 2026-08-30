@@ -29,7 +29,12 @@ from app.schemas.route import (
 )
 from app.services.place_access import load_visible_place
 from app.services.route_access import load_owned_day, load_owned_item
-from app.services.route_recommendation import RecommendationGenerationError, replace_route_item
+from app.services.route_recommendation import (
+    RecommendationGenerationError,
+    replace_route_item,
+    resync_item_times,
+    resync_items_after,
+)
 
 router = APIRouter()
 
@@ -158,8 +163,14 @@ def create_route_item(
     db.flush()
 
     ordered = existing[:position] + [item] + existing[position:]
+    anchor = existing[0].starts_at if existing else payload.starts_at
     _renumber(db, ordered)
     _rebuild_moves(db, ordered, route.transport)
+    try:
+        resync_item_times(db, route, ordered, anchor)
+    except TMapError as error:
+        db.rollback()
+        raise HTTPException(status_code=502, detail="이동 경로를 계산하지 못했습니다") from error
     db.commit()
     db.refresh(item)
     return RouteItemResponse.model_validate(item)
@@ -176,17 +187,31 @@ def update_route_item(
     current_user: CurrentUser,
     db: DbSession,
 ) -> RouteItemResponse:
-    item, _day, _route = load_owned_item(db, route_item_id, current_user)
+    item, day, route = load_owned_item(db, route_item_id, current_user)
 
     # exclude_unset — 안 보낸 필드는 건드리지 않는다. 이게 없으면 시간만 고쳐
     # 보냈는데 메모가 null 로 지워진다.
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    fields = payload.model_dump(exclude_unset=True)
+    for field, value in fields.items():
         setattr(item, field, value)
 
     # 한쪽만 보냈을 때도 기존 값과 맞춰 봐야 한다. DB CheckConstraint 가 막긴
     # 하지만 그건 500 이라 앱이 이유를 모른다.
     if item.starts_at and item.ends_at and item.ends_at <= item.starts_at:
         raise HTTPException(status_code=422, detail="endsAt 은 startsAt 보다 뒤여야 합니다")
+
+    # 시작 시각이나 체류 시간이 바뀌면 이 항목 이후 방문 시각도 밀린다.
+    # 방금 사용자가 보낸 이 항목 자신의 값은 그대로 두고 뒤만 다시 잇는다.
+    if "starts_at" in fields or "stay_minutes" in fields:
+        ordered = _sorted_items(day)
+        position = next(index for index, existing in enumerate(ordered) if existing.id == item.id)
+        try:
+            resync_items_after(db, route, item, ordered[position + 1 :])
+        except TMapError as error:
+            db.rollback()
+            raise HTTPException(
+                status_code=502, detail="이동 경로를 계산하지 못했습니다"
+            ) from error
 
     db.commit()
     db.refresh(item)
@@ -239,9 +264,15 @@ def reorder_route_items(
     if len(payload.item_ids) != len(by_id) or set(payload.item_ids) != set(by_id):
         raise HTTPException(status_code=422, detail="이 날짜의 일정 전체를 순서대로 보내야 합니다")
 
+    anchor = _sorted_items(day)[0].starts_at if day.items else None
     ordered = [by_id[item_id] for item_id in payload.item_ids]
     _renumber(db, ordered)
     _rebuild_moves(db, ordered, route.transport)
+    try:
+        resync_item_times(db, route, ordered, anchor)
+    except TMapError as error:
+        db.rollback()
+        raise HTTPException(status_code=502, detail="이동 경로를 계산하지 못했습니다") from error
     db.commit()
     return [RouteItemResponse.model_validate(item) for item in ordered]
 
@@ -258,7 +289,15 @@ def delete_route_item(
 ) -> Response:
     item, day, route = load_owned_item(db, route_item_id, current_user)
 
-    remaining = [existing for existing in _sorted_items(day) if existing.id != item.id]
+    ordered_before = _sorted_items(day)
+    remaining = [existing for existing in ordered_before if existing.id != item.id]
+    # 지운 게 그날 1번이었다면 그날 시작 앵커를 잃는다 — 새로 1번이 되는
+    # 항목이 원래 갖고 있던 시각을 대신 앵커로 쓴다.
+    anchor = (
+        remaining[0].starts_at
+        if remaining and ordered_before[0].id == item.id
+        else (ordered_before[0].starts_at if ordered_before else None)
+    )
     db.delete(item)
     db.flush()
 
@@ -266,5 +305,10 @@ def delete_route_item(
     # index + 1 로 그려지므로 화면과 서버 값이 어긋나게 된다.
     _renumber(db, remaining)
     _rebuild_moves(db, remaining, route.transport)
+    try:
+        resync_item_times(db, route, remaining, anchor)
+    except TMapError as error:
+        db.rollback()
+        raise HTTPException(status_code=502, detail="이동 경로를 계산하지 못했습니다") from error
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
