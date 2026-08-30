@@ -26,15 +26,19 @@ def _candidate(
     lng: float = 126.5312,
     stay_minutes: int = 60,
     business_hours: list[BusinessHour] | None = None,
+    source_category: str | None = None,
+    tags: list[str] | None = None,
 ) -> ScoredCandidate:
     return ScoredCandidate(
         place_id=uuid.uuid4(),
         lat=lat,
         lng=lng,
         item_type=item_type,
+        source_category=source_category,
         environment="outdoor",
         average_stay_minutes=stay_minutes,
         business_hours=business_hours or [],
+        tags=tags or [],
         total_score=score,
         sub_scores={
             "preference": score,
@@ -101,6 +105,52 @@ def test_a_day_contains_at_most_one_cafe() -> None:
     assert any(
         item.candidate.item_type == ScheduleItemType.ATTRACTION for item in result.days[0].items
     )
+
+
+def test_similar_coastal_places_are_not_recommended_consecutively() -> None:
+    first_beach = _candidate(0.99, source_category="beach", lat=33.501)
+    second_beach = _candidate(0.98, source_category="beach", lat=33.502)
+    museum = _candidate(0.7, source_category="attraction", tags=["실내관광"], lat=33.503)
+    dinner = _candidate(
+        0.6,
+        item_type=ScheduleItemType.RESTAURANT,
+        source_category="restaurant",
+        lat=33.504,
+    )
+
+    result = build(
+        [first_beach, second_beach, museum, dinner],
+        _request(TripPace.RELAXED),
+        lambda *_args: RouteLeg(distance_m=1000, duration_min=10, polyline=None),
+    )
+
+    non_meals = [
+        item
+        for item in result.days[0].items
+        if item.candidate.item_type != ScheduleItemType.RESTAURANT
+    ]
+    assert [item.candidate.source_category for item in non_meals] == ["beach", "attraction"]
+
+
+def test_coastal_daily_limit_is_relaxed_only_when_candidates_are_insufficient() -> None:
+    beaches = [
+        _candidate(0.9 - index / 100, source_category="beach", lat=33.501 + index / 1000)
+        for index in range(2)
+    ]
+    dinner = _candidate(
+        0.6,
+        item_type=ScheduleItemType.RESTAURANT,
+        source_category="restaurant",
+        lat=33.51,
+    )
+
+    result = build(
+        [*beaches, dinner],
+        _request(TripPace.RELAXED),
+        lambda *_args: RouteLeg(distance_m=1000, duration_min=10, polyline=None),
+    )
+
+    assert sum(item.candidate.source_category == "beach" for item in result.days[0].items) == 2
 
 
 def test_each_day_ends_with_dinner_after_five() -> None:
