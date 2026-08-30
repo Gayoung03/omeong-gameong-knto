@@ -2,9 +2,11 @@ import { getPetPolicyLabel } from '@/src/types/place';
 
 import type {
   PlaceCategory,
+  Schedule,
   ScheduleWeather,
   TransportType,
   Trip,
+  TripDistanceSummary,
   WeatherCondition,
 } from '../types/trip';
 
@@ -85,6 +87,26 @@ export function formatDuration(minutes: number): string {
     return `${hours}시간`;
   }
   return `${hours}시간 ${restMinutes}분`;
+}
+
+/** 선택한 하루의 일정 사이 이동 구간을 거리·수단별 시간으로 합산한다. */
+export function calculateScheduleDistanceSummary(
+  schedule: Pick<Schedule, 'items'>,
+): TripDistanceSummary {
+  const moves = schedule.items.flatMap((item) => (item.moveToNext ? [item.moveToNext] : []));
+  const totalDistanceMeters = moves.reduce((total, move) => total + move.distanceMeters, 0);
+
+  return {
+    totalDistanceKm: Math.round((totalDistanceMeters / 1000) * 10) / 10,
+    carMinutes: moves.reduce(
+      (total, move) => total + (move.transport !== 'walk' ? move.durationMinutes : 0),
+      0,
+    ),
+    walkMinutes: moves.reduce(
+      (total, move) => total + (move.transport === 'walk' ? move.durationMinutes : 0),
+      0,
+    ),
+  };
 }
 
 const TRANSPORT_LABELS: Record<TransportType, string> = {
