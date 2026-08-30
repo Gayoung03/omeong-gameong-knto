@@ -3,7 +3,15 @@ from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 from app.db.models.enums import ScheduleItemType, TransportType, TripPace
-from app.recommend.itinerary import DINNER_START, BuildRequest, RouteAnchor, build
+from app.recommend.itinerary import (
+    DINNER_START,
+    DINNER_START_BY,
+    LUNCH_START,
+    LUNCH_START_BY,
+    BuildRequest,
+    RouteAnchor,
+    build,
+)
 from app.recommend.schemas import BusinessHour, ScoredCandidate
 from app.recommend.tmap import RouteLeg
 
@@ -149,6 +157,51 @@ def test_last_day_before_five_does_not_require_dinner() -> None:
     assert result.days[1].dinner_required is False
     assert result.days[1].items
     assert result.days[1].items[-1].candidate.item_type != ScheduleItemType.RESTAURANT
+
+
+def test_dinner_starts_by_half_past_seven_even_when_long_attraction_scores_higher() -> None:
+    long_attraction = _candidate(0.99, stay_minutes=480)
+    dinner = _candidate(0.5, item_type=ScheduleItemType.RESTAURANT)
+
+    result = build(
+        [long_attraction, dinner],
+        _request(TripPace.NORMAL),
+        lambda *_args: RouteLeg(distance_m=1000, duration_min=10, polyline=None),
+    )
+
+    day = result.days[0]
+    assert day.items[-1].candidate.item_type == ScheduleItemType.RESTAURANT
+    assert DINNER_START <= day.items[-1].starts_at.time() <= DINNER_START_BY
+
+
+def test_restaurant_preference_adds_lunch_when_trip_ends_before_dinner() -> None:
+    request = BuildRequest(
+        start_at=datetime(2026, 8, 31, 9, tzinfo=KST),
+        end_at=datetime(2026, 8, 31, 15, tzinfo=KST),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        start_coord=(33.5, 126.53),
+        restaurant_preferred=True,
+    )
+    candidates = [
+        _candidate(0.9, lat=33.501),
+        _candidate(0.8, item_type=ScheduleItemType.RESTAURANT, lat=33.502),
+        _candidate(0.7, lat=33.503),
+    ]
+
+    result = build(
+        candidates,
+        request,
+        lambda *_args: RouteLeg(distance_m=1000, duration_min=10, polyline=None),
+    )
+
+    day = result.days[0]
+    lunch = next(
+        item for item in day.items if item.candidate.item_type == ScheduleItemType.RESTAURANT
+    )
+    assert day.dinner_required is False
+    assert day.restaurant_required is True
+    assert LUNCH_START <= lunch.starts_at.time() <= LUNCH_START_BY
 
 
 def test_candidate_closed_before_actual_arrival_is_skipped() -> None:
