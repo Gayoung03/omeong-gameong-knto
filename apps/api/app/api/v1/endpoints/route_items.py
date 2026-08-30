@@ -166,11 +166,7 @@ def create_route_item(
     anchor = existing[0].starts_at if existing else payload.starts_at
     _renumber(db, ordered)
     _rebuild_moves(db, ordered, route.transport)
-    try:
-        resync_item_times(db, route, ordered, anchor)
-    except TMapError as error:
-        db.rollback()
-        raise HTTPException(status_code=502, detail="이동 경로를 계산하지 못했습니다") from error
+    resync_item_times(db, route, ordered, anchor)
     db.commit()
     db.refresh(item)
     return RouteItemResponse.model_validate(item)
@@ -205,13 +201,7 @@ def update_route_item(
     if "starts_at" in fields or "stay_minutes" in fields:
         ordered = _sorted_items(day)
         position = next(index for index, existing in enumerate(ordered) if existing.id == item.id)
-        try:
-            resync_items_after(db, route, item, ordered[position + 1 :])
-        except TMapError as error:
-            db.rollback()
-            raise HTTPException(
-                status_code=502, detail="이동 경로를 계산하지 못했습니다"
-            ) from error
+        resync_items_after(db, route, item, ordered[position + 1 :])
 
     db.commit()
     db.refresh(item)
@@ -268,11 +258,7 @@ def reorder_route_items(
     ordered = [by_id[item_id] for item_id in payload.item_ids]
     _renumber(db, ordered)
     _rebuild_moves(db, ordered, route.transport)
-    try:
-        resync_item_times(db, route, ordered, anchor)
-    except TMapError as error:
-        db.rollback()
-        raise HTTPException(status_code=502, detail="이동 경로를 계산하지 못했습니다") from error
+    resync_item_times(db, route, ordered, anchor)
     db.commit()
     return [RouteItemResponse.model_validate(item) for item in ordered]
 
@@ -305,10 +291,6 @@ def delete_route_item(
     # index + 1 로 그려지므로 화면과 서버 값이 어긋나게 된다.
     _renumber(db, remaining)
     _rebuild_moves(db, remaining, route.transport)
-    try:
-        resync_item_times(db, route, remaining, anchor)
-    except TMapError as error:
-        db.rollback()
-        raise HTTPException(status_code=502, detail="이동 경로를 계산하지 못했습니다") from error
+    resync_item_times(db, route, remaining, anchor)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

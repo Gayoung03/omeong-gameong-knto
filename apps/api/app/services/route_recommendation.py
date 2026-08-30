@@ -3,7 +3,7 @@
 import logging
 import uuid
 from collections.abc import Callable
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.db.models import (
     Pet,
     Place,
+    PlaceBusinessHour,
     Route,
     RouteDay,
     RouteItem,
@@ -34,7 +35,7 @@ from app.recommend.filters import filter_candidates
 from app.recommend.itinerary import BuildRequest, Itinerary, RouteAnchor, build
 from app.recommend.schemas import Candidate, ScoredCandidate, Weights
 from app.recommend.scoring import ScoringContext, score_candidates
-from app.recommend.tmap import get_route
+from app.recommend.tmap import TMapError, get_route
 from app.recommend.weights import resolve_weights
 
 logger = logging.getLogger(__name__)
@@ -520,39 +521,94 @@ def _cascade_item_times(
     current_coord: Coordinate | None,
     items: list[RouteItem],
 ) -> None:
-    """"이전 항목 종료 시각 + 휴식시간 + 이동시간"만 반영해 `items`를 순서대로 다시 잇는다.
+    """편집된 순서에 맞춰 예상 시각을 다시 잇는다.
 
-    영업시간·식사 슬롯은 재검증하지 않는다 — 편집 API는 원래 이런 검증이
-    없었고, 여기서 하는 건 확정 시각이 아니라 예상 시각이다. 좌표를 모르는
-    커스텀 항목은 이동시간을 구할 수 없으니 건너뛰고 이전 항목 종료 시각을
-    그대로 물려받는다.
+    TMAP 또는 영업시간 검증이 불가능한 지점부터는 시각을 `null`로 비운다.
+    장소 편집 자체는 유지하고 화면에서 "시간 미정"으로 보여주기 위해서다.
     """
     if not items:
         return
 
     rest_min = PACE[route.pace.value]["rest_min"]
-    for item in items:
+    for index, item in enumerate(items):
         coord = _route_item_coord(db, item)
         if coord is None or current_coord is None:
-            item.starts_at = current_time
-            item.ends_at = (
-                current_time + timedelta(minutes=item.stay_minutes) if item.stay_minutes else None
-            )
-            current_time = item.ends_at or current_time
-            current_coord = coord or current_coord
-            continue
+            _clear_estimated_times(items[index:])
+            break
 
-        leg = get_route(db, current_coord, coord, route.transport, current_time)
         depart_at = current_time + timedelta(minutes=rest_min)
-        starts_at = depart_at + timedelta(minutes=leg.duration_min)
-        item.starts_at = starts_at
-        item.ends_at = (
-            starts_at + timedelta(minutes=item.stay_minutes) if item.stay_minutes else None
-        )
-        current_time = item.ends_at or starts_at
+        try:
+            leg = get_route(db, current_coord, coord, route.transport, depart_at)
+        except TMapError:
+            logger.warning("edited route time estimate unavailable", exc_info=True)
+            _clear_estimated_times(items[index:])
+            break
+        arrival = depart_at + timedelta(minutes=leg.duration_min)
+        visit = _fit_edited_item_visit(db, item, arrival, route)
+        if visit is None:
+            _clear_estimated_times(items[index:])
+            break
+        item.starts_at, item.ends_at = visit
+        current_time = item.ends_at or item.starts_at
         current_coord = coord
 
     db.flush()
+
+
+def _clear_estimated_times(items: list[RouteItem]) -> None:
+    for item in items:
+        item.starts_at = None
+        item.ends_at = None
+
+
+def _fit_edited_item_visit(
+    db: Session,
+    item: RouteItem,
+    arrival: datetime,
+    route: Route,
+) -> tuple[datetime, datetime | None] | None:
+    """실제 영업시간 안에서 편집 후 예상 방문 시각을 맞춘다."""
+
+    starts_at = arrival
+    day_window_end = datetime.combine(
+        arrival.date(), time.fromisoformat(PACE[route.pace.value]["window"][1]), arrival.tzinfo
+    )
+    closes_at = min(route.end_at, day_window_end)
+    if item.place_id is not None:
+        day_of_week = (arrival.weekday() + 1) % 7
+        hours = db.scalar(
+            select(PlaceBusinessHour).where(
+                PlaceBusinessHour.place_id == item.place_id,
+                PlaceBusinessHour.day_of_week == day_of_week,
+            )
+        )
+        if hours is not None:
+            if hours.is_closed:
+                return None
+            if hours.opens_at is not None:
+                starts_at = max(
+                    starts_at,
+                    datetime.combine(arrival.date(), hours.opens_at, arrival.tzinfo),
+                )
+            if hours.closes_at is not None:
+                closes_at = min(
+                    closes_at,
+                    datetime.combine(arrival.date(), hours.closes_at, arrival.tzinfo),
+                )
+            duration = timedelta(minutes=item.stay_minutes or 0)
+            if hours.break_start_at is not None and hours.break_end_at is not None:
+                break_start = datetime.combine(
+                    arrival.date(), hours.break_start_at, arrival.tzinfo
+                )
+                break_end = datetime.combine(arrival.date(), hours.break_end_at, arrival.tzinfo)
+                if starts_at < break_end and starts_at + duration > break_start:
+                    starts_at = break_end
+
+    duration = timedelta(minutes=item.stay_minutes or 0)
+    if duration <= timedelta(0):
+        return starts_at, None
+    ends_at = starts_at + duration
+    return (starts_at, ends_at) if ends_at <= closes_at else None
 
 
 def _route_item_coord(db: Session, item: RouteItem) -> Coordinate | None:
