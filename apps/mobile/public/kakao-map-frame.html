@@ -1,0 +1,33 @@
+<!doctype html>
+<!--
+  카카오 지도를 담기 위한 빈 문서.
+
+  지도 HTML 을 iframe 의 srcDoc 으로 넣으면 문서 주소가 `about:srcdoc` 이 되고,
+  그러면 `location.protocol` 이 `about:` 이라 카카오 지도 SDK 로더가
+  실제 지도 스크립트를 `http://t1.daumcdn.net/...` 으로 부른다.
+  HTTPS 로 배포된 페이지에서는 이 요청이 혼합 콘텐츠로 차단돼 지도가 뜨지 않는다.
+
+  그래서 앱과 같은 출처의 이 파일을 먼저 띄우고,
+  HtmlFrame 이 이 문서 안에 지도 HTML 을 써 넣는다.
+  (src/components/web/HtmlFrame.web.tsx 참고)
+-->
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
+    <title>카카오 지도</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body></body>
+</html>
