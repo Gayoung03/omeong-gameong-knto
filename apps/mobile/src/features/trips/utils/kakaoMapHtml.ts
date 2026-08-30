@@ -50,6 +50,16 @@ function toJsonLiteral(value: unknown): string {
 }
 
 /**
+ * 개발 모드에서만 출처(Referer)를 보내지 않게 한다.
+ *
+ * 카카오 콘솔의 사이트 도메인에는 배포 주소가 등록돼 있고 `http://localhost:8081` 은 없다.
+ * 개발 서버에서 출처를 그대로 보내면 SDK 로드가 거부되므로, 이때만 출처를 숨긴다.
+ * (카카오는 출처가 아예 없는 요청은 허용한다.)
+ * 배포 빌드에서는 등록된 도메인이 그대로 전달되도록 이 태그를 넣지 않는다.
+ */
+const DEV_REFERRER_META = __DEV__ ? '<meta name="referrer" content="no-referrer" />' : '';
+
+/**
  * 카카오 지도 JavaScript API 로 마커와 경로선을 그리는 HTML 을 만든다.
  *
  * 선택 표시(강조)는 WebView 안에서 스스로 처리하고, 앱에는 어떤 장소가 눌렸는지만 알린다.
@@ -92,7 +102,7 @@ export function buildKakaoMapHtml({
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <meta name="referrer" content="no-referrer" />
+    ${DEV_REFERRER_META}
     <style>
       html, body { margin: 0; padding: 0; height: 100%; background: ${colors.background}; }
       #map { width: 100%; height: 100%; }
