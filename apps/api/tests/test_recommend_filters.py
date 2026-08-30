@@ -131,6 +131,7 @@ def test_filter_candidates_queries_active_places_and_applies_defaults(
     matched = next(candidate for candidate in result if candidate.place_id == active.id)
     assert all(candidate.place_id != inactive.id for candidate in result)
     assert matched.environment is None
+    assert matched.source_category == "attraction"
     assert matched.average_stay_minutes == 60
     assert matched.rating_avg is None
     assert matched.saved_count == 0

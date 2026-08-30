@@ -3,7 +3,15 @@ from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 from app.db.models.enums import ScheduleItemType, TransportType, TripPace
-from app.recommend.itinerary import DINNER_START, BuildRequest, RouteAnchor, build
+from app.recommend.itinerary import (
+    DINNER_START,
+    DINNER_START_BY,
+    LUNCH_START,
+    LUNCH_START_BY,
+    BuildRequest,
+    RouteAnchor,
+    build,
+)
 from app.recommend.schemas import BusinessHour, ScoredCandidate
 from app.recommend.tmap import RouteLeg
 
@@ -18,15 +26,19 @@ def _candidate(
     lng: float = 126.5312,
     stay_minutes: int = 60,
     business_hours: list[BusinessHour] | None = None,
+    source_category: str | None = None,
+    tags: list[str] | None = None,
 ) -> ScoredCandidate:
     return ScoredCandidate(
         place_id=uuid.uuid4(),
         lat=lat,
         lng=lng,
         item_type=item_type,
+        source_category=source_category,
         environment="outdoor",
         average_stay_minutes=stay_minutes,
         business_hours=business_hours or [],
+        tags=tags or [],
         total_score=score,
         sub_scores={
             "preference": score,
@@ -95,6 +107,52 @@ def test_a_day_contains_at_most_one_cafe() -> None:
     )
 
 
+def test_similar_coastal_places_are_not_recommended_consecutively() -> None:
+    first_beach = _candidate(0.99, source_category="beach", lat=33.501)
+    second_beach = _candidate(0.98, source_category="beach", lat=33.502)
+    museum = _candidate(0.7, source_category="attraction", tags=["실내관광"], lat=33.503)
+    dinner = _candidate(
+        0.6,
+        item_type=ScheduleItemType.RESTAURANT,
+        source_category="restaurant",
+        lat=33.504,
+    )
+
+    result = build(
+        [first_beach, second_beach, museum, dinner],
+        _request(TripPace.RELAXED),
+        lambda *_args: RouteLeg(distance_m=1000, duration_min=10, polyline=None),
+    )
+
+    non_meals = [
+        item
+        for item in result.days[0].items
+        if item.candidate.item_type != ScheduleItemType.RESTAURANT
+    ]
+    assert [item.candidate.source_category for item in non_meals] == ["beach", "attraction"]
+
+
+def test_coastal_daily_limit_is_relaxed_only_when_candidates_are_insufficient() -> None:
+    beaches = [
+        _candidate(0.9 - index / 100, source_category="beach", lat=33.501 + index / 1000)
+        for index in range(2)
+    ]
+    dinner = _candidate(
+        0.6,
+        item_type=ScheduleItemType.RESTAURANT,
+        source_category="restaurant",
+        lat=33.51,
+    )
+
+    result = build(
+        [*beaches, dinner],
+        _request(TripPace.RELAXED),
+        lambda *_args: RouteLeg(distance_m=1000, duration_min=10, polyline=None),
+    )
+
+    assert sum(item.candidate.source_category == "beach" for item in result.days[0].items) == 2
+
+
 def test_each_day_ends_with_dinner_after_five() -> None:
     request = BuildRequest(
         start_at=datetime(2026, 8, 31, 9, tzinfo=KST),
@@ -149,6 +207,51 @@ def test_last_day_before_five_does_not_require_dinner() -> None:
     assert result.days[1].dinner_required is False
     assert result.days[1].items
     assert result.days[1].items[-1].candidate.item_type != ScheduleItemType.RESTAURANT
+
+
+def test_dinner_starts_by_half_past_seven_even_when_long_attraction_scores_higher() -> None:
+    long_attraction = _candidate(0.99, stay_minutes=480)
+    dinner = _candidate(0.5, item_type=ScheduleItemType.RESTAURANT)
+
+    result = build(
+        [long_attraction, dinner],
+        _request(TripPace.NORMAL),
+        lambda *_args: RouteLeg(distance_m=1000, duration_min=10, polyline=None),
+    )
+
+    day = result.days[0]
+    assert day.items[-1].candidate.item_type == ScheduleItemType.RESTAURANT
+    assert DINNER_START <= day.items[-1].starts_at.time() <= DINNER_START_BY
+
+
+def test_restaurant_preference_adds_lunch_when_trip_ends_before_dinner() -> None:
+    request = BuildRequest(
+        start_at=datetime(2026, 8, 31, 9, tzinfo=KST),
+        end_at=datetime(2026, 8, 31, 15, tzinfo=KST),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        start_coord=(33.5, 126.53),
+        restaurant_preferred=True,
+    )
+    candidates = [
+        _candidate(0.9, lat=33.501),
+        _candidate(0.8, item_type=ScheduleItemType.RESTAURANT, lat=33.502),
+        _candidate(0.7, lat=33.503),
+    ]
+
+    result = build(
+        candidates,
+        request,
+        lambda *_args: RouteLeg(distance_m=1000, duration_min=10, polyline=None),
+    )
+
+    day = result.days[0]
+    lunch = next(
+        item for item in day.items if item.candidate.item_type == ScheduleItemType.RESTAURANT
+    )
+    assert day.dinner_required is False
+    assert day.restaurant_required is True
+    assert LUNCH_START <= lunch.starts_at.time() <= LUNCH_START_BY
 
 
 def test_candidate_closed_before_actual_arrival_is_skipped() -> None:

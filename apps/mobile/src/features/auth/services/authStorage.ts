@@ -12,6 +12,8 @@ const AUTH_SESSION_KEY = 'omeong-gameong.auth-session';
 const CONSENT_KEY = 'omeong-gameong.consent-record';
 
 export type AuthSession = {
+  /** 예전 앱이 저장한 세션에는 없을 수 있어 읽을 때 이메일로 호환한다. */
+  userId?: string;
   email: string;
   nickname: string;
   /** 최초 가입 수단. 회원 탈퇴가 비밀번호(local)냐 제공처 재인증(소셜)이냐를 가른다. */
@@ -48,8 +50,9 @@ async function saveConsentRecord(agreements: SignupAgreements) {
   return record;
 }
 
-async function saveSession(user: Pick<AuthUser, 'email' | 'nickname' | 'authProvider'>) {
+async function saveSession(user: Pick<AuthUser, 'id' | 'email' | 'nickname' | 'authProvider'>) {
   const session: AuthSession = {
+    userId: user.id,
     // 소셜 계정은 email 이 null 일 수 있다. 화면 표시는 닉네임을 쓰므로 빈 문자열로 둔다.
     email: user.email ?? '',
     nickname: user.nickname,
@@ -87,7 +90,7 @@ export async function signIn(email: string, password: string) {
 export async function completeSocialLogin(result: {
   accessToken: string;
   refreshToken: string;
-  user: Pick<AuthUser, 'email' | 'nickname' | 'authProvider'>;
+  user: Pick<AuthUser, 'id' | 'email' | 'nickname' | 'authProvider'>;
 }) {
   await saveTokens(result.accessToken, result.refreshToken);
   return saveSession(result.user);

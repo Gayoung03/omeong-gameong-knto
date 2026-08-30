@@ -33,6 +33,7 @@ import { savePendingRoute } from '../services/pendingRoute';
 
 import { ConfirmModal } from '@/src/components/feedback/ConfirmModal';
 import { brandAssets } from '@/src/config/brandAssets';
+import { getAuthSession } from '@/src/features/auth/services/authStorage';
 import { searchAccommodations } from '@/src/features/places/api/placesApi';
 import type { Place } from '@/src/features/places/types/place';
 import { usePets } from '@/src/features/profile/hooks/usePets';
@@ -40,7 +41,12 @@ import { createRouteRecommendation } from '@/src/features/trips/api/tripsApi';
 import type { ServerTransportType, ServerTripPace } from '@/src/features/trips/types/routeApi';
 import { colors as theme, overlayColors, radius, spacing, typography } from '@/src/theme';
 
-const DRAFT_KEY = 'route-input-draft';
+const LEGACY_DRAFT_KEY = 'route-input-draft';
+const DRAFT_KEY_PREFIX = 'route-input-draft:';
+
+function routeDraftKey(userId: string): string {
+  return `${DRAFT_KEY_PREFIX}${userId}`;
+}
 
 /**
  * 색상 별칭. 값은 모두 theme 토큰을 가리킨다.
@@ -384,6 +390,7 @@ export function RouteInputScreen() {
   const router = useRouter();
   const { data: pets = [], isPending: isPetsPending } = usePets();
   const [draft, setDraft] = useState<RouteDraft>(initialDraft);
+  const [draftStorageKey, setDraftStorageKey] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [tripPhase, setTripPhase] = useState<TripPhase>('dates');
   const [editingStayId, setEditingStayId] = useState<string | null>(null);
@@ -461,7 +468,21 @@ export function RouteInputScreen() {
   useEffect(() => {
     void (async () => {
       try {
-        const saved = await AsyncStorage.getItem(DRAFT_KEY);
+        const session = await getAuthSession();
+        // 업데이트 전에 저장된 로컬 계정 세션에는 userId가 없으므로 이메일을 한 번
+        // 대신 사용한다. 새로 로그인하면 항상 서버 userId가 저장된다.
+        const accountKey = session?.userId || session?.email;
+        if (!accountKey) {
+          setPageError('로그인 정보를 확인하지 못했어요. 다시 로그인해주세요.');
+          return;
+        }
+
+        const storageKey = routeDraftKey(accountKey);
+        setDraftStorageKey(storageKey);
+
+        // 예전 공용 키는 계정 사이에 입력 정보가 섞일 수 있으므로 복원하지 않는다.
+        await AsyncStorage.removeItem(LEGACY_DRAFT_KEY);
+        const saved = await AsyncStorage.getItem(storageKey);
         if (saved) {
           const restored = restoreDraft(saved);
           setDraft(restored.draft);
@@ -476,17 +497,17 @@ export function RouteInputScreen() {
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !draftStorageKey) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      void AsyncStorage.setItem(DRAFT_KEY, serializeDraft(draft, openIndex))
+      void AsyncStorage.setItem(draftStorageKey, serializeDraft(draft, openIndex))
         .then(() => setAutoSaveError(''))
         .catch(() => setAutoSaveError('입력 내용을 자동 저장하지 못했어요.'));
     }, 350);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [draft, hydrated, openIndex]);
+  }, [draft, draftStorageKey, hydrated, openIndex]);
 
   /** 접힌 카드에 한 줄로 보여줄 내용 */
   const stepSummaries = [
@@ -668,7 +689,9 @@ export function RouteInputScreen() {
   const closeFlow = async () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     try {
-      await AsyncStorage.setItem(DRAFT_KEY, serializeDraft(draft, openIndex));
+      if (draftStorageKey) {
+        await AsyncStorage.setItem(draftStorageKey, serializeDraft(draft, openIndex));
+      }
     } catch {
       setAutoSaveError('입력 내용을 저장하지 못했어요.');
     }
@@ -689,7 +712,9 @@ export function RouteInputScreen() {
     setReturnToReview(false);
     setPageError('');
     try {
-      await AsyncStorage.removeItem(DRAFT_KEY);
+      if (draftStorageKey) {
+        await AsyncStorage.removeItem(draftStorageKey);
+      }
     } catch {
       setPageError('임시 저장 정보를 지우지 못했어요.');
     }
@@ -730,7 +755,9 @@ export function RouteInputScreen() {
     );
 
     try {
-      await AsyncStorage.setItem(DRAFT_KEY, serializeDraft(draft, REVIEW_STEP));
+      if (draftStorageKey) {
+        await AsyncStorage.setItem(draftStorageKey, serializeDraft(draft, REVIEW_STEP));
+      }
     } catch {
       setAutoSaveError('입력 정보를 저장하지 못했어요.');
     }
