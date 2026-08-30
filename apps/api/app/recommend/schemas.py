@@ -61,6 +61,8 @@ class Candidate(RecommendationSchema):
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     item_type: ScheduleItemType
+    # item_type으로 합친 후에도 장소 다양성 판단에 쓰는 DB 원본 카테고리.
+    source_category: str | None = None
     environment: PlaceEnvironment | None
     average_stay_minutes: int = Field(gt=0)
     tags: list[str] = Field(default_factory=list)

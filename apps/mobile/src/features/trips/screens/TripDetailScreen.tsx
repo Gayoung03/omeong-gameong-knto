@@ -23,7 +23,11 @@ import { WeatherSheet } from '../components/WeatherSheet';
 import { useTripShare } from '../hooks/useTripShare';
 import { useTrip } from '../hooks/useTrips';
 import type { TripDetailTab } from '../types/trip';
-import { formatFullDate, getWeatherIcon } from '../utils/tripFormat';
+import {
+  calculateScheduleDistanceSummary,
+  formatFullDate,
+  getWeatherIcon,
+} from '../utils/tripFormat';
 
 /** 이미지로 만들 범위 */
 type ShareImageTarget = 'wholeTrip' | 'day';
@@ -62,6 +66,11 @@ export function TripDetailScreen({ tripId }: { tripId: string }) {
       null
     );
   }, [trip, selectedScheduleId]);
+
+  const selectedDistanceSummary = useMemo(
+    () => (selectedSchedule ? calculateScheduleDistanceSummary(selectedSchedule) : null),
+    [selectedSchedule],
+  );
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -204,7 +213,7 @@ export function TripDetailScreen({ tripId }: { tripId: string }) {
             selectedScheduleId={selectedSchedule?.id ?? ''}
           />
 
-          <TripDistanceSummary summary={trip.distanceSummary} />
+          {selectedDistanceSummary && <TripDistanceSummary summary={selectedDistanceSummary} />}
 
           {selectedSchedule && (
             <>

@@ -2,6 +2,7 @@
 
 import math
 import uuid
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
@@ -15,6 +16,9 @@ from app.recommend.tmap import RouteLeg
 
 KST = ZoneInfo("Asia/Seoul")
 DINNER_START = time(17)
+DINNER_START_BY = time(19, 30)
+LUNCH_START = time(11, 30)
+LUNCH_START_BY = time(14)
 Coordinate = tuple[float, float]
 RouteProvider = Callable[[Coordinate, Coordinate, TransportType, datetime | None], RouteLeg]
 
@@ -27,6 +31,18 @@ SPEED_METERS_PER_MINUTE = {
 }
 SUPPORTED_TRANSPORTS = frozenset(SPEED_METERS_PER_MINUTE)
 
+DIVERSITY_GROUP_BY_CATEGORY = {
+    "beach": "coast",
+    "oreum": "nature",
+    "walking_trail": "nature",
+    "rental_experience": "experience",
+    "cafe": "cafe",
+    "restaurant": "food",
+    "restaurant_cafe": "food",
+    "accommodation": "stay",
+}
+DAILY_DIVERSITY_LIMITS = {"coast": 1}
+
 
 @dataclass(frozen=True)
 class BuildRequest:
@@ -35,6 +51,7 @@ class BuildRequest:
     pace: TripPace
     transport: TransportType
     start_coord: Coordinate
+    restaurant_preferred: bool = False
     day_start_anchors: dict[date, "RouteAnchor"] = field(default_factory=dict)
     day_end_anchors: dict[date, "RouteAnchor"] = field(default_factory=dict)
 
@@ -69,6 +86,7 @@ class ItineraryDay:
     items: tuple[ScheduledItem, ...]
     moves: tuple[ScheduledMove, ...]
     dinner_required: bool
+    restaurant_required: bool
     start_anchor: RouteAnchor | None = None
     end_anchor: RouteAnchor | None = None
     day_start: datetime | None = None
@@ -107,46 +125,79 @@ def build(
         end_anchor = request.day_end_anchors.get(route_date)
         current_coord = start_anchor.coord if start_anchor else request.start_coord
         current_time = day_start
+        dinner_required = day_end.time() >= DINNER_START
+        lunch_start = datetime.combine(route_date, LUNCH_START, KST)
+        lunch_start_by = datetime.combine(route_date, LUNCH_START_BY, KST)
+        lunch_required = (
+            request.restaurant_preferred
+            and not dinner_required
+            and day_start <= lunch_start_by
+            and day_end >= lunch_start
+        )
+        restaurant_scheduled = False
 
         while remaining and len(items) < rule["places_per_day"] and current_time < day_end:
-            dinner_slot = len(items) == rule["places_per_day"] - 1
+            dinner_start = datetime.combine(route_date, DINNER_START, KST)
+            dinner_start_by = datetime.combine(route_date, DINNER_START_BY, KST)
+            dinner_slot = dinner_required and (
+                len(items) == rule["places_per_day"] - 1 or current_time >= dinner_start
+            )
+            lunch_slot = lunch_required and not restaurant_scheduled and current_time >= lunch_start
+            meal_slot = dinner_slot or lunch_slot
             blocked_types = (
                 {ScheduleItemType.CAFE}
                 if any(item.candidate.item_type == ScheduleItemType.CAFE for item in items)
                 else set()
             )
-            if not dinner_slot:
+            if not meal_slot or restaurant_scheduled:
                 blocked_types.add(ScheduleItemType.RESTAURANT)
-            not_before = datetime.combine(route_date, DINNER_START, KST) if dinner_slot else None
-            choice = _best_candidate(
+            not_before = dinner_start if dinner_slot else lunch_start if lunch_slot else None
+            start_by = dinner_start_by if dinner_slot else lunch_start_by if lunch_slot else None
+            # 식사 전 관광 일정이 식사 시작 시각을 침범하지 않게 슬롯을 미리 비워둔다.
+            visit_deadline = day_end
+            if dinner_required and not restaurant_scheduled and not meal_slot:
+                visit_deadline = min(visit_deadline, dinner_start)
+            elif lunch_required and not restaurant_scheduled and not meal_slot:
+                visit_deadline = min(visit_deadline, lunch_start)
+            choice = _best_candidate_with_diversity(
                 remaining,
                 rejected_today,
                 blocked_types,
-                ScheduleItemType.RESTAURANT if dinner_slot else None,
+                ScheduleItemType.RESTAURANT if meal_slot else None,
                 not_before,
+                start_by,
                 current_coord,
                 current_time,
-                day_end,
+                visit_deadline,
                 request.transport,
                 rule["rest_min"] if items else 0,
                 end_anchor.coord if end_anchor else None,
+                items,
+                enforce_diversity=not meal_slot,
             )
-            # 낮 일정이 부족해도 저녁 식사는 마지막 일정으로 시도한다.
-            if choice is None and not dinner_slot:
-                dinner_slot = True
-                not_before = datetime.combine(route_date, DINNER_START, KST)
-                choice = _best_candidate(
+            # 낮 일정이 부족하거나 식사 시간이 오면 필요한 식사를 우선 배치한다.
+            if choice is None and not meal_slot and (dinner_required or lunch_required):
+                dinner_slot = dinner_required
+                lunch_slot = lunch_required and not dinner_required
+                meal_slot = True
+                not_before = dinner_start if dinner_slot else lunch_start
+                start_by = dinner_start_by if dinner_slot else lunch_start_by
+                visit_deadline = day_end
+                choice = _best_candidate_with_diversity(
                     remaining,
                     rejected_today,
                     set(),
                     ScheduleItemType.RESTAURANT,
                     not_before,
+                    start_by,
                     current_coord,
                     current_time,
                     day_end,
                     request.transport,
                     rule["rest_min"] if items else 0,
                     end_anchor.coord if end_anchor else None,
+                    items,
+                    enforce_diversity=False,
                 )
             if choice is None:
                 break
@@ -163,9 +214,9 @@ def build(
             visit = _fit_visit(
                 choice,
                 max(arrival, not_before) if not_before is not None else arrival,
-                day_end,
+                visit_deadline,
             )
-            if visit is None:
+            if visit is None or (start_by is not None and visit[0] > start_by):
                 rejected_today.add(choice.place_id)
                 continue
 
@@ -181,6 +232,9 @@ def build(
             remaining.remove(choice)
             current_coord = (choice.lat, choice.lng)
             current_time = ends_at
+            restaurant_scheduled = restaurant_scheduled or (
+                choice.item_type == ScheduleItemType.RESTAURANT
+            )
             if dinner_slot:
                 break
 
@@ -200,7 +254,8 @@ def build(
                 route_date,
                 tuple(items),
                 tuple(moves),
-                dinner_required=day_end.time() >= DINNER_START,
+                dinner_required=dinner_required,
+                restaurant_required=dinner_required or lunch_required,
                 start_anchor=start_anchor if items else None,
                 end_anchor=end_anchor if items else None,
                 day_start=day_start if items and start_anchor else None,
@@ -211,25 +266,104 @@ def build(
     return Itinerary(tuple(days))
 
 
-def _best_candidate(
+def _best_candidate_with_diversity(
     candidates: list[ScoredCandidate],
     rejected: set[uuid.UUID],
     blocked_types: set[ScheduleItemType],
     required_type: ScheduleItemType | None,
     not_before: datetime | None,
+    start_by: datetime | None,
     current_coord: Coordinate,
     current_time: datetime,
     day_end: datetime,
     transport: TransportType,
     rest_min: int,
     end_coord: Coordinate | None,
+    items: list[ScheduledItem],
+    *,
+    enforce_diversity: bool,
+) -> ScoredCandidate | None:
+    """다양성 규칙을 우선하되 후보 부족이 전체 일정 실패로 이어지지 않게 완화한다."""
+
+    if not enforce_diversity:
+        return _best_candidate(
+            candidates,
+            rejected,
+            blocked_types,
+            required_type,
+            not_before,
+            start_by,
+            current_coord,
+            current_time,
+            day_end,
+            transport,
+            rest_min,
+            end_coord,
+            set(),
+            Counter(),
+            False,
+        )
+
+    group_counts = Counter(_diversity_group(item.candidate) for item in items)
+    blocked_groups = {_diversity_group(items[-1].candidate)} if items else set()
+    attempts = (
+        (blocked_groups, True),
+        (set(), True),
+        (set(), False),
+    )
+    for groups, enforce_daily_limits in attempts:
+        choice = _best_candidate(
+            candidates,
+            rejected,
+            blocked_types,
+            required_type,
+            not_before,
+            start_by,
+            current_coord,
+            current_time,
+            day_end,
+            transport,
+            rest_min,
+            end_coord,
+            groups,
+            group_counts,
+            enforce_daily_limits,
+        )
+        if choice is not None:
+            return choice
+    return None
+
+
+def _best_candidate(
+    candidates: list[ScoredCandidate],
+    rejected: set[uuid.UUID],
+    blocked_types: set[ScheduleItemType],
+    required_type: ScheduleItemType | None,
+    not_before: datetime | None,
+    start_by: datetime | None,
+    current_coord: Coordinate,
+    current_time: datetime,
+    day_end: datetime,
+    transport: TransportType,
+    rest_min: int,
+    end_coord: Coordinate | None,
+    blocked_diversity_groups: set[str],
+    diversity_group_counts: Counter[str],
+    enforce_daily_diversity_limits: bool,
 ) -> ScoredCandidate | None:
     choices: list[tuple[float, float, ScoredCandidate]] = []
     for candidate in candidates:
+        diversity_group = _diversity_group(candidate)
         if (
             candidate.place_id in rejected
             or candidate.item_type in blocked_types
             or (required_type is not None and candidate.item_type != required_type)
+            or diversity_group in blocked_diversity_groups
+            or (
+                enforce_daily_diversity_limits
+                and diversity_group_counts[diversity_group]
+                >= DAILY_DIVERSITY_LIMITS.get(diversity_group, math.inf)
+            )
         ):
             continue
         travel_min = math.ceil(
@@ -253,10 +387,30 @@ def _best_candidate(
         )
         if visit is None:
             continue
+        if start_by is not None and visit[0] > start_by:
+            continue
         cost = rest_min + travel_min + candidate.average_stay_minutes
         choices.append((candidate.total_score / max(cost, 1), candidate.total_score, candidate))
 
     return max(choices, key=lambda choice: choice[:2])[2] if choices else None
+
+
+def _diversity_group(candidate: ScoredCandidate) -> str:
+    """원본 카테고리와 표준 태그로 사용자가 체감하는 장소 유형을 복원한다."""
+
+    category_group = DIVERSITY_GROUP_BY_CATEGORY.get(candidate.source_category or "")
+    if category_group is not None:
+        return category_group
+    tags = set(candidate.tags)
+    if "바다" in tags:
+        return "coast"
+    if tags & {"산책", "휴식"}:
+        return "nature"
+    if "실내관광" in tags:
+        return "culture"
+    if "체험" in tags:
+        return "experience"
+    return candidate.item_type.value
 
 
 def _fit_visit(
