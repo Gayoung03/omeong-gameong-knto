@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -58,6 +58,12 @@ def get_route(
         return _leg_from_cache(cached)
 
     leg = _request_route(from_coord, to_coord, transport, client=client)
+    # 새 캐시를 넣기 직전에 만료된 행을 한 번 정리한다 — 삭제 로직이 없어 무한 누적하던 구조.
+    db.execute(
+        delete(RouteCalculationCache).where(
+            RouteCalculationCache.expires_at <= calculated_at
+        )
+    )
     db.add(
         RouteCalculationCache(
             origin_latitude=_coordinate_decimal(from_coord[0]),
@@ -237,8 +243,14 @@ def _validate_coord(coord: tuple[float, float]) -> None:
         raise ValueError("경도는 -180~180 범위여야 합니다")
 
 
+# 캐시 키 좌표는 소수 4자리(~11m)로 양자화한다. 7자리(~1cm)는 부동소수 미세차이로
+# 사실상 매번 캐시 미스가 나서 의미가 없었다. 읽기·쓰기 양쪽이 이 함수를 거쳐 동일하게
+# 양자화된다. (기존 7자리로 저장된 행과는 키가 안 맞지만 실측 캐시 0행이라 무해.)
+_CACHE_COORD_PRECISION = Decimal("0.0001")
+
+
 def _coordinate_decimal(value: float) -> Decimal:
-    return Decimal(str(value)).quantize(Decimal("0.0000001"))
+    return Decimal(str(value)).quantize(_CACHE_COORD_PRECISION)
 
 
 def _leg_from_cache(cache: RouteCalculationCache) -> RouteLeg:

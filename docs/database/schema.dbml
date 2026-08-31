@@ -411,6 +411,11 @@ Table route_calculation_cache {
   polyline text
   calculated_at timestamptz [not null]
   expires_at timestamptz [not null]
+
+  indexes {
+    expires_at
+    (origin_latitude, origin_longitude, destination_latitude, destination_longitude, transport) [note: 'INCLUDE(expires_at) — 캐시 조회 index-only scan']
+  }
 }
 
 Table route_checklist_items {
