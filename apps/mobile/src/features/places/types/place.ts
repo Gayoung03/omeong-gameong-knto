@@ -16,6 +16,14 @@ export type PlaceRegion =
 export type PlaceCategory = {
   id: string;
   label: string;
+  /**
+   * 칩에 그릴 글자. 없으면 `label` 을 쓴다.
+   *
+   * `label` 은 필터 값이라 줄일 수 없는데(`constants/placeCategories.ts` 참고)
+   * 칩은 59px 폭에 10px 글자라 다섯 글자를 넘기면 접혀서 잘린다. 그래서 긴 분류만
+   * 표시용 글자를 따로 준다.
+   */
+  chipLabel?: string;
   icon: PlaceIconName;
 };
 
