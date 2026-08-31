@@ -43,6 +43,9 @@ class Place(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False)
+    # etc 세부 분류(동물약국·동물병원 등)를 description 에서 추출해 담는 자리.
+    # category enum 은 불변(API 계약 보호) — 세분화는 이 컬럼으로만. 값은 파싱 배치가 채운다.
+    category_detail: Mapped[str | None] = mapped_column(String(50))
     region: Mapped[str | None] = mapped_column(String(50))
     address: Mapped[str | None] = mapped_column(Text)
     road_address: Mapped[str | None] = mapped_column(Text)

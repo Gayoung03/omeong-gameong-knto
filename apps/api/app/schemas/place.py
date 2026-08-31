@@ -106,6 +106,8 @@ class PlaceDetail(APISchema):
     id: uuid.UUID
     name: str
     category: str
+    # etc 세부 분류(예: 동물약국). category 는 불변 enum, 이 필드가 세분화를 담는다. null 가능.
+    category_detail: str | None
     region: str | None
     address: str | None
     road_address: str | None

@@ -163,6 +163,7 @@ Table places {
   id uuid [pk]
   name varchar(200) [not null]
   category varchar(50) [not null]
+  category_detail varchar(50) [note: 'AI 입출력: etc 세부 분류. category enum 은 불변']
   region varchar(50)
   address text
   road_address text

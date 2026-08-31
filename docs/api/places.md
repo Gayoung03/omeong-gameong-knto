@@ -153,6 +153,7 @@ WHERE created_by_user_id IS NULL
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "함덕해수욕장",
   "category": "beach",
+  "categoryDetail": null,
   "region": "함덕/김녕/세화",
   "address": "제주특별자치도 제주시 조천읍 함덕리 1004",
   "roadAddress": "제주특별자치도 제주시 조천읍 조함해안로 525",
@@ -213,6 +214,7 @@ WHERE created_by_user_id IS NULL
 
 - `dayOfWeek` — 0(일요일) ~ 6(토요일). DB CHECK 제약과 동일합니다.
 - `petPolicy` — 정책 정보가 없는 장소는 `policyType`이 `unknown`이고 나머지는 대부분 `null`입니다.
+- `categoryDetail` — `category`(불변 enum)의 세부 분류(예: `etc` 안의 동물약국·동물병원). 아직 채워지지 않은 장소는 `null`입니다. 라벨은 앱에서 표기합니다.
 - `reliabilityScore` — 0~100. 정책 정보의 신뢰도로, 출처와 확인 시점에 따라 달라집니다.
 - `muzzleRequired`·`foodAreaAllowed` — 3값 불리언입니다. `true`/`false`는 명시, `null`은 미확인이라 "정보 없음"으로 표시하세요(false 로 단정하지 않습니다).
 - `maxPetsPerPerson` — 1인당 동반 마리수 상한(정수, `null`이면 미확인).

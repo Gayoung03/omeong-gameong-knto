@@ -403,6 +403,7 @@ def _to_detail(db: Session, place: Place, user: User | None) -> PlaceDetail:
         id=place.id,
         name=place.name,
         category=place.category,
+        category_detail=place.category_detail,
         region=place.region,
         address=place.address,
         road_address=place.road_address,

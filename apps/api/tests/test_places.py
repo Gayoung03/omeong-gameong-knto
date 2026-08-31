@@ -140,6 +140,21 @@ def test_unknown_필터는_정책_행이_없는_장소도_잡는다(
 
 
 # ---------------------------------------------------------------------------
+# 세부 분류
+# ---------------------------------------------------------------------------
+
+
+def test_category_detail_은_상세에_그대로_내려온다(client: TestClient, db: Session) -> None:
+    plain = _make_place(db, "분류미상 카페")
+    detailed = _make_place(db, "동물약국")
+    detailed.category_detail = "동물약국"
+    db.flush()
+
+    assert client.get(f"/api/v1/places/{plain.id}").json()["categoryDetail"] is None
+    assert client.get(f"/api/v1/places/{detailed.id}").json()["categoryDetail"] == "동물약국"
+
+
+# ---------------------------------------------------------------------------
 # 즐겨찾기
 # ---------------------------------------------------------------------------
 

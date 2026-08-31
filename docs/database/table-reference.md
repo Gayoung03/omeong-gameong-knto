@@ -120,6 +120,7 @@
 | --- | --- |
 | `name` | 표준 장소명 |
 | `category` | 관광지, 카페, 음식점, 숙박 등 |
+| `category_detail` | AI 입출력: `etc` 등의 세부 분류(동물약국·동물병원 등). `category` enum 은 불변, 파싱 배치가 채움 (nullable) |
 | `region` | 애월, 성산, 중문 등 서비스 지역 |
 | `address`, `road_address` | 지번·도로명주소 |
 | `latitude`, `longitude` | 지도·거리 계산용 좌표 |
