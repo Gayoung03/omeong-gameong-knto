@@ -11,6 +11,8 @@ import {
   Text,
   TextInput,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 
 import { PetPolicyBadge } from '@/src/components/domain/PetPolicyBadge';
@@ -20,7 +22,7 @@ import {
   useSavedPlaceIds,
   useToggleSavedPlace,
 } from '@/src/features/saved/hooks/useSavedPlaces';
-import { colors, spacing } from '@/src/theme';
+import { colors, radius, shadow, spacing } from '@/src/theme';
 
 import { InteractivePlaceMap } from '../components/InteractivePlaceMap';
 import { placeCategories } from '../constants/placeCategories';
@@ -30,9 +32,19 @@ import type { Place } from '../types/place';
 
 type ViewMode = 'list' | 'map';
 
+/**
+ * "맨 위로" 버튼이 나타나는 스크롤 깊이(px).
+ *
+ * 카드 한 장이 최소 101px 이라(`styles.placeRow`) 세 장쯤 지나간 시점이다.
+ * 한두 장 내린 것으로 버튼이 떠서 목록을 가리면 오히려 방해가 된다.
+ */
+const SCROLL_TOP_THRESHOLD = 320;
+
 export function PlaceExplorerScreen() {
   const { region, view } = useLocalSearchParams<{ region?: string; view?: string }>();
   const regionScrollRef = useRef<ScrollView>(null);
+  const listRef = useRef<FlatList<Place>>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedRegion, setSelectedRegion] = useState<PlaceRegionFilter>(() =>
     region && isPlaceRegion(region) ? region : '전체',
@@ -73,6 +85,17 @@ export function PlaceExplorerScreen() {
 
   const toggleFavorite = (place: Place) => {
     toggleSavedPlace.mutate({ isSaved: savedPlaceIds.has(place.id), placeId: place.id });
+  };
+
+  const handleListScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const shouldShow = event.nativeEvent.contentOffset.y > SCROLL_TOP_THRESHOLD;
+    // 스크롤 이벤트는 초당 수십 번 들어온다. 같은 값을 그대로 넣으면 React 가
+    // 렌더를 건너뛰므로, 임계값을 넘나드는 순간에만 목록이 다시 그려진다.
+    setShowScrollTop((current) => (current === shouldShow ? current : shouldShow));
+  };
+
+  const scrollToTop = () => {
+    listRef.current?.scrollToOffset({ animated: true, offset: 0 });
   };
 
   return (
@@ -189,6 +212,8 @@ export function PlaceExplorerScreen() {
               <EmptyResult />
             )
           }
+          onScroll={handleListScroll}
+          ref={listRef}
           renderItem={({ item }) => (
             <PlaceRow
               isFavorite={savedPlaceIds.has(item.id)}
@@ -196,12 +221,25 @@ export function PlaceExplorerScreen() {
               place={item}
             />
           )}
-          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator
           style={styles.resultsList}
         />
       ) : (
         <InteractivePlaceMap places={filteredPlaces} />
       )}
+
+      {/* 지도 모드에는 스크롤할 목록이 없으므로 리스트 모드에서만 띄운다. */}
+      {viewMode === 'list' && showScrollTop ? (
+        <Pressable
+          accessibilityLabel="목록 맨 위로"
+          accessibilityRole="button"
+          onPress={scrollToTop}
+          style={({ pressed }) => [styles.scrollTopButton, pressed && styles.pressed]}
+        >
+          <Ionicons color={colors.surface} name="arrow-up" size={22} />
+        </Pressable>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -504,5 +542,19 @@ const styles = StyleSheet.create({
     marginTop: 5,
     color: colors.textSecondary,
     fontSize: 12,
+  },
+  scrollTopButton: {
+    // 목록 위에 떠 있어야 해서 absolute 로 띄운다. 44 는 손가락으로 누를 수 있는
+    // 최소 크기이고 IconButton 의 minHeight 와 같은 기준이다.
+    position: 'absolute',
+    right: spacing.md,
+    bottom: spacing.lg,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.full,
+    backgroundColor: colors.primary,
+    ...shadow.sm,
   },
 });
