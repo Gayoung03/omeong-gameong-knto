@@ -17,6 +17,7 @@ import {
 import { AppHeader } from '@/src/components/layout/AppHeader';
 import { colors, spacing } from '@/src/theme';
 
+import { AnswerMarkdown } from '../components/AnswerMarkdown';
 import { ChatMapResponse } from '../components/ChatMapResponse';
 import { chatbotAssets } from '../config/chatbotAssets';
 import { chatbotSuggestions } from '../constants/chatbotSuggestions';
@@ -164,10 +165,7 @@ export function ChatbotScreen() {
                 <Text style={styles.assistantLabelText}>혼디</Text>
               </View>
               {entry.content ? (
-                <Text style={styles.messageText}>
-                  {entry.content}
-                  <TypingCaret />
-                </Text>
+                <AnswerMarkdown text={entry.content} trailing={<TypingCaret />} />
               ) : (
                 <View style={styles.pendingRow}>
                   <ActivityIndicator color={colors.primary} size="small" />
@@ -225,7 +223,7 @@ export function ChatbotScreen() {
               <View style={styles.assistantLabel}>
                 <Text style={styles.assistantLabelText}>혼디</Text>
               </View>
-              <Text style={styles.messageText}>{message.content}</Text>
+              <AnswerMarkdown text={message.content} />
             </View>
             {/*
               지도를 띄울지는 **서버가 정한다.** 답변이 언급한 장소만
