@@ -106,7 +106,14 @@ def _joined_session(db: Session) -> Callable[[], Generator[Session, None, None]]
 
 
 def _make_user(db: Session, nickname: str) -> User:
-    user = User(id=uuid.uuid4(), nickname=nickname, email=f"{uuid.uuid4().hex}@test.local")
+    # local 계정은 password_hash 가 필수다(ck_users_local_requires_password).
+    # 이 픽스처 사용자는 로그인하지 않으므로 검증용이 아닌 더미 해시로 충분하다.
+    user = User(
+        id=uuid.uuid4(),
+        nickname=nickname,
+        email=f"{uuid.uuid4().hex}@test.local",
+        password_hash="test-only-not-a-real-hash",
+    )
     db.add(user)
     db.flush()
     return user

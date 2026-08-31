@@ -83,6 +83,11 @@ class PetPolicyResponse(APISchema):
     source_url: str | None
     verified_at: datetime | None
     reliability_score: float | None
+    # AI 입출력 컬럼(ai-io-column-design 7.1). nullable — 3값 의미 유지.
+    muzzle_required: bool | None
+    food_area_allowed: bool | None
+    max_pets_per_person: int | None
+    caution_note: str | None
 
 
 class BusinessHourResponse(APISchema):
@@ -101,6 +106,8 @@ class PlaceDetail(APISchema):
     id: uuid.UUID
     name: str
     category: str
+    # etc 세부 분류(예: 동물약국). category 는 불변 enum, 이 필드가 세분화를 담는다. null 가능.
+    category_detail: str | None
     region: str | None
     address: str | None
     road_address: str | None
@@ -114,6 +121,9 @@ class PlaceDetail(APISchema):
     environment: PlaceEnvironment | None
     amenities: list[str] | None
     average_stay_minutes: int | None
+    # 숙박 체크인/아웃(신규 가산 필드). 한쪽만 알 수 있어 짝을 강제하지 않는다. null 가능.
+    check_in_time: time | None
+    check_out_time: time | None
     reservation_required: bool
     # created_by_user_id 가 있으면 true. **사용자 id 자체는 내리지 않는다.**
     is_user_created: bool

@@ -21,7 +21,7 @@
 | --- | --- |
 | `id` | 회원 PK |
 | `email` | 로컬 로그인 이메일. 소셜 로그인은 null 가능 |
-| `password_hash` | 비밀번호 해시. 원문 저장 금지 |
+| `password_hash` | 비밀번호 해시. 원문 저장 금지. **CHECK**: `auth_provider='local'`이면 NOT NULL |
 | `auth_provider` | `local`, `kakao`, `apple`, `google` |
 | `provider_user_id` | 소셜 제공자의 회원 식별자 |
 | `nickname` | 앱 표시 닉네임 |
@@ -34,6 +34,9 @@
 
 - 회원 1명은 반려동물, 루트, 리뷰, 챗봇 대화를 여러 건 가집니다.
 - `(auth_provider, provider_user_id)`는 유일해야 합니다.
+- `ck_users_local_requires_password`(`local` → `password_hash` NOT NULL)는 현재 **NOT VALID**
+  상태입니다 — 신규·수정 행부터 강제하고, 시드 데모 계정 정리 후 별도 마이그레이션에서
+  `VALIDATE CONSTRAINT` 로 기존 행까지 확정합니다.
 
 ### `pets`
 
@@ -120,6 +123,7 @@
 | --- | --- |
 | `name` | 표준 장소명 |
 | `category` | 관광지, 카페, 음식점, 숙박 등 |
+| `category_detail` | AI 입출력: `etc` 등의 세부 분류(동물약국·동물병원 등). `category` enum 은 불변, 파싱 배치가 채움 (nullable) |
 | `region` | 애월, 성산, 중문 등 서비스 지역 |
 | `address`, `road_address` | 지번·도로명주소 |
 | `latitude`, `longitude` | 지도·거리 계산용 좌표 |
@@ -129,6 +133,8 @@
 | `environment` | 실내, 실외, 혼합 |
 | `amenities` | 주차장, 화장실, Wi-Fi 등 편의시설 배열 |
 | `average_stay_minutes` | 추천 일정 체류시간 |
+| `business_hours_raw` | AI 입출력: `place_business_hours.raw_text` 를 장소당 1값으로 이관할 목적지. 아직 응답에 노출하지 않음(요일별 rawText 대체 게이트 뒤) |
+| `check_in_time`, `check_out_time` | AI 입출력: 숙박 체크인/아웃. hours 파싱과 분리한 신규 필드 (nullable, 짝 강제 없음) |
 | `created_by_user_id` | 사용자가 직접 등록한 장소일 때 작성 회원 |
 | `is_active` | 서비스 노출 여부 |
 
@@ -184,6 +190,14 @@
 | `notes` | 기타 제한사항 원문 |
 | `source`, `verified_at` | 정보 출처와 확인 시각 |
 | `reliability_score` | 정보 신뢰점수 0~100 |
+| `muzzle_required` | AI 입출력: 입마개 필수 여부 (nullable=미확인) |
+| `food_area_allowed` | AI 입출력: 식음료 공간 동반 가능 (nullable=미확인) |
+| `max_pets_per_person` | AI 입출력: 1인당 동반 마리수 상한 (`>=1`) |
+| `caution_note` | AI 입출력: 정제 주의사항 varchar(150). 원본 `notes` 는 별도 보존 |
+
+`muzzle_required`·`food_area_allowed`·`max_pets_per_person`·`caution_note` 는
+`ai-io-column-design` 7.1 의 AI 입출력 컬럼입니다. 전부 nullable 로 3값 의미
+(명시 true/false·미확인 NULL)를 보존하며, notes 파싱 배치가 채웁니다.
 
 카카오에만 있고 동반 정보가 없는 장소는 `unknown`으로 저장합니다.
 
@@ -364,6 +378,11 @@ TMAP으로 계산한 두 좌표 사이 경로의 단기 캐시입니다.
 | `calculated_at`, `expires_at` | 계산·만료 시각 |
 
 TMAP 약관에 맞춰 24시간 이상 사용하지 않고 만료된 값은 재계산합니다.
+
+조회는 좌표 4개 + `transport` 복합 인덱스(`ix_route_calculation_cache_lookup`,
+`expires_at` INCLUDE)로 찾습니다. 캐시 키 좌표는 코드에서 **소수 4자리(~11m)로
+양자화**해 읽기·쓰기가 같은 키를 쓰며(7자리 미세차이로 매번 미스나던 문제 해소),
+새 캐시 저장 직전 만료 행을 한 번 정리해 무한 누적을 막습니다.
 
 ## 6. 여행 부가기능
 
@@ -611,6 +630,8 @@ Alembic migration에서 FK별 `ON DELETE`를 명시적으로 정의합니다.
 `null` 인 항목은 **"확인이 필요해요"** 로 답해야 합니다.
 
 - `cabin_max_weight_kg` · `cargo_max_weight_kg` — **케이지 포함** 무게입니다. 동물만의 무게가 아닙니다.
+- `cabin_weight_unlimited` · `cargo_weight_unlimited` — AI 입출력: `true` 는 **"무게 제한 없음"이 명시**된 경우로, `null`(미확인)과 구분합니다. 상한(`*_max_weight_kg`)과 **동시에 참일 수 없습니다**(CHECK). 이게 없으면 상한 `null`인 무제한 규정이 "무게 기준 미확인"으로 오답합니다.
+- `cabin_conditions` — AI 입출력: "원칙 불가·예외 허용" 같은 **조건부 사실**(아리온). 관찰에는 `cabin_allowed`와 **항상 쌍으로** 넣어 "불가, 단 예외"를 유도합니다.
 - `route` — 여객선만 씁니다(`완도↔제주`). 항공사는 `null`.
 - `duration_minutes` — 여객선 소요 시간. 항공기는 노선별로 갈려 넣지 않습니다.
 

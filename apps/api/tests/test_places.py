@@ -6,6 +6,7 @@
 """
 
 import uuid
+from datetime import time
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -83,6 +84,37 @@ def test_정책이_없는_장소도_unknown_으로_내려온다(client: TestClie
     # null 을 내리면 앱이 매번 존재 확인을 해야 하고 한 군데만 빠뜨려도 화면이 깨진다.
     assert body["petPolicy"]["policyType"] == "unknown"
     assert body["petPolicy"]["notes"] is None
+    # AI 입출력 컬럼도 정책 행이 없으면 미확인(null)으로 내려온다.
+    assert body["petPolicy"]["muzzleRequired"] is None
+    assert body["petPolicy"]["foodAreaAllowed"] is None
+    assert body["petPolicy"]["maxPetsPerPerson"] is None
+    assert body["petPolicy"]["cautionNote"] is None
+
+
+def test_AI_입출력_컬럼은_상세_응답에_그대로_내려온다(
+    client: TestClient, db: Session
+) -> None:
+    place = _make_place(db, "입마개 카페")
+    db.add(
+        PlacePetPolicy(
+            place_id=place.id,
+            policy_type=PetPolicyType.INDOOR_ALLOWED,
+            source=DataProvider.INTERNAL,
+            muzzle_required=True,
+            food_area_allowed=False,
+            max_pets_per_person=2,
+            caution_note="대형견은 입마개를 착용해 주세요.",
+        )
+    )
+    db.flush()
+
+    policy = client.get(f"/api/v1/places/{place.id}").json()["petPolicy"]
+
+    # 3값 불리언은 명시값 그대로(false 를 null 로 뭉개지 않는다).
+    assert policy["muzzleRequired"] is True
+    assert policy["foodAreaAllowed"] is False
+    assert policy["maxPetsPerPerson"] == 2
+    assert policy["cautionNote"] == "대형견은 입마개를 착용해 주세요."
 
 
 def test_unknown_필터는_정책_행이_없는_장소도_잡는다(
@@ -106,6 +138,35 @@ def test_unknown_필터는_정책_행이_없는_장소도_잡는다(
     # 화면에는 "정보 없음"이라고 떠 있는데 필터에는 안 잡히면 안 된다.
     assert place.name in names
     assert "정책 있는 카페" not in names
+
+
+# ---------------------------------------------------------------------------
+# 세부 분류
+# ---------------------------------------------------------------------------
+
+
+def test_category_detail_은_상세에_그대로_내려온다(client: TestClient, db: Session) -> None:
+    plain = _make_place(db, "분류미상 카페")
+    detailed = _make_place(db, "동물약국")
+    detailed.category_detail = "동물약국"
+    db.flush()
+
+    assert client.get(f"/api/v1/places/{plain.id}").json()["categoryDetail"] is None
+    assert client.get(f"/api/v1/places/{detailed.id}").json()["categoryDetail"] == "동물약국"
+
+
+def test_숙박_체크인아웃은_상세에_내려온다(client: TestClient, db: Session) -> None:
+    stay = _make_place(db, "반려견 동반 펜션")
+    stay.check_in_time = time(15, 0)
+    stay.check_out_time = time(11, 0)
+    db.flush()
+
+    body = client.get(f"/api/v1/places/{stay.id}").json()
+
+    assert body["checkInTime"] == "15:00:00"
+    assert body["checkOutTime"] == "11:00:00"
+    # business_hours_raw 는 아직 응답에 노출하지 않는다(게이트 뒤).
+    assert "businessHoursRaw" not in body
 
 
 # ---------------------------------------------------------------------------

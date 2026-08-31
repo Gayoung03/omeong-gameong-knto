@@ -32,6 +32,9 @@ def _make_user(db: Session, *, user_id: uuid.UUID | None = None, deleted: bool =
         nickname="가드",
         email=f"{uuid.uuid4().hex}@guard.local",
         auth_provider=AuthProvider.LOCAL,
+        # local 계정은 password_hash 필수(ck_users_local_requires_password). 토큰 기반
+        # 가드 테스트라 로그인은 안 하므로 더미 해시로 충분하다.
+        password_hash="test-only-not-a-real-hash",
     )
     if deleted:
         user.deleted_at = datetime.now(UTC)
