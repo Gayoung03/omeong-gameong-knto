@@ -318,11 +318,14 @@ def _describe_rule(hit: TransportRuleHit) -> dict:
         "cabin_max_weight_kg": (
             float(hit.cabin_max_weight_kg) if hit.cabin_max_weight_kg is not None else None
         ),
+        # "무게 제한 없음" 명시값(S등급). 값이 있을 때만 넣는다 — NULL(미확인)은 넣지 않는다.
+        "cabin_weight_unlimited": hit.cabin_weight_unlimited,
         "cabin_fee_krw": hit.cabin_fee_krw,
         "cargo_allowed": hit.cargo_allowed,
         "cargo_max_weight_kg": (
             float(hit.cargo_max_weight_kg) if hit.cargo_max_weight_kg is not None else None
         ),
+        "cargo_weight_unlimited": hit.cargo_weight_unlimited,
         "cargo_fee_krw": hit.cargo_fee_krw,
         "same_day_request_allowed": hit.same_day_request_allowed,
         "request_deadline_hours": hit.request_deadline_hours,
@@ -333,6 +336,14 @@ def _describe_rule(hit: TransportRuleHit) -> dict:
         "verified_at": _date(hit.verified_at),
     }
     described.update({key: value for key, value in optional.items() if value is not None})
+
+    # 조건부 사실("원칙 불가·예외 허용")은 cabin_allowed 와 **항상 쌍으로** 넣는다.
+    # allowed=False 여도 conditions 가 있으면 "불가, 단 예외" 를 유도해야 한다(플랜 8.1).
+    # allowed 가 NULL 이면 넣지 않는다(A7 — null 을 "불가"로 읽는 문제).
+    if hit.cabin_conditions is not None:
+        described["cabin_conditions"] = hit.cabin_conditions
+        if hit.cabin_allowed is not None:
+            described["cabin_allowed"] = hit.cabin_allowed
 
     # 판정은 무게를 넣어 불렀을 때만 붙는다. 숫자 비교를 모델에게 맡기지 않는다.
     if hit.cabin_verdict is not None:
@@ -365,7 +376,12 @@ def _run_guide_search(db: Session, raw_arguments: str) -> str:
     return json.dumps([_describe_guide(hit) for hit in hits], ensure_ascii=False)
 
 
-def _leg_phrase(kind: str, verdict: Verdict | None, max_weight: float | None) -> str:
+def _leg_phrase(
+    kind: str,
+    verdict: Verdict | None,
+    max_weight: float | None,
+    weight_unlimited: bool | None = None,
+) -> str:
     """기내/위탁 한 쪽의 결론을 문장 조각으로.
 
     **왜 안 되는지를 반드시 담는다.** `이용 불가` 라고만 보냈더니 GPT 가
@@ -373,7 +389,8 @@ def _leg_phrase(kind: str, verdict: Verdict | None, max_weight: float | None) ->
     항공사였다. 이유가 빠지면 모델이 채워 넣는다.
     """
     if verdict is Verdict.ALLOWED:
-        return f"{kind} 가능"
+        # 상한 없이 가능한 경우는 "무게 제한 없음"을 명시해 "미확인"으로 오해되지 않게 한다.
+        return f"{kind} 가능(무게 제한 없음)" if weight_unlimited is True else f"{kind} 가능"
     if verdict is Verdict.OVER_WEIGHT:
         limit = f"(상한 {max_weight:g}kg 초과)" if max_weight is not None else "(상한 초과)"
         return f"{kind} 불가{limit}"
@@ -399,11 +416,13 @@ def _weight_conclusions(hits: list[TransportRuleHit]) -> list[dict]:
             "기내",
             hit.cabin_verdict,
             float(hit.cabin_max_weight_kg) if hit.cabin_max_weight_kg is not None else None,
+            hit.cabin_weight_unlimited,
         )
         cargo = _leg_phrase(
             "위탁",
             hit.cargo_verdict,
             float(hit.cargo_max_weight_kg) if hit.cargo_max_weight_kg is not None else None,
+            hit.cargo_weight_unlimited,
         )
         text = f"{cabin}, {cargo}"
         blocked = {Verdict.OVER_WEIGHT, Verdict.NOT_ALLOWED}

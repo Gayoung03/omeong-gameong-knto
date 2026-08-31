@@ -50,8 +50,8 @@ KST = timezone(timedelta(hours=9))
 SEED_USER_ID = DEV_USER_ID
 SEED_USER_EMAIL = "seed@omeong.local"
 
-# 데모 로그인용 비밀번호. **환경변수로 줄 때만** 해시로 심는다(코드·저장소에
-# 평문 비밀번호를 두지 않는다). 없으면 기존 동작 — 비밀번호 없는 계정.
+# 데모 로그인용 비밀번호. 환경변수로 받는다(코드·저장소에 평문 비밀번호를 두지 않는다).
+# 없으면 시드를 실패시킨다 — local 계정은 password_hash 가 필수라서다(_apply_dev_password).
 SEED_DEV_PASSWORD = os.environ.get("SEED_DEV_PASSWORD")
 
 SEED_PET_ID = uuid.UUID("00000000-0000-0000-0000-000000000011")
@@ -204,13 +204,19 @@ def _warn_if_changed(label: str, field: str, actual: object, expected: object) -
 
 
 def _apply_dev_password(user: User) -> None:
-    """SEED_DEV_PASSWORD 가 있으면 데모 로그인용 비밀번호를 해시로 심는다.
+    """데모 로그인용 비밀번호를 해시로 심는다(`POST /auth/login`, seed@omeong.local).
 
-    없으면 아무것도 하지 않아 기존 동작(비밀번호 없는 계정)이 유지된다. 이메일
-    로그인(`POST /auth/login`, seed@omeong.local)으로 데모할 때 쓴다.
+    local 계정은 password_hash 가 반드시 있어야 한다(ck_users_local_requires_password).
+    예전엔 SEED_DEV_PASSWORD 가 없으면 NULL 로 두어 이 시드가 제약 위반 행을 만들었다.
+    이제는 없으면 실패시킨다 — 저장소에 평문 비밀번호를 두지 않으면서(원칙 유지),
+    비밀번호 없는 local 계정을 다시 심지 않도록 구조적으로 막는다.
     """
-    if SEED_DEV_PASSWORD:
-        user.password_hash = hash_password(SEED_DEV_PASSWORD)
+    if not SEED_DEV_PASSWORD:
+        raise SystemExit(
+            "SEED_DEV_PASSWORD 를 설정하세요 — local 시드 계정은 비밀번호가 필수입니다.\n"
+            "예) SEED_DEV_PASSWORD=<데모비밀번호> make db-seed"
+        )
+    user.password_hash = hash_password(SEED_DEV_PASSWORD)
 
 
 def seed_user(db: Session) -> User:

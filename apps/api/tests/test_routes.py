@@ -119,8 +119,10 @@ def test_여행_상세에_tmap_이동정보와합계를_내려준다(
             id=uuid.uuid4(),
             name=f"이동 장소 {index}",
             category="attraction",
-            latitude=Decimal(f"33.{4000000 + index}"),
-            longitude=Decimal(f"126.{5000000 + index}"),
+            # 캐시 키 좌표는 4자리(~11m)로 양자화된다. 장소를 그보다 넉넉히 떨어뜨려
+            # 각 구간이 서로 다른 캐시 행에 매핑되게 한다(7자리 미세차이는 한 키로 접힌다).
+            latitude=Decimal("33.4000") + Decimal(index) * Decimal("0.0010"),
+            longitude=Decimal("126.5000") + Decimal(index) * Decimal("0.0010"),
         )
         db.add(place)
         item.place = place

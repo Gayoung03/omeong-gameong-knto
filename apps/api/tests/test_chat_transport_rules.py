@@ -35,9 +35,12 @@ def _hit(**overrides):
         route=None,
         cabin_allowed=True,
         cabin_max_weight_kg=D("7.00"),
+        cabin_weight_unlimited=None,
+        cabin_conditions=None,
         cabin_fee_krw=30000,
         cargo_allowed=True,
         cargo_max_weight_kg=D("45.00"),
+        cargo_weight_unlimited=None,
         cargo_fee_krw=30000,
         same_day_request_allowed=None,
         request_deadline_hours=24,
@@ -73,6 +76,15 @@ class TestVerdict:
     def test_가능하지만_상한을_모르면_따로_표시한다(self):
         # "가능" 으로 답하면 무게 때문에 거절당할 수 있다는 걸 못 알린다.
         assert _verdict(True, None, D("12.0")) is Verdict.WEIGHT_UNKNOWN
+
+    def test_무게_제한_없음이_명시되면_상한없이_가능하다(self):
+        # 상한 NULL 이지만 unlimited=True 면 "무게 기준 미확인" 이 아니라 가능이다.
+        # (한일·씨월드 "무게 무제한" 여객선에서 오답하던 지점.)
+        assert _verdict(True, None, D("50.0"), True) is Verdict.ALLOWED
+
+    def test_불가_명시는_무제한_플래그보다_우선한다(self):
+        # allowed=False 면 unlimited 여부와 무관하게 불가다(순서 보장).
+        assert _verdict(False, None, D("5.0"), True) is Verdict.NOT_ALLOWED
 
 
 class TestCargoFee:
@@ -117,6 +129,20 @@ class TestDescribeRule:
     def test_무게는_숫자로_바뀐다(self):
         # Decimal 은 json.dumps 가 직렬화하지 못한다.
         assert _describe_rule(_hit())["cabin_max_weight_kg"] == 7.0
+
+    def test_무게_제한_없음은_관찰에_넣는다(self):
+        # S등급 명시값. 값이 있을 때만 넣는다.
+        described = _describe_rule(_hit(cabin_weight_unlimited=True, cabin_max_weight_kg=None))
+        assert described["cabin_weight_unlimited"] is True
+
+    def test_조건부_사실은_불가와_쌍으로_남긴다(self):
+        # 아리온: "원칙 불가·예외 허용". allowed=False 여도 conditions 가 있으면
+        # 둘 다 남겨 "불가, 단 예외" 를 유도한다(빠지면 모델이 단정한다).
+        described = _describe_rule(
+            _hit(cabin_allowed=False, cabin_conditions="원칙 불가, 단 예외 허용")
+        )
+        assert described["cabin_conditions"] == "원칙 불가, 단 예외 허용"
+        assert described["cabin_allowed"] is False
 
 
 class TestWeightConclusions:
@@ -185,3 +211,21 @@ class TestWeightConclusions:
 
         [result] = _weight_conclusions([_hit(carrier_name="씨월드고속훼리", route="목포-제주")])
         assert result["carrier"] == "씨월드고속훼리(목포-제주)"
+
+    def test_무게_무제한은_제한없음을_문장에_담는다(self):
+        # 상한 NULL + unlimited=True → "가능(무게 제한 없음)". "미확인" 으로 새지 않게.
+        from app.integrations.llm.chat import _weight_conclusions
+
+        [result] = _weight_conclusions(
+            [
+                _hit(
+                    carrier_name="한일고속페리",
+                    cabin_max_weight_kg=None,
+                    cabin_weight_unlimited=True,
+                    cabin_verdict=Verdict.ALLOWED,
+                    cargo_max_weight_kg=None,
+                    cargo_verdict=Verdict.NOT_ALLOWED,
+                )
+            ]
+        )
+        assert result["결론"] == "기내 가능(무게 제한 없음), 위탁 제도 없음"

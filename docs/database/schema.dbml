@@ -102,7 +102,7 @@ Enum message_role {
 Table users {
   id uuid [pk]
   email varchar(255) [unique]
-  password_hash varchar(255)
+  password_hash varchar(255) [note: 'CHECK: auth_provider=local 이면 NOT NULL(현재 NOT VALID — 데이터 정리 후 VALIDATE 예정)']
   auth_provider auth_provider [not null, default: 'local']
   provider_user_id varchar(255)
   nickname varchar(50) [not null]
@@ -163,6 +163,7 @@ Table places {
   id uuid [pk]
   name varchar(200) [not null]
   category varchar(50) [not null]
+  category_detail varchar(50) [note: 'AI 입출력: etc 세부 분류. category enum 은 불변']
   region varchar(50)
   address text
   road_address text
@@ -176,6 +177,9 @@ Table places {
   environment place_environment
   amenities varchar[]
   average_stay_minutes int
+  business_hours_raw text [note: 'AI 입출력: place_business_hours.raw_text 장소당 1값 이관 목적지(응답 미노출)']
+  check_in_time time [note: 'AI 입출력: 숙박 체크인']
+  check_out_time time [note: 'AI 입출력: 숙박 체크아웃']
   reservation_required boolean [not null, default: false]
   created_by_user_id uuid [ref: > users.id]
   is_active boolean [not null, default: true]
@@ -236,6 +240,10 @@ Table place_pet_policies {
   source_url text
   verified_at timestamptz
   reliability_score decimal(5,2)
+  muzzle_required boolean [note: 'AI 입출력: 입마개 필수 (nullable=미확인)']
+  food_area_allowed boolean [note: 'AI 입출력: 식음료 공간 동반 가능 (nullable=미확인)']
+  max_pets_per_person smallint [note: 'AI 입출력: 1인당 동반 마리수 상한 (>=1)']
+  caution_note varchar(150) [note: 'AI 입출력: 정제 주의사항 (원본 notes 는 별도 보존)']
 }
 
 Table place_tags {
@@ -403,6 +411,11 @@ Table route_calculation_cache {
   polyline text
   calculated_at timestamptz [not null]
   expires_at timestamptz [not null]
+
+  indexes {
+    expires_at
+    (origin_latitude, origin_longitude, destination_latitude, destination_longitude, transport) [note: 'INCLUDE(expires_at) — 캐시 조회 index-only scan']
+  }
 }
 
 Table route_checklist_items {
@@ -624,12 +637,15 @@ Table transport_pet_rules {
   route varchar(50) [note: '여객선만. 항공사는 null']
   cabin_allowed boolean [note: 'null = 확인 안 됨']
   cabin_max_weight_kg decimal(5,2) [note: '케이지 포함']
+  cabin_weight_unlimited boolean [note: 'AI 입출력: true=무게 제한 없음 명시(null=미확인과 구분). 상한과 상호배제']
+  cabin_conditions varchar(200) [note: 'AI 입출력: 조건부 사실(원칙 불가·예외 허용). allowed 와 쌍으로 관찰']
   cabin_fee_krw integer
   min_age_weeks_cabin smallint
   max_pets_per_person_cabin smallint
   max_pets_per_trip smallint
   cargo_allowed boolean
   cargo_max_weight_kg decimal(5,2)
+  cargo_weight_unlimited boolean [note: 'AI 입출력: true=무게 제한 없음 명시. 상한과 상호배제']
   cargo_fee_threshold_kg decimal(5,2)
   cargo_fee_light_krw integer
   cargo_fee_heavy_krw integer

@@ -1,13 +1,17 @@
 """TMAP 경로 조회·캐시 단위 테스트."""
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 
 import httpx
 import pytest
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db.models import RouteCalculationCache
 from app.db.models.enums import TransportType
 from app.recommend import tmap
 from app.recommend.tmap import RouteLeg, TMapError
@@ -18,12 +22,18 @@ class FakeSession:
         self.cached = cached
         self.added: list[object] = []
         self.flush_count = 0
+        self.executed: list[object] = []
 
     def scalar(self, _statement: object) -> object | None:
         return self.cached
 
     def add(self, value: object) -> None:
         self.added.append(value)
+
+    def execute(self, statement: object) -> object:
+        # 만료 정리 DELETE 를 기록만 한다(순서 검증용). rowcount 만 흉내낸다.
+        self.executed.append(statement)
+        return SimpleNamespace(rowcount=0)
 
     def flush(self) -> None:
         self.flush_count += 1
@@ -155,6 +165,18 @@ def test_get_route_caches_tmap_result(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cache.distance_meters == 5210
     assert cache.duration_minutes == 19
     assert cache.expires_at - cache.calculated_at == tmap.CACHE_TTL
+    # 새 캐시 저장 전에 만료 정리 DELETE 를 한 번 실행한다.
+    assert len(db.executed) == 1
+
+
+def test_캐시_키_좌표는_소수4자리로_양자화된다() -> None:
+    # 4자리(~11m) 안쪽 미세 차이는 같은 키로 접힌다 → 읽기·쓰기가 같은 행을 가리킨다.
+    from decimal import Decimal
+
+    assert tmap._coordinate_decimal(33.49961) == tmap._coordinate_decimal(33.49964)
+    assert tmap._coordinate_decimal(33.49961) == Decimal("33.4996")
+    # 4자리를 벗어나면(0.001 차이) 다른 키다.
+    assert tmap._coordinate_decimal(33.4996) != tmap._coordinate_decimal(33.5006)
 
 
 def test_get_cached_route_returns_latest_leg_without_requesting_tmap() -> None:
@@ -185,3 +207,59 @@ def test_get_cached_route_returns_none_when_cache_is_missing() -> None:
 def test_invalid_tmap_response_is_rejected() -> None:
     with pytest.raises(TMapError, match="거리·시간"):
         tmap._parse_route({"features": []})
+
+
+# --- DB 연동 (TEST_DATABASE_URL 있을 때만) ---------------------------------
+
+
+def test_근접_좌표는_같은_캐시에_적중한다(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    # 4자리 양자화 덕에 ~11m 안쪽 좌표는 같은 캐시 행에 적중한다(읽기·쓰기 동일 키).
+    expected = RouteLeg(distance_m=5210, duration_min=19, polyline="[]")
+    monkeypatch.setattr(tmap, "_request_route", lambda *_a, **_k: expected)
+    now = datetime(2026, 8, 27, tzinfo=UTC)
+
+    tmap.get_route(
+        db, (33.499612, 126.531234), (33.393900, 126.239600),
+        TransportType.RENTAL_CAR, now=now,
+    )
+    # 근접하지만 다른 좌표 — 4자리 반올림은 동일하다.
+    monkeypatch.setattr(
+        tmap, "_request_route",
+        lambda *_a, **_k: pytest.fail("근접 좌표는 기존 캐시에 적중해야 한다"),
+    )
+    leg = tmap.get_cached_route(
+        db, (33.499648, 126.531199), (33.393861, 126.239640),
+        TransportType.RENTAL_CAR, now=now,
+    )
+
+    assert leg == expected
+
+
+def test_만료된_캐시행은_새_저장시_정리된다(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime(2026, 8, 27, tzinfo=UTC)
+    db.add(
+        RouteCalculationCache(
+            origin_latitude=Decimal("30.0000"),
+            origin_longitude=Decimal("120.0000"),
+            destination_latitude=Decimal("31.0000"),
+            destination_longitude=Decimal("121.0000"),
+            transport=TransportType.WALK,
+            distance_meters=100,
+            duration_minutes=1,
+            calculated_at=now - timedelta(hours=48),
+            expires_at=now - timedelta(hours=24),
+        )
+    )
+    db.flush()
+
+    monkeypatch.setattr(tmap, "_request_route", lambda *_a, **_k: RouteLeg(200, 2, None))
+    tmap.get_route(
+        db, (33.4996, 126.5312), (33.3939, 126.2396), TransportType.WALK, now=now
+    )
+
+    expired = db.scalars(
+        select(RouteCalculationCache).where(RouteCalculationCache.expires_at <= now)
+    ).all()
+    assert expired == []

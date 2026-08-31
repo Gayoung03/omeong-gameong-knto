@@ -95,9 +95,12 @@ class TransportRuleHit:
     route: str | None
     cabin_allowed: bool | None
     cabin_max_weight_kg: Decimal | None
+    cabin_weight_unlimited: bool | None
+    cabin_conditions: str | None
     cabin_fee_krw: int | None
     cargo_allowed: bool | None
     cargo_max_weight_kg: Decimal | None
+    cargo_weight_unlimited: bool | None
     cargo_fee_krw: int | None
     same_day_request_allowed: bool | None
     request_deadline_hours: int | None
@@ -111,12 +114,19 @@ class TransportRuleHit:
 
 
 def _verdict(
-    allowed: bool | None, max_weight: Decimal | None, weight: Decimal | None
+    allowed: bool | None,
+    max_weight: Decimal | None,
+    weight: Decimal | None,
+    weight_unlimited: bool | None = None,
 ) -> Verdict | None:
     """가능 여부와 무게 상한으로 판정을 낸다.
 
     `weight` 가 없으면 판정하지 않는다(`None`). 사용자가 무게를 말하지 않았는데
     "가능합니다"라고 단정하면 안 되기 때문이다.
+
+    `weight_unlimited` 가 `True` 면 "무게 제한 없음"이 명시된 것이라 무게 비교를
+    생략하고 `ALLOWED` 다. 이게 없으면 상한 NULL 인 "무제한" 규정이 `WEIGHT_UNKNOWN`
+    으로 떨어져 "무게 기준 미확인"으로 오답한다(플랜 2.3).
     """
     if weight is None:
         return None
@@ -124,6 +134,8 @@ def _verdict(
         return Verdict.UNKNOWN
     if allowed is False:
         return Verdict.NOT_ALLOWED
+    if weight_unlimited is True:
+        return Verdict.ALLOWED
     if max_weight is None:
         return Verdict.WEIGHT_UNKNOWN
     return Verdict.ALLOWED if weight <= max_weight else Verdict.OVER_WEIGHT
@@ -237,9 +249,12 @@ def search_transport_rules(
             route=rule.route,
             cabin_allowed=rule.cabin_allowed,
             cabin_max_weight_kg=rule.cabin_max_weight_kg,
+            cabin_weight_unlimited=rule.cabin_weight_unlimited,
+            cabin_conditions=rule.cabin_conditions,
             cabin_fee_krw=rule.cabin_fee_krw,
             cargo_allowed=rule.cargo_allowed,
             cargo_max_weight_kg=rule.cargo_max_weight_kg,
+            cargo_weight_unlimited=rule.cargo_weight_unlimited,
             cargo_fee_krw=_cargo_fee(rule, pet_weight_kg),
             same_day_request_allowed=rule.same_day_request_allowed,
             request_deadline_hours=rule.request_deadline_hours,
@@ -248,8 +263,18 @@ def search_transport_rules(
             notes=rule.notes,
             source_url=rule.source_url,
             verified_at=rule.verified_at,
-            cabin_verdict=_verdict(rule.cabin_allowed, rule.cabin_max_weight_kg, pet_weight_kg),
-            cargo_verdict=_verdict(rule.cargo_allowed, rule.cargo_max_weight_kg, pet_weight_kg),
+            cabin_verdict=_verdict(
+                rule.cabin_allowed,
+                rule.cabin_max_weight_kg,
+                pet_weight_kg,
+                rule.cabin_weight_unlimited,
+            ),
+            cargo_verdict=_verdict(
+                rule.cargo_allowed,
+                rule.cargo_max_weight_kg,
+                pet_weight_kg,
+                rule.cargo_weight_unlimited,
+            ),
         )
         for rule in rules
     ]

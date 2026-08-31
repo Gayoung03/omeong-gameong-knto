@@ -1,10 +1,13 @@
 COMPOSE = docker compose --env-file .env -f infra/docker-compose.yml
 LOCAL_COMPOSE = $(COMPOSE) -f infra/docker-compose.local.yml
+REHEARSAL_COMPOSE = docker compose -f infra/docker-compose.rehearsal.yml
 
 .PHONY: setup dev dev-local mobile-install api-install mobile-dev api-dev backend-up \
 	backend-down backend-logs backend-local-up backend-local-down backend-local-logs \
 	db-migrate db-migrate-check db-migrate-local db-seed db-seed-local \
-	db-migration-smoke chat-check chat-check-places lint typecheck test check
+	db-migration-smoke db-dump-dev db-rehearsal-up db-rehearsal-restore \
+	db-rehearsal-migrate db-rehearsal-down chat-check chat-check-places \
+	lint typecheck test check
 
 setup: mobile-install api-install
 
@@ -78,6 +81,30 @@ db-migration-smoke:
 		up --build --abort-on-container-exit --exit-code-from migrate-smoke || status=$$?; \
 	docker compose -f infra/docker-compose.migration-smoke.yml down --remove-orphans; \
 	exit $$status
+
+# ── DB 개편 리허설 ──────────────────────────────────────────────
+# 프로덕션 덤프를 격리 DB(포트 5433)에 복원해두고 새 마이그레이션·배치를 미리 돌려본다.
+# 프로덕션 덤프 획득은 자동화하지 않는다 — 사용자가 직접 떠온 파일을 DUMP= 로 넘긴다.
+
+# dev DB(.env DATABASE_URL)에서 읽기 전용 덤프. 산출물은 infra/dumps/(gitignore).
+db-dump-dev:
+	infra/scripts/dump_dev_db.sh
+
+# 리허설 Postgres 기동(로컬 개발 DB와 분리 — 컨테이너·포트·볼륨 별도).
+db-rehearsal-up:
+	$(REHEARSAL_COMPOSE) up -d --wait postgres-rehearsal
+
+# 덤프 파일을 리허설 DB 에 복원 + alembic_version 검증. 예: make db-rehearsal-restore DUMP=infra/dumps/prod.dump
+db-rehearsal-restore:
+	infra/scripts/restore_rehearsal.sh $(DUMP)
+
+# 복원본 위에서 새 마이그레이션을 리허설(alembic upgrade head).
+db-rehearsal-migrate:
+	$(REHEARSAL_COMPOSE) --profile migrate run --build --rm migrate-rehearsal
+
+# 리허설 환경 정리(볼륨까지 삭제해 복원 데이터를 남기지 않는다).
+db-rehearsal-down:
+	$(REHEARSAL_COMPOSE) down --volumes --remove-orphans
 
 # 규정·가이드 질문. 로컬 씨앗에 문서 15편·규정 12건이 다 있어 로컬로 충분하다.
 chat-check:
