@@ -175,8 +175,12 @@ export function PlaceExplorerScreen() {
                 name={category.icon}
                 size={23}
               />
-              <Text style={[styles.categoryText, isSelected && styles.categoryTextSelected]}>
-                {category.label}
+              <Text
+                numberOfLines={1}
+                style={[styles.categoryText, isSelected && styles.categoryTextSelected]}
+              >
+                {/* 필터 값인 `label` 대신 표시용 글자를 그린다. 라벨이 길면 칩에서 잘린다. */}
+                {category.chipLabel ?? category.label}
               </Text>
             </Pressable>
           );
