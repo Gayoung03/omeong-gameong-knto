@@ -184,6 +184,14 @@
 | `notes` | 기타 제한사항 원문 |
 | `source`, `verified_at` | 정보 출처와 확인 시각 |
 | `reliability_score` | 정보 신뢰점수 0~100 |
+| `muzzle_required` | AI 입출력: 입마개 필수 여부 (nullable=미확인) |
+| `food_area_allowed` | AI 입출력: 식음료 공간 동반 가능 (nullable=미확인) |
+| `max_pets_per_person` | AI 입출력: 1인당 동반 마리수 상한 (`>=1`) |
+| `caution_note` | AI 입출력: 정제 주의사항 varchar(150). 원본 `notes` 는 별도 보존 |
+
+`muzzle_required`·`food_area_allowed`·`max_pets_per_person`·`caution_note` 는
+`ai-io-column-design` 7.1 의 AI 입출력 컬럼입니다. 전부 nullable 로 3값 의미
+(명시 true/false·미확인 NULL)를 보존하며, notes 파싱 배치가 채웁니다.
 
 카카오에만 있고 동반 정보가 없는 장소는 `unknown`으로 저장합니다.
 

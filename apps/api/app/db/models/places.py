@@ -132,6 +132,10 @@ class PlacePetPolicy(Base):
             "reliability_score IS NULL OR reliability_score BETWEEN 0 AND 100",
             name="reliability_score_range",
         ),
+        CheckConstraint(
+            "max_pets_per_person IS NULL OR max_pets_per_person >= 1",
+            name="max_pets_per_person_positive",
+        ),
         Index("ix_place_pet_policies_place_id", "place_id"),
     )
 
@@ -156,6 +160,13 @@ class PlacePetPolicy(Base):
     source_url: Mapped[str | None] = mapped_column(Text)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reliability_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    # AI 입출력 컬럼(ai-io-column-design 7.1). 전부 nullable — 3값 의미 유지
+    # (True/False = 명시, NULL = 미확인). notes 파싱 배치가 채운다.
+    muzzle_required: Mapped[bool | None] = mapped_column(Boolean)  # 입마개 필수 여부
+    food_area_allowed: Mapped[bool | None] = mapped_column(Boolean)  # 식음료 공간 동반 가능
+    max_pets_per_person: Mapped[int | None] = mapped_column(SmallInteger)  # 1인당 동반 마리수 상한
+    # 정제된 주의사항. 원본 notes 는 그대로 두고(AI 등급 X) 이 컬럼만 관찰에 쓴다.
+    caution_note: Mapped[str | None] = mapped_column(String(150))
 
 
 class PlaceTag(Base):

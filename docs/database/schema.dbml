@@ -236,6 +236,10 @@ Table place_pet_policies {
   source_url text
   verified_at timestamptz
   reliability_score decimal(5,2)
+  muzzle_required boolean [note: 'AI 입출력: 입마개 필수 (nullable=미확인)']
+  food_area_allowed boolean [note: 'AI 입출력: 식음료 공간 동반 가능 (nullable=미확인)']
+  max_pets_per_person smallint [note: 'AI 입출력: 1인당 동반 마리수 상한 (>=1)']
+  caution_note varchar(150) [note: 'AI 입출력: 정제 주의사항 (원본 notes 는 별도 보존)']
 }
 
 Table place_tags {
