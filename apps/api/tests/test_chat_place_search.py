@@ -132,6 +132,20 @@ def test_정책을_안_고르면_동반불가만_빠진다(db: Session) -> None:
     assert names == {"실내 가능", "야외만", "일부 가능", "세부 미확인", "정책행 자체가 없음"}
 
 
+def test_동반불가를_명시로_넘겨도_안_나온다(db: Session) -> None:
+    """GPT 가 `not_allowed` 를 골라도 통하면 안 된다.
+
+    도구 스키마에서 아예 뺐지만(`vocabulary.SELECTABLE_PET_POLICIES`), 모델이
+    스키마에 없는 값을 넘기는 일이 있다. 검색 쪽이 마지막 방어선이다.
+    """
+    _place(db, "실내 가능", policy=PetPolicyType.INDOOR_ALLOWED)
+    _place(db, "반려묘 전용", policy=PetPolicyType.NOT_ALLOWED)
+
+    hits = search_places(db, pet_policy=[PetPolicyType.NOT_ALLOWED])
+
+    assert hits == []
+
+
 def test_정책_행이_없는_장소는_unknown_으로_나온다(db: Session) -> None:
     place = _place(db, "정책 모르는 카페")
 

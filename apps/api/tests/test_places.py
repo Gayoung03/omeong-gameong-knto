@@ -28,6 +28,20 @@ def _make_place(db: Session, name: str, *, owner: User | None = None) -> Place:
     return place
 
 
+def _make_not_allowed_place(db: Session, name: str = "고양이 전용 카페") -> Place:
+    """동반 불가로 분류된 공식 장소."""
+    place = _make_place(db, name)
+    db.add(
+        PlacePetPolicy(
+            place_id=place.id,
+            policy_type=PetPolicyType.NOT_ALLOWED,
+            source=DataProvider.INTERNAL,
+        )
+    )
+    db.flush()
+    return place
+
+
 # ---------------------------------------------------------------------------
 # 공식 장소와 나만의 장소의 분리
 # ---------------------------------------------------------------------------
@@ -106,6 +120,99 @@ def test_unknown_필터는_정책_행이_없는_장소도_잡는다(
     # 화면에는 "정보 없음"이라고 떠 있는데 필터에는 안 잡히면 안 된다.
     assert place.name in names
     assert "정책 있는 카페" not in names
+
+
+# ---------------------------------------------------------------------------
+# 동반 불가 미노출
+#
+# 우리는 동반 가능한 장소만 소개한다(2026-08-31 확정). 동반 불가인 곳이 목록에
+# 섞이면 검색 오류가 아니라 사용자를 헛걸음시키는 사고다.
+# ---------------------------------------------------------------------------
+
+
+def test_동반_불가인_장소는_목록에_안_나온다(
+    client: TestClient, db: Session, place: Place
+) -> None:
+    _make_not_allowed_place(db)
+
+    body = client.get("/api/v1/places").json()
+
+    names = [item["name"] for item in body["items"]]
+    assert "고양이 전용 카페" not in names
+    assert place.name in names
+    # 건수도 함께 빠져야 한다. 목록에 없는 것을 세면 페이지가 어긋난다.
+    assert body["total"] == len(names)
+
+
+def test_동반_불가를_필터로_찍어도_안_나온다(client: TestClient, db: Session) -> None:
+    _make_not_allowed_place(db)
+
+    body = client.get("/api/v1/places", params={"petPolicy": "not_allowed"}).json()
+
+    assert body["items"] == []
+    assert body["total"] == 0
+
+
+def test_동반_불가인_장소는_상세도_404(client: TestClient, db: Session) -> None:
+    hidden = _make_not_allowed_place(db)
+
+    assert client.get(f"/api/v1/places/{hidden.id}").status_code == 404
+
+
+def test_동반_불가인_장소는_즐겨찾기_목록에서도_빠진다(
+    client: TestClient, db: Session, place: Place
+) -> None:
+    """분류가 나중에 바뀌어 이미 저장해 둔 장소가 동반 불가가 된 경우."""
+    later_excluded = _make_place(db, "나중에 동반 불가가 된 카페")
+    client.put(f"/api/v1/places/{later_excluded.id}/favorite")
+    client.put(f"/api/v1/places/{place.id}/favorite")
+
+    db.add(
+        PlacePetPolicy(
+            place_id=later_excluded.id,
+            policy_type=PetPolicyType.NOT_ALLOWED,
+            source=DataProvider.INTERNAL,
+        )
+    )
+    db.flush()
+
+    favorites = client.get("/api/v1/users/me/favorites").json()
+
+    assert [item["name"] for item in favorites["items"]] == [place.name]
+    # "2곳" 이라 써놓고 한 곳만 보여주면 안 된다. 건수 쿼리도 places 를 조인한다.
+    assert favorites["total"] == 1
+
+
+def test_동반_불가여도_즐겨찾기_해제는_된다(client: TestClient, db: Session) -> None:
+    """여기까지 막으면 이미 저장한 사용자가 영원히 목록에서 못 지운다."""
+    later_excluded = _make_place(db, "나중에 동반 불가가 된 카페")
+    client.put(f"/api/v1/places/{later_excluded.id}/favorite")
+
+    db.add(
+        PlacePetPolicy(
+            place_id=later_excluded.id,
+            policy_type=PetPolicyType.NOT_ALLOWED,
+            source=DataProvider.INTERNAL,
+        )
+    )
+    db.flush()
+
+    assert client.delete(f"/api/v1/places/{later_excluded.id}/favorite").status_code == 204
+    # 등록은 반대로 막혀야 한다.
+    assert client.put(f"/api/v1/places/{later_excluded.id}/favorite").status_code == 404
+
+
+def test_동반_불가인_장소에는_리뷰도_일정도_못_붙인다(client: TestClient, db: Session) -> None:
+    hidden = _make_not_allowed_place(db)
+
+    assert client.get(f"/api/v1/places/{hidden.id}/reviews").status_code == 404
+    assert (
+        client.post(
+            f"/api/v1/places/{hidden.id}/reviews",
+            json={"rating": 5, "content": "좋았어요"},
+        ).status_code
+        == 404
+    )
 
 
 # ---------------------------------------------------------------------------
