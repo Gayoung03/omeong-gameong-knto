@@ -46,6 +46,7 @@ export default function RootLayout() {
               />
 
               <Stack.Screen name="travel-guides/preparation" />
+              <Stack.Screen name="travel-guides/[guideId]" />
 
               <Stack.Screen name="saved/places" />
               <Stack.Screen name="saved/routes" />

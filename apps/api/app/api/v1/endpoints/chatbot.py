@@ -2,24 +2,33 @@
 
 명세(docs/api/chatbot.md)의 엔드포인트 7개가 전부 여기 있다.
 
-## 마지막 하나는 명세와 전달 방식이 다르다
+## 마지막 하나만 SSE 다
 
-`POST /chat/conversations/{id}/messages` 는 명세상 SSE 스트림이지만
-(`start` → `delta` → `done`), 지금은 **JSON 한 번에** 돌려준다. 앱에서 먼저
-눌러볼 수 있게 하기 위해서다. 도구 호출·프롬프트·저장은 두 방식이 같아서
-스트리밍으로 옮길 때 전달 방식만 바뀐다. 중지 버튼도 그때 함께 붙인다.
+`POST /chat/conversations/{id}/messages` 는 `text/event-stream` 으로
+`start` → `delta`(여러 번) → `done`(또는 실패 시 `error`) 순서로 내려준다.
+스트림이 **시작되기 전** 실패(소유권 없음·사용량 초과 등)는 지금처럼 일반
+JSON 에러 응답이다 — 제너레이터에 들어가기 전에 걸러지기 때문이다.
+
+## 중지 = 연결 끊김
+
+앱이 중지 버튼을 누르면 연결을 끊는 것 말고 다른 신호를 보내지 않는다. 서버는
+"사용자가 중지했다"와 "네트워크가 끊겼다"를 구분하지 않고 **똑같이 처리** —
+그때까지 만든 답변은 저장하지 않는다(질문은 이미 `start` 시점에 저장돼 있다).
 
 ## LLM 은 이 파일에 없다
 
 OpenAI 호출과 도구 루프는 `app/integrations/llm/chat.py` 에 있다.
-여기서는 `generate_answer()` 하나만 부른다 — 벤더를 바꿔도 이 파일은 안 바뀐다.
+여기서는 `stream_answer()` 하나만 부른다 — 벤더를 바꿔도 이 파일은 안 바뀐다.
 """
 
+import json
 import uuid
+from collections.abc import Generator
 from datetime import datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -30,13 +39,13 @@ from app.db.models.enums import MessageRole
 from app.db.session import get_db
 from app.integrations.llm.chat import (
     HISTORY_LIMIT,
+    Answer,
     ChatGenerationError,
     ChatTimeoutError,
-    generate_answer,
+    stream_answer,
     to_history,
 )
 from app.schemas.chat import (
-    AnswerResponse,
     ChatPlaceSummary,
     ConversationCreate,
     ConversationCreated,
@@ -261,33 +270,32 @@ def list_messages(
     )
 
 
+def _sse_event(payload: dict) -> str:
+    r"""SSE 한 덩어리로 만든다. `\n\n` 로 끝나야 클라이언트가 이벤트 경계를 안다."""
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
 @router.post(
     "/chat/conversations/{conversation_id}/messages",
-    response_model=AnswerResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="질문 전송",
+    summary="질문 전송 (SSE)",
 )
 def create_message(
     conversation_id: uuid.UUID,
     payload: MessageCreate,
     current_user: CurrentUser,
     db: DbSession,
-) -> AnswerResponse:
-    """질문을 보내고 답변을 받는다. **두 행이 저장된다** — 질문과 답변.
+) -> StreamingResponse:
+    """질문을 보내고 답변을 SSE 로 받는다.
 
-    ## 명세와 다른 점: JSON 이다
+    `start`(저장된 사용자 메시지) → `delta`(답변 조각, 여러 번) → `done`(저장된
+    답변 메시지) 순서다. 실패하면 `done` 대신 `error` 가 온다.
 
-    docs/api/chatbot.md 는 이 엔드포인트만 SSE 스트림으로 정해뒀다
-    (`start` → `delta` → `done`). 지금은 **JSON 한 번에** 돌려준다. 앱에서 먼저
-    눌러볼 수 있게 하기 위해서고, 도구 호출·프롬프트·저장은 두 방식이 같아서
-    스트리밍으로 옮길 때 **전달 방식만** 바뀐다.
+    ## 질문은 스트림을 열기 전에 이미 저장한다
 
-    ## 실패하면 질문도 저장하지 않는다
-
-    명세의 SSE 는 질문을 먼저 저장하고(`start`) 답변이 끊기면 질문만 남긴다 —
-    앱이 재시도 버튼을 띄우면 되기 때문이다. JSON 은 그럴 중간 지점이 없다.
-    **한 번에 성공하거나 아무것도 남기지 않는다.** 실패한 질문만 쌓이면 다음
-    질문의 맥락이 어긋난다.
+    `start` 를 보내는 시점에 사용자 메시지가 DB 에 있어야 하고, 스트림이 중간에
+    끊겨도(중지 버튼·네트워크 문제 — 서버는 둘을 구분하지 않는다) 이 메시지는
+    남아야 한다(docs/api/chatbot.md). **답변은 끝까지 갔을 때만 저장한다** —
+    끊기면 저장하지 않는다.
     """
     load_owned_conversation(db, conversation_id, current_user)
 
@@ -304,31 +312,11 @@ def create_message(
         for message in recent_history(db, conversation_id, HISTORY_LIMIT)
     ]
 
-    # 두 메시지의 시각을 **직접** 넣는다. 그냥 두면 컬럼 기본값인 now() 가 쓰이는데,
-    # PostgreSQL 의 now() 는 **트랜잭션 시작 시각**이라 같은 트랜잭션에서 저장하는
-    # 질문과 답변이 **똑같은 created_at** 을 받는다. 그러면 정렬 기준이 없어져
-    # 채팅 화면에서 답변이 질문보다 위에 뜨고, 다음 질문 때 모델에게 가는 맥락
-    # 순서도 뒤집힌다. 대화 목록처럼 id 로 동점 처리할 수도 없다 — 무작위 UUID 라
-    # 시간 순서를 담고 있지 않다.
+    # 답변보다 먼저 저장해 스트림이 끊겨도 남긴다. 시각도 여기서 직접 넣는다 —
+    # 그냥 두면 컬럼 기본값 now() 가 **트랜잭션 시작 시각**이라, 나중에 답변을
+    # 별도 트랜잭션(커밋)으로 저장해도 두 메시지의 순서가 시각만으로는 보장되지
+    # 않는다.
     asked_at = datetime.now(KST)
-
-    try:
-        answer = generate_answer(db, history, payload.content)
-    except ChatTimeoutError as error:
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="답변이 늦어지고 있어요. 다시 시도해 주세요",
-        ) from error
-    except ChatGenerationError as error:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="답변 생성에 실패했어요. 다시 시도해 주세요",
-        ) from error
-
-    # 답변 생성에 걸린 시간이 있어 보통은 자연히 뒤가 되지만, 가짜 구현이나
-    # 캐시로 즉시 돌아오는 경우까지 생각해 **반드시 뒤**가 되게 못박는다.
-    answered_at = max(datetime.now(KST), asked_at + timedelta(milliseconds=1))
-
     question = ChatMessage(
         conversation_id=conversation_id,
         role=MessageRole.USER,
@@ -336,23 +324,74 @@ def create_message(
         created_at=asked_at,
     )
     db.add(question)
-    db.flush()
-
-    reply = ChatMessage(
-        conversation_id=conversation_id,
-        role=MessageRole.ASSISTANT,
-        content=answer.content,
-        referenced_place_ids=answer.referenced_place_ids or None,
-        model_name=answer.model_name,
-        created_at=answered_at,
-    )
-    db.add(reply)
     db.commit()
     db.refresh(question)
-    db.refresh(reply)
 
-    summaries = places_of(db, [reply])
-    return AnswerResponse(
-        user_message=_to_message_item(question, {}),
-        assistant_message=_to_message_item(reply, summaries),
+    def event_stream() -> Generator[str, None, None]:
+        yield _sse_event(
+            {
+                "event": "start",
+                "userMessage": _to_message_item(question, {}).model_dump(
+                    mode="json", by_alias=True
+                ),
+            }
+        )
+
+        answer: Answer | None = None
+        try:
+            for piece in stream_answer(db, history, payload.content):
+                if isinstance(piece, Answer):
+                    answer = piece
+                    break
+                yield _sse_event({"event": "delta", "text": piece.text})
+        except ChatTimeoutError:
+            yield _sse_event(
+                {
+                    "event": "error",
+                    "code": "llm_timeout",
+                    "detail": "답변이 늦어지고 있어요. 다시 시도해 주세요",
+                }
+            )
+            return
+        except ChatGenerationError:
+            yield _sse_event(
+                {
+                    "event": "error",
+                    "code": "llm_failed",
+                    "detail": "답변 생성에 실패했어요. 다시 시도해 주세요",
+                }
+            )
+            return
+
+        assert answer is not None  # stream_answer 는 항상 Answer 로 끝나거나 예외를 던진다
+
+        # 답변 생성에 걸린 시간이 있어 보통은 자연히 뒤가 되지만, 즉시 돌아오는
+        # 경우까지 생각해 **반드시 뒤**가 되게 못박는다.
+        answered_at = max(datetime.now(KST), asked_at + timedelta(milliseconds=1))
+        reply = ChatMessage(
+            conversation_id=conversation_id,
+            role=MessageRole.ASSISTANT,
+            content=answer.content,
+            referenced_place_ids=answer.referenced_place_ids or None,
+            model_name=answer.model_name,
+            created_at=answered_at,
+        )
+        db.add(reply)
+        db.commit()
+        db.refresh(reply)
+
+        summaries = places_of(db, [reply])
+        yield _sse_event(
+            {
+                "event": "done",
+                "assistantMessage": _to_message_item(reply, summaries).model_dump(
+                    mode="json", by_alias=True
+                ),
+            }
+        )
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

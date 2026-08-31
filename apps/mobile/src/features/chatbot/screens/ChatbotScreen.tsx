@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { type ReactNode, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -17,16 +17,40 @@ import {
 import { AppHeader } from '@/src/components/layout/AppHeader';
 import { colors, spacing } from '@/src/theme';
 
+import { AnswerMarkdown } from '../components/AnswerMarkdown';
 import { ChatMapResponse } from '../components/ChatMapResponse';
 import { chatbotAssets } from '../config/chatbotAssets';
 import { chatbotSuggestions } from '../constants/chatbotSuggestions';
 import { entryKey, useChatbot } from '../hooks/useChatbot';
 import type { ChatEntry } from '../types/chatbot';
 
+/** 커서가 보였다 숨는 주기. */
+const CARET_BLINK_MS = 500;
+
+/**
+ * 타이핑 중인 자리에서 깜빡이는 커서.
+ *
+ * **자체 state 로 깜빡인다.** 부모가 글자마다 리렌더되는 것과 무관하게 제
+ * 주기를 지켜야 하기 때문이다.
+ *
+ * 숨길 때 글자를 지우지 않고 색만 투명하게 한다 — 문자를 빼면 그 폭만큼
+ * 문장 끝이 흔들린다.
+ */
+function TypingCaret() {
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const id = setInterval(() => setVisible((current) => !current), CARET_BLINK_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  return <Text style={[styles.caret, !visible && styles.caretHidden]}>|</Text>;
+}
+
 export function ChatbotScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [input, setInput] = useState('');
-  const { entries, isAnswering, ask, retry } = useChatbot();
+  const { entries, isAnswering, ask, retry, stop, skip } = useChatbot();
   const hasMessages = entries.length > 0;
   const canSend = Boolean(input.trim()) && !isAnswering;
 
@@ -47,36 +71,42 @@ export function ChatbotScreen() {
         <TextInput
           accessibilityLabel="혼디에게 질문 입력"
           blurOnSubmit={false}
-          // 답변을 만드는 동안은 잠근다(설계 결정 F3). 두 질문이 겹치면
-          // 어느 답변이 어느 질문의 것인지 화면에서 구분할 수 없다.
-          editable={!isAnswering}
+          // 답변을 만드는 동안에도 **입력은 열어둔다**(설계 결정 F3). 기다리는
+          // 사이에 다음 질문을 미리 적어둘 수 있다. 다만 보내지는 못한다 —
+          // 두 질문이 겹치면 어느 답변이 어느 질문의 것인지 알 수 없다.
           onChangeText={setInput}
           onSubmitEditing={() => sendMessage(input)}
-          placeholder={
-            isAnswering ? '혼디가 답변을 만들고 있어요…' : '제주 여행에 대해 궁금한 점을 입력해보세요'
-          }
+          placeholder="제주 여행에 대해 궁금한 점을 입력해보세요"
           placeholderTextColor={colors.textTertiary}
           returnKeyType="send"
           style={styles.input}
           value={input}
         />
-        <Pressable
-          accessibilityLabel="질문 보내기"
-          accessibilityState={{ disabled: !canSend }}
-          disabled={!canSend}
-          onPress={() => sendMessage(input)}
-          style={({ pressed }) => [
-            styles.sendButton,
-            !canSend && styles.sendButtonDisabled,
-            pressed && styles.pressed,
-          ]}
-        >
-          {isAnswering ? (
-            <ActivityIndicator color={colors.surface} size="small" />
-          ) : (
+        {isAnswering ? (
+          <Pressable
+            accessibilityHint="만들고 있던 답변을 버립니다"
+            accessibilityLabel="답변 생성 중지"
+            accessibilityRole="button"
+            onPress={stop}
+            style={({ pressed }) => [styles.sendButton, pressed && styles.pressed]}
+          >
+            <Ionicons color={colors.surface} name="stop" size={18} />
+          </Pressable>
+        ) : (
+          <Pressable
+            accessibilityLabel="질문 보내기"
+            accessibilityState={{ disabled: !canSend }}
+            disabled={!canSend}
+            onPress={() => sendMessage(input)}
+            style={({ pressed }) => [
+              styles.sendButton,
+              !canSend && styles.sendButtonDisabled,
+              pressed && styles.pressed,
+            ]}
+          >
             <Ionicons color={colors.surface} name="paper-plane" size={20} />
-          )}
-        </Pressable>
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -120,12 +150,43 @@ export function ChatbotScreen() {
       );
     }
 
+    if (entry.kind === 'streaming') {
+      // 질문 말풍선은 `start` 때 확정 메시지로 자리를 잡았다. 여기는 답변만이다.
+      //
+      // `content` 가 비어 있는 구간이 **짧은 답변에서는 끝까지 유지된다** —
+      // 훅이 임계 시간 안에 끝난 답변은 흘리지 않고 모아두기 때문이다
+      // (useChatbot.ts 의 STREAM_BUFFER_MS). 그동안은 대기 말풍선과 똑같이
+      // 보여야 단계가 바뀐 것처럼 깜빡이지 않는다.
+      return (
+        <View style={styles.messageGroup}>
+          {renderHondi(
+            <View style={[styles.messageBubble, styles.assistantBubble]}>
+              <View style={styles.assistantLabel}>
+                <Text style={styles.assistantLabelText}>혼디</Text>
+              </View>
+              {entry.content ? (
+                <AnswerMarkdown text={entry.content} trailing={<TypingCaret />} />
+              ) : (
+                <View style={styles.pendingRow}>
+                  <ActivityIndicator color={colors.primary} size="small" />
+                  <Text style={styles.pendingText}>혼디가 장소를 찾고 있어요…</Text>
+                </View>
+              )}
+            </View>,
+          )}
+        </View>
+      );
+    }
+
     if (entry.kind === 'failed') {
       return (
         <>
-          <View style={[styles.messageGroup, styles.userMessageGroup]}>
-            {renderUserBubble(entry.question)}
-          </View>
+          {/* 질문이 이미 저장됐으면 제 말풍선이 있다. 여기서 또 그리면 두 번 나온다. */}
+          {entry.questionSaved ? null : (
+            <View style={[styles.messageGroup, styles.userMessageGroup]}>
+              {renderUserBubble(entry.question)}
+            </View>
+          )}
           <View style={styles.messageGroup}>
             {renderHondi(
               <View style={[styles.messageBubble, styles.failedBubble]}>
@@ -162,7 +223,7 @@ export function ChatbotScreen() {
               <View style={styles.assistantLabel}>
                 <Text style={styles.assistantLabelText}>혼디</Text>
               </View>
-              <Text style={styles.messageText}>{message.content}</Text>
+              <AnswerMarkdown text={message.content} />
             </View>
             {/*
               지도를 띄울지는 **서버가 정한다.** 답변이 언급한 장소만
@@ -203,12 +264,31 @@ export function ChatbotScreen() {
                 keyboardShouldPersistTaps="handled"
                 // 말풍선이 늘어날 때마다 맨 아래로 붙인다. 대기 말풍선이 진짜
                 // 답변으로 바뀌면서 높이가 커지는 경우까지 이걸로 덮인다.
-                onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+                //
+                // **답변이 오는 동안은 애니메이션을 끈다.** 긴 답변은 글자가
+                // 늘 때마다 여기가 불리는데, 애니메이션 스크롤이 끝나기 전에
+                // 계속 새로 시작되면 화면이 덜덜 떨린다.
+                onContentSizeChange={() =>
+                  scrollRef.current?.scrollToEnd({ animated: !isAnswering })
+                }
                 ref={scrollRef}
                 showsVerticalScrollIndicator={false}
                 style={styles.activeChatScroll}
               >
-                <View style={styles.content}>{renderMessages()}</View>
+                {/*
+                  답변이 오는 동안에는 어디를 눌러도 타이핑을 건너뛴다. 글자당
+                  20~40ms 라 긴 답변은 10초까지 가므로 빠져나갈 길이 필요하다.
+                  답변 중이 아닐 때는 꺼 둬야 지도·버튼 터치를 가로채지 않는다.
+                */}
+                <Pressable
+                  accessibilityHint="답변을 끝까지 보여줍니다"
+                  accessibilityLabel="타이핑 건너뛰기"
+                  accessibilityRole="button"
+                  disabled={!isAnswering}
+                  onPress={skip}
+                >
+                  <View style={styles.content}>{renderMessages()}</View>
+                </Pressable>
               </ScrollView>
               <View style={styles.activeComposerBar}>
                 <View style={styles.content}>{renderComposer(false)}</View>
@@ -285,9 +365,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
+  pendingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   pendingText: {
     color: colors.textSecondary,
     fontSize: 14,
+  },
+  caret: {
+    color: colors.primary,
+    fontSize: 13,
+  },
+  caretHidden: {
+    color: 'transparent',
   },
   failedBubble: {
     backgroundColor: colors.errorBg,
