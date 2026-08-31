@@ -122,6 +122,15 @@ class TransportPetRule(Base):
         CheckConstraint(
             "duration_minutes IS NULL OR duration_minutes > 0", name="duration_positive"
         ),
+        # 무게 무제한과 무게 상한은 동시에 참일 수 없다. unlimited 가 True 면 상한은 NULL.
+        CheckConstraint(
+            "cabin_weight_unlimited IS NOT TRUE OR cabin_max_weight_kg IS NULL",
+            name="cabin_weight_unlimited_excl",
+        ),
+        CheckConstraint(
+            "cargo_weight_unlimited IS NOT TRUE OR cargo_max_weight_kg IS NULL",
+            name="cargo_weight_unlimited_excl",
+        ),
         Index("ix_transport_pet_rules_guide_document_id", "guide_document_id"),
         Index("ix_transport_pet_rules_carrier_type", "carrier_type"),
     )
@@ -139,6 +148,10 @@ class TransportPetRule(Base):
     # 기내 반입 — 무게는 케이지 포함 기준
     cabin_allowed: Mapped[bool | None] = mapped_column(Boolean)
     cabin_max_weight_kg: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    # "무게 제한 없음" 명시(True) — NULL(미확인)과 구분. 판정에서 무게 비교를 생략한다.
+    cabin_weight_unlimited: Mapped[bool | None] = mapped_column(Boolean)
+    # "원칙 불가·예외 허용" 등 조건부 사실(아리온). cabin_allowed 와 항상 쌍으로 관찰에 넣는다.
+    cabin_conditions: Mapped[str | None] = mapped_column(String(200))
     cabin_fee_krw: Mapped[int | None] = mapped_column(Integer)
     min_age_weeks_cabin: Mapped[int | None] = mapped_column(SmallInteger)
     max_pets_per_person_cabin: Mapped[int | None] = mapped_column(SmallInteger)
@@ -147,6 +160,8 @@ class TransportPetRule(Base):
     # 화물칸 위탁 — 여객선은 해당 없음
     cargo_allowed: Mapped[bool | None] = mapped_column(Boolean)
     cargo_max_weight_kg: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    # "무게 제한 없음" 명시(True) — NULL(미확인)과 구분.
+    cargo_weight_unlimited: Mapped[bool | None] = mapped_column(Boolean)
     cargo_fee_threshold_kg: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     cargo_fee_light_krw: Mapped[int | None] = mapped_column(Integer)
     cargo_fee_heavy_krw: Mapped[int | None] = mapped_column(Integer)

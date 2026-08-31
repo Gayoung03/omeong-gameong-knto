@@ -622,6 +622,8 @@ Alembic migration에서 FK별 `ON DELETE`를 명시적으로 정의합니다.
 `null` 인 항목은 **"확인이 필요해요"** 로 답해야 합니다.
 
 - `cabin_max_weight_kg` · `cargo_max_weight_kg` — **케이지 포함** 무게입니다. 동물만의 무게가 아닙니다.
+- `cabin_weight_unlimited` · `cargo_weight_unlimited` — AI 입출력: `true` 는 **"무게 제한 없음"이 명시**된 경우로, `null`(미확인)과 구분합니다. 상한(`*_max_weight_kg`)과 **동시에 참일 수 없습니다**(CHECK). 이게 없으면 상한 `null`인 무제한 규정이 "무게 기준 미확인"으로 오답합니다.
+- `cabin_conditions` — AI 입출력: "원칙 불가·예외 허용" 같은 **조건부 사실**(아리온). 관찰에는 `cabin_allowed`와 **항상 쌍으로** 넣어 "불가, 단 예외"를 유도합니다.
 - `route` — 여객선만 씁니다(`완도↔제주`). 항공사는 `null`.
 - `duration_minutes` — 여객선 소요 시간. 항공기는 노선별로 갈려 넣지 않습니다.
 

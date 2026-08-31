@@ -632,12 +632,15 @@ Table transport_pet_rules {
   route varchar(50) [note: '여객선만. 항공사는 null']
   cabin_allowed boolean [note: 'null = 확인 안 됨']
   cabin_max_weight_kg decimal(5,2) [note: '케이지 포함']
+  cabin_weight_unlimited boolean [note: 'AI 입출력: true=무게 제한 없음 명시(null=미확인과 구분). 상한과 상호배제']
+  cabin_conditions varchar(200) [note: 'AI 입출력: 조건부 사실(원칙 불가·예외 허용). allowed 와 쌍으로 관찰']
   cabin_fee_krw integer
   min_age_weeks_cabin smallint
   max_pets_per_person_cabin smallint
   max_pets_per_trip smallint
   cargo_allowed boolean
   cargo_max_weight_kg decimal(5,2)
+  cargo_weight_unlimited boolean [note: 'AI 입출력: true=무게 제한 없음 명시. 상한과 상호배제']
   cargo_fee_threshold_kg decimal(5,2)
   cargo_fee_light_krw integer
   cargo_fee_heavy_krw integer
