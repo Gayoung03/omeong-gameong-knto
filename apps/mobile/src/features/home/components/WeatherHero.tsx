@@ -105,13 +105,20 @@ export function WeatherHero({
                 </ImageBackground>
               ))}
             </ScrollView>
-            <View accessibilityLabel={`${page + 1} / ${weather.length}`} style={styles.pageDots}>
-              {weather.map((item, index) => (
-                <View
-                  key={item.location}
-                  style={[styles.pageDot, index === page && styles.pageDotActive]}
-                />
-              ))}
+            <View pointerEvents="none" style={styles.pageIndicator}>
+              <View
+                accessible
+                accessibilityLabel={`${weather.length}개 지역 중 ${page + 1}번째, ${weather[page]?.location}`}
+                accessibilityLiveRegion="polite"
+                style={styles.pageDots}
+              >
+                {weather.map((item, index) => (
+                  <View
+                    key={item.location}
+                    style={[styles.pageDot, index === page && styles.pageDotActive]}
+                  />
+                ))}
+              </View>
             </View>
           </>
         )}
@@ -206,6 +213,7 @@ const styles = StyleSheet.create({
   tipPill: {
     width: '70%',
     minHeight: 35,
+    marginBottom: spacing.md,
     paddingHorizontal: 10,
     paddingVertical: 7,
     flexDirection: 'row',
@@ -221,21 +229,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 14,
   },
-  pageDots: {
+  pageIndicator: {
     position: 'absolute',
-    right: spacing.sm,
+    right: 0,
+    left: 0,
     bottom: spacing.xs,
+    alignItems: 'center',
+  },
+  pageDots: {
     flexDirection: 'row',
-    gap: 4,
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    backgroundColor: overlayColors.frostedCard,
   },
   pageDot: {
-    width: 5,
-    height: 5,
+    width: 6,
+    height: 6,
     borderRadius: 3,
-    backgroundColor: overlayColors.whiteVeil,
+    backgroundColor: colors.textTertiary,
   },
   pageDotActive: {
-    width: 13,
+    width: 17,
     backgroundColor: colors.primary,
   },
   stateArea: {
