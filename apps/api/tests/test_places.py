@@ -83,6 +83,37 @@ def test_정책이_없는_장소도_unknown_으로_내려온다(client: TestClie
     # null 을 내리면 앱이 매번 존재 확인을 해야 하고 한 군데만 빠뜨려도 화면이 깨진다.
     assert body["petPolicy"]["policyType"] == "unknown"
     assert body["petPolicy"]["notes"] is None
+    # AI 입출력 컬럼도 정책 행이 없으면 미확인(null)으로 내려온다.
+    assert body["petPolicy"]["muzzleRequired"] is None
+    assert body["petPolicy"]["foodAreaAllowed"] is None
+    assert body["petPolicy"]["maxPetsPerPerson"] is None
+    assert body["petPolicy"]["cautionNote"] is None
+
+
+def test_AI_입출력_컬럼은_상세_응답에_그대로_내려온다(
+    client: TestClient, db: Session
+) -> None:
+    place = _make_place(db, "입마개 카페")
+    db.add(
+        PlacePetPolicy(
+            place_id=place.id,
+            policy_type=PetPolicyType.INDOOR_ALLOWED,
+            source=DataProvider.INTERNAL,
+            muzzle_required=True,
+            food_area_allowed=False,
+            max_pets_per_person=2,
+            caution_note="대형견은 입마개를 착용해 주세요.",
+        )
+    )
+    db.flush()
+
+    policy = client.get(f"/api/v1/places/{place.id}").json()["petPolicy"]
+
+    # 3값 불리언은 명시값 그대로(false 를 null 로 뭉개지 않는다).
+    assert policy["muzzleRequired"] is True
+    assert policy["foodAreaAllowed"] is False
+    assert policy["maxPetsPerPerson"] == 2
+    assert policy["cautionNote"] == "대형견은 입마개를 착용해 주세요."
 
 
 def test_unknown_필터는_정책_행이_없는_장소도_잡는다(

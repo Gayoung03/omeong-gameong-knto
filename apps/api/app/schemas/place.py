@@ -83,6 +83,11 @@ class PetPolicyResponse(APISchema):
     source_url: str | None
     verified_at: datetime | None
     reliability_score: float | None
+    # AI 입출력 컬럼(ai-io-column-design 7.1). nullable — 3값 의미 유지.
+    muzzle_required: bool | None
+    food_area_allowed: bool | None
+    max_pets_per_person: int | None
+    caution_note: str | None
 
 
 class BusinessHourResponse(APISchema):

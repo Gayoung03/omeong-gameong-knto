@@ -460,6 +460,10 @@ def _to_pet_policy(policy: PlacePetPolicy | None) -> PetPolicyResponse:
             source_url=None,
             verified_at=None,
             reliability_score=None,
+            muzzle_required=None,
+            food_area_allowed=None,
+            max_pets_per_person=None,
+            caution_note=None,
         )
 
     return PetPolicyResponse(
@@ -478,4 +482,8 @@ def _to_pet_policy(policy: PlacePetPolicy | None) -> PetPolicyResponse:
         reliability_score=(
             float(policy.reliability_score) if policy.reliability_score is not None else None
         ),
+        muzzle_required=policy.muzzle_required,
+        food_area_allowed=policy.food_area_allowed,
+        max_pets_per_person=policy.max_pets_per_person,
+        caution_note=policy.caution_note,
     )

@@ -185,7 +185,11 @@ WHERE created_by_user_id IS NULL
     "source": "tour_api",
     "sourceUrl": "https://...",
     "verifiedAt": "2026-07-20T10:00:00+09:00",
-    "reliabilityScore": 82.5
+    "reliabilityScore": 82.5,
+    "muzzleRequired": null,
+    "foodAreaAllowed": true,
+    "maxPetsPerPerson": 2,
+    "cautionNote": "대형견은 입마개를 착용해 주세요."
   },
   "businessHours": [
     {
@@ -210,6 +214,9 @@ WHERE created_by_user_id IS NULL
 - `dayOfWeek` — 0(일요일) ~ 6(토요일). DB CHECK 제약과 동일합니다.
 - `petPolicy` — 정책 정보가 없는 장소는 `policyType`이 `unknown`이고 나머지는 대부분 `null`입니다.
 - `reliabilityScore` — 0~100. 정책 정보의 신뢰도로, 출처와 확인 시점에 따라 달라집니다.
+- `muzzleRequired`·`foodAreaAllowed` — 3값 불리언입니다. `true`/`false`는 명시, `null`은 미확인이라 "정보 없음"으로 표시하세요(false 로 단정하지 않습니다).
+- `maxPetsPerPerson` — 1인당 동반 마리수 상한(정수, `null`이면 미확인).
+- `cautionNote` — 정제된 주의사항(최대 150자, `null` 가능). 원본 `notes`와 별개 컬럼입니다.
 - `isUserCreated` — `created_by_user_id`가 있으면 `true`. 사용자 ID 자체는 노출하지 않습니다.
 
 `place_external_refs`(제공처 원본 ID)는 내부 동기화용이라 응답에 포함하지 않습니다.
