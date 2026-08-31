@@ -21,7 +21,7 @@ import type { SavedPlace } from '../types/saved';
 const PAGE_LIMIT = 100;
 
 function toSavedPlace(item: FavoritePlaceResponse): SavedPlace {
-  // 분류 라벨·주소 정리는 장소 어댑터가 이미 한다. 두 번 쓰면 화면마다 달라진다.
+  // 분류 라벨·지역·주소 정리는 장소 어댑터가 이미 한다. 두 번 쓰면 화면마다 달라진다.
   const place = toPlace(item);
 
   return {
@@ -30,6 +30,7 @@ function toSavedPlace(item: FavoritePlaceResponse): SavedPlace {
     id: place.id,
     imageUrl: place.imageUrl,
     name: place.name,
+    region: place.region,
     savedAt: item.favoritedAt,
   };
 }
@@ -46,7 +47,8 @@ function fetchPage(offset: number) {
  * 저장한 장소 **전부**.
  *
  * 예전에는 한 페이지(100건)만 받아서 101번째부터는 화면에 아예 나오지 않았다.
- * 즐겨찾기는 지우기 전까지 쌓이기만 하므로 언젠가 반드시 넘는다.
+ * 지금은 화면이 지역·분류로 거르고 건수를 세므로 전체가 없으면 답 자체가 틀린다 —
+ * 로드된 것만 세면 "총 3곳" 옆에 안 보이는 장소가 남는다.
  *
  * 첫 페이지의 `total` 로 남은 offset 을 계산해 **병렬로** 받는다. 순차로 돌면
  * 왕복이 그대로 쌓인다. 100건 이하면 요청은 예전과 같이 한 번이다.
