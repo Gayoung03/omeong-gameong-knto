@@ -1,19 +1,28 @@
 import { router } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppHeader } from '@/src/components/layout/AppHeader';
+import { useUserProfile } from '@/src/features/profile/hooks/useUserProfile';
 import { colors, spacing } from '@/src/theme';
 
 import { ContentRecommendation } from '../components/ContentRecommendation';
 import { QuickMenu } from '../components/QuickMenu';
 import { RegionalRecommendation } from '../components/RegionalRecommendation';
 import { WeatherHero } from '../components/WeatherHero';
+import { fetchJejuWeather } from '../api/weatherApi';
 import { quickMenuItems } from '../constants/quickMenu';
-import { mockEditorialStories, mockWeather } from '../mocks/home.mock';
+import { mockEditorialStories } from '../mocks/home.mock';
 import type { EditorialStory, QuickMenuItem } from '../types/home';
 import type { PlaceRegion } from '@/src/features/places/types/place';
 
 export function HomeScreen() {
+  const { data: user } = useUserProfile();
+  const weather = useQuery({
+    queryKey: ['home', 'weather'],
+    queryFn: fetchJejuWeather,
+    staleTime: 10 * 60 * 1000,
+  });
   const openPlaceExplorer = (region?: PlaceRegion) => {
     router.push({
       pathname: '/place-explorer',
@@ -55,7 +64,14 @@ export function HomeScreen() {
     <SafeAreaView style={styles.safeArea}>
       <AppHeader />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <WeatherHero onPressChatbot={() => router.push('/chatbot')} weather={mockWeather} />
+        <WeatherHero
+          error={weather.isError}
+          loading={weather.isPending}
+          nickname={user?.nickname}
+          onPressChatbot={() => router.push('/chatbot')}
+          onRetry={() => weather.refetch()}
+          weather={weather.data ?? []}
+        />
 
         <View style={styles.section}>
           <QuickMenu items={quickMenuItems} onPressItem={handleQuickMenuPress} />

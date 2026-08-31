@@ -1,5 +1,15 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Image, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import {
+  Image,
+  ImageBackground,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 
 import { brandAssets } from '@/src/config/brandAssets';
 import { colors, overlayColors, radius, spacing } from '@/src/theme';
@@ -9,44 +19,103 @@ import type { WeatherSummary } from '../types/home';
 const WEATHER_BACKGROUND = require('@/assets/images/home-weather-background.png');
 
 type WeatherHeroProps = {
-  weather: WeatherSummary;
+  weather: WeatherSummary[];
+  nickname?: string;
+  loading: boolean;
+  error: boolean;
   onPressChatbot: () => void;
+  onRetry: () => void;
 };
 
-export function WeatherHero({ weather, onPressChatbot }: WeatherHeroProps) {
+export function WeatherHero({
+  weather,
+  nickname,
+  loading,
+  error,
+  onPressChatbot,
+  onRetry,
+}: WeatherHeroProps) {
+  const [width, setWidth] = useState(0);
+  const [page, setPage] = useState(0);
+
+  const handleScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (width) setPage(Math.round(event.nativeEvent.contentOffset.x / width));
+  };
+
   return (
     <View style={styles.card}>
-      <ImageBackground
-        imageStyle={styles.image}
-        source={WEATHER_BACKGROUND}
-        style={styles.imageArea}
+      <View
+        onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+        style={styles.carousel}
       >
-        <View style={styles.scrim} />
-        <Image
-          accessibilityLabel="달리는 혼디 강아지 캐릭터"
-          resizeMode="contain"
-          source={brandAssets.character.running}
-          style={styles.heroCharacter}
-        />
-        <View style={styles.weatherCopy}>
-          <Text style={styles.greeting}>{weather.greeting} 🐾</Text>
-          <Text style={styles.location}>{weather.location} 날씨는</Text>
-          <View style={styles.temperatureRow}>
-            <Text style={styles.temperature}>{weather.temperature}°</Text>
-            <Text style={styles.condition}>· {weather.condition}</Text>
+        {loading || error ? (
+          <View style={styles.stateArea}>
+            <Ionicons color={colors.seaDeep} name="partly-sunny-outline" size={28} />
+            <Text style={styles.stateText}>
+              {loading ? '제주 날씨를 불러오는 중이에요.' : '날씨를 불러오지 못했어요.'}
+            </Text>
+            {error && (
+              <Pressable accessibilityRole="button" onPress={onRetry} style={styles.retryButton}>
+                <Text style={styles.retryText}>다시 시도</Text>
+              </Pressable>
+            )}
           </View>
-          <Text style={styles.details}>
-            습도 {weather.humidity}%  ·  바람 {weather.windSpeed}m/s
-          </Text>
-        </View>
+        ) : (
+          <>
+            <ScrollView
+              decelerationRate="fast"
+              horizontal
+              onMomentumScrollEnd={handleScrollEnd}
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              snapToInterval={width || undefined}
+            >
+              {weather.map((item) => (
+                <ImageBackground
+                  imageStyle={styles.image}
+                  key={item.location}
+                  source={WEATHER_BACKGROUND}
+                  style={[styles.imageArea, { width }]}
+                >
+                  <View style={styles.scrim} />
+                  <Image
+                    accessibilityLabel="달리는 혼디 강아지 캐릭터"
+                    resizeMode="contain"
+                    source={brandAssets.character.running}
+                    style={styles.heroCharacter}
+                  />
+                  <View style={styles.weatherCopy}>
+                    <Text style={styles.greeting}>안녕, {nickname ?? '보호자'}님! 🐾</Text>
+                    <Text style={styles.location}>{item.location} 날씨는</Text>
+                    <View style={styles.temperatureRow}>
+                      <Text style={styles.temperature}>{item.temperature}°</Text>
+                      <Text style={styles.condition}>· {item.conditionLabel}</Text>
+                    </View>
+                    <Text style={styles.details}>
+                      습도 {item.humidity}%  ·  바람 {item.windSpeed}m/s
+                    </Text>
+                  </View>
 
-        <View style={styles.tipPill}>
-          <Ionicons color={colors.seaDeep} name="leaf-outline" size={14} />
-          <Text numberOfLines={2} style={styles.tipText}>
-            {weather.tip}
-          </Text>
-        </View>
-      </ImageBackground>
+                  <View style={styles.tipPill}>
+                    <Ionicons color={colors.seaDeep} name="leaf-outline" size={14} />
+                    <Text numberOfLines={2} style={styles.tipText}>
+                      {item.tip}
+                    </Text>
+                  </View>
+                </ImageBackground>
+              ))}
+            </ScrollView>
+            <View accessibilityLabel={`${page + 1} / ${weather.length}`} style={styles.pageDots}>
+              {weather.map((item, index) => (
+                <View
+                  key={item.location}
+                  style={[styles.pageDot, index === page && styles.pageDotActive]}
+                />
+              ))}
+            </View>
+          </>
+        )}
+      </View>
 
       <Pressable
         accessibilityRole="button"
@@ -76,6 +145,9 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     justifyContent: 'space-between',
     overflow: 'hidden',
+  },
+  carousel: {
+    height: 174,
   },
   image: {
     width: '100%',
@@ -148,6 +220,44 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     lineHeight: 14,
+  },
+  pageDots: {
+    position: 'absolute',
+    right: spacing.sm,
+    bottom: spacing.xs,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  pageDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: overlayColors.whiteVeil,
+  },
+  pageDotActive: {
+    width: 13,
+    backgroundColor: colors.primary,
+  },
+  stateArea: {
+    height: 174,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.seaSoftLight,
+  },
+  stateText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  retryButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  retryText: {
+    color: colors.seaDeep,
+    fontSize: 12,
+    fontWeight: '800',
   },
   chatButton: {
     height: 43,
