@@ -62,6 +62,9 @@ SEED_ROUTE_ID = uuid.UUID("00000000-0000-0000-0000-000000000201")
 SEED_PLACES = [
     {
         "key": "hyeopjae",
+        # dedup: 수집(유입) 데이터가 있는 DB(dev·프로덕션)에서는 같은 이름 활성 장소를
+        # 재사용하고 시드 사본을 만들지 않는다(중복 장소 재생산 방지 — merge_duplicate_places).
+        "dedup": True,
         "id": uuid.UUID("00000000-0000-0000-0000-000000000101"),
         "name": "협재해수욕장",
         "category": "attraction",
@@ -88,6 +91,7 @@ SEED_PLACES = [
     },
     {
         "key": "hallim_park",
+        "dedup": True,
         "id": uuid.UUID("00000000-0000-0000-0000-000000000103"),
         "name": "한림공원",
         "category": "attraction",
@@ -269,24 +273,37 @@ def seed_pet(db: Session, user: User) -> Pet:
 def seed_places(db: Session) -> dict[str, Place]:
     """공식 장소들. 외래키가 없는 독립 목록이다."""
     places: dict[str, Place] = {}
-    created = 0
+    created = reused = 0
 
     for spec in SEED_PLACES:
         data = dict(spec)
         key = data.pop("key")
+        dedup = data.pop("dedup", False)
 
-        place = db.get(Place, data["id"])
-        if place is not None:
-            _warn_if_changed(f"place[{key}]", "name", place.name, data["name"])
+        place = db.get(Place, data["id"])  # 시드 UUID 로 이미 만든 것(재실행)
+        if place is None and dedup:
+            # 유입본(같은 이름 활성 장소)이 있으면 그걸 쓴다 — 시드 중복 사본을 만들지 않는다.
+            place = db.scalars(
+                select(Place).where(
+                    Place.name == data["name"],
+                    Place.is_active.is_(True),
+                    Place.id != data["id"],
+                )
+            ).first()
+            if place is not None:
+                reused += 1
         if place is None:
             place = Place(**data)
             db.add(place)
             created += 1
+        elif place.id == data["id"]:
+            _warn_if_changed(f"place[{key}]", "name", place.name, data["name"])
 
         places[key] = place
 
     db.flush()
-    print(f"  장소     {created}개 생성 / {len(places) - created}개 건너뜀")
+    kept = len(places) - created - reused
+    print(f"  장소     {created}개 생성 / {reused}개 유입본 재사용 / {kept}개 건너뜀")
     return places
 
 
