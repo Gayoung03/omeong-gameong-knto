@@ -202,6 +202,13 @@ export function PlaceExplorerScreen() {
         />
       </View>
 
+      {/* 장소가 1268곳이라 칩을 눌러 얼마나 좁혀졌는지 알려 줘야 한다. 아직 세지 못한
+          로딩 중과, EmptyResult 가 이미 말해 주는 0건일 때는 띄우지 않는다.
+          지도 모드도 같은 결과를 그리므로 그대로 둔다. */}
+      {isPending || filteredPlaces.length === 0 ? null : (
+        <Text style={styles.resultCount}>총 {filteredPlaces.length}곳</Text>
+      )}
+
       {viewMode === 'list' ? (
         <FlatList
           contentContainerStyle={styles.listContent}
@@ -463,6 +470,12 @@ const styles = StyleSheet.create({
   loading: {
     alignItems: 'center',
     paddingVertical: spacing.xl,
+  },
+  resultCount: {
+    marginHorizontal: spacing.md,
+    marginBottom: 6,
+    color: colors.textSecondary,
+    fontSize: 11,
   },
   listContent: {
     paddingHorizontal: spacing.md,
