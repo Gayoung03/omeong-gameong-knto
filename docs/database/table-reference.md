@@ -21,7 +21,7 @@
 | --- | --- |
 | `id` | 회원 PK |
 | `email` | 로컬 로그인 이메일. 소셜 로그인은 null 가능 |
-| `password_hash` | 비밀번호 해시. 원문 저장 금지 |
+| `password_hash` | 비밀번호 해시. 원문 저장 금지. **CHECK**: `auth_provider='local'`이면 NOT NULL |
 | `auth_provider` | `local`, `kakao`, `apple`, `google` |
 | `provider_user_id` | 소셜 제공자의 회원 식별자 |
 | `nickname` | 앱 표시 닉네임 |
@@ -34,6 +34,9 @@
 
 - 회원 1명은 반려동물, 루트, 리뷰, 챗봇 대화를 여러 건 가집니다.
 - `(auth_provider, provider_user_id)`는 유일해야 합니다.
+- `ck_users_local_requires_password`(`local` → `password_hash` NOT NULL)는 현재 **NOT VALID**
+  상태입니다 — 신규·수정 행부터 강제하고, 시드 데모 계정 정리 후 별도 마이그레이션에서
+  `VALIDATE CONSTRAINT` 로 기존 행까지 확정합니다.
 
 ### `pets`
 

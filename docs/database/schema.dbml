@@ -102,7 +102,7 @@ Enum message_role {
 Table users {
   id uuid [pk]
   email varchar(255) [unique]
-  password_hash varchar(255)
+  password_hash varchar(255) [note: 'CHECK: auth_provider=local 이면 NOT NULL(현재 NOT VALID — 데이터 정리 후 VALIDATE 예정)']
   auth_provider auth_provider [not null, default: 'local']
   provider_user_id varchar(255)
   nickname varchar(50) [not null]
