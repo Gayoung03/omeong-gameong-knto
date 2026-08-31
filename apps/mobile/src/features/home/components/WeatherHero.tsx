@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Image,
   ImageBackground,
@@ -35,11 +35,17 @@ export function WeatherHero({
   onPressChatbot,
   onRetry,
 }: WeatherHeroProps) {
+  const scrollRef = useRef<ScrollView>(null);
   const [width, setWidth] = useState(0);
   const [page, setPage] = useState(0);
 
-  const handleScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (width) setPage(Math.round(event.nativeEvent.contentOffset.x / width));
+  };
+
+  const moveToPage = (index: number) => {
+    scrollRef.current?.scrollTo({ x: index * width, animated: true });
+    setPage(index);
   };
 
   return (
@@ -65,8 +71,10 @@ export function WeatherHero({
             <ScrollView
               decelerationRate="fast"
               horizontal
-              onMomentumScrollEnd={handleScrollEnd}
+              onScroll={handleScroll}
               pagingEnabled
+              ref={scrollRef}
+              scrollEventThrottle={16}
               showsHorizontalScrollIndicator={false}
               snapToInterval={width || undefined}
             >
@@ -105,18 +113,20 @@ export function WeatherHero({
                 </ImageBackground>
               ))}
             </ScrollView>
-            <View pointerEvents="none" style={styles.pageIndicator}>
-              <View
-                accessible
-                accessibilityLabel={`${weather.length}개 지역 중 ${page + 1}번째, ${weather[page]?.location}`}
-                accessibilityLiveRegion="polite"
-                style={styles.pageDots}
-              >
+            <View style={styles.pageIndicator}>
+              <View style={styles.pageDots}>
                 {weather.map((item, index) => (
-                  <View
+                  <Pressable
+                    accessibilityLabel={`${item.location} 날씨 보기`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: index === page }}
+                    hitSlop={6}
                     key={item.location}
-                    style={[styles.pageDot, index === page && styles.pageDotActive]}
-                  />
+                    onPress={() => moveToPage(index)}
+                    style={styles.pageDotButton}
+                  >
+                    <View style={[styles.pageDot, index === page && styles.pageDotActive]} />
+                  </Pressable>
                 ))}
               </View>
             </View>
@@ -239,11 +249,16 @@ const styles = StyleSheet.create({
   pageDots: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 5,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
     borderRadius: radius.full,
     backgroundColor: overlayColors.frostedCard,
+  },
+  pageDotButton: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pageDot: {
     width: 6,
