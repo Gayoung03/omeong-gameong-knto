@@ -1,6 +1,6 @@
 # 장소 · 즐겨찾기 API
 
-작성일: 2026-08-12 · 갱신: 2026-08-18 · 상태: **장소 태그 목록만 보류 — 그 외 구현 착수 가능**
+작성일: 2026-08-12 · 갱신: 2026-08-31 · 상태: **장소 태그 목록만 보류 — 그 외 구현 착수 가능**
 
 공통 규약은 [`README.md`](./README.md)를 따릅니다.
 
@@ -44,7 +44,7 @@ GET /api/v1/places?latitude=33.4996&longitude=126.5312&radius=3000
 | `category` | string | — | `places.category` |
 | `region` | string | — | `places.region` |
 | `tags` | string[] | — | `place_tags.code`. 여러 개면 AND |
-| `petPolicy` | enum[] | — | `indoor_allowed` `outdoor_only` `partial_allowed` `not_allowed` `unknown` |
+| `petPolicy` | enum[] | — | `indoor_allowed` `outdoor_only` `partial_allowed` `unknown`. `not_allowed`를 보내면 항상 0건입니다 (아래 참고) |
 | `environment` | enum | — | `indoor` `outdoor` `mixed` |
 | `latitude` | number | — | -90 ~ 90 |
 | `longitude` | number | — | -180 ~ 180 |
@@ -142,6 +142,43 @@ WHERE created_by_user_id IS NULL
 > 정본은 [`src/types/place.ts`](../../apps/mobile/src/types/place.ts)로 옮겨졌습니다 —
 > 장소 탐색에서도 같은 배지를 쓰게 되어 `src/components/domain/`으로 승격했습니다.
 
+### 동반 불가(`not_allowed`) 장소는 어디에도 나오지 않습니다 **[확정]** (2026-08-31)
+
+오멍가멍은 **반려동물 동반이 가능한 장소만 소개하는 서비스**입니다. 그런데 수집한
+공식 장소 중 일부(2026-08-31 기준 1,268건 중 89건)가 `not_allowed`로 분류되어 있고,
+목록·검색·즐겨찾기에 그대로 섞여 나오고 있었습니다. 동반 불가인 곳을 추천하는 것은
+검색 오류가 아니라 **사용자를 헛걸음시키는 사고**입니다.
+
+**서버가 모든 경로에서 제외합니다.** 앱이 걸러낼 필요가 없습니다.
+
+| 경로 | 동작 |
+| --- | --- |
+| `GET /places` | 결과·`total` 양쪽에서 빠집니다. `petPolicy=not_allowed`를 명시해도 0건입니다 |
+| `GET /places/{placeId}` | `404`. 없는 장소·남의 개인 장소와 같은 응답입니다 |
+| `GET /places/{placeId}/reviews`, `POST .../reviews` | `404` |
+| `PUT /places/{placeId}/favorite` | `404` |
+| `DELETE /places/{placeId}/favorite` | **`204`로 성공합니다** — 아래 참고 |
+| `GET /users/me/favorites` | 목록·`total` 양쪽에서 빠집니다 |
+| 일정 항목 추가, 여행기록의 장소 지정 | `404` |
+| 챗봇 `search_places` | 도구 스키마의 선택지에서 `not_allowed`를 뺐고, 검색도 항상 제외합니다 |
+| `GET /users/me/places` | 영향 없음. 사용자가 등록한 장소는 정책 행이 없어 항상 `unknown`입니다 |
+
+**저장 해제만 예외입니다.** 분류가 나중에 `not_allowed`로 바뀌면 이미 즐겨찾기해 둔
+사용자가 생깁니다. 해제까지 `404`로 막으면 그 장소를 **영원히 목록에서 지울 수 없습니다.**
+등록(PUT)은 반대로 막아야 하므로 두 경로의 동작이 다릅니다.
+
+`unknown`은 **제외 대상이 아닙니다.** 수집 대상 자체가 동반 가능한 곳이라
+"동반 여부를 모름"이 아니라 **"동반은 되는데 실내·야외 세부를 모름"**입니다.
+빼면 전체의 절반이 사라집니다.
+
+데이터는 지우거나 비활성화하지 않고 **쿼리 조건으로만 뺍니다**
+([`place_query.py`](../../apps/api/app/services/place_query.py)의 `pet_friendly_condition`,
+[`place_access.py`](../../apps/api/app/services/place_access.py)의 `load_visible_place`).
+`places.is_active`를 내리면 "폐업"과 뜻이 섞이고, KCISA 재수집 때 되살아납니다.
+
+`petPolicyType` enum 자체는 5종을 유지합니다. 응답에 `not_allowed`가 실리지 않을 뿐이라
+앱의 [`PetPolicy`](../../apps/mobile/src/types/place.ts) 타입은 그대로 둡니다.
+
 ---
 
 ## GET /places/{placeId}
@@ -209,6 +246,7 @@ WHERE created_by_user_id IS NULL
 
 - `dayOfWeek` — 0(일요일) ~ 6(토요일). DB CHECK 제약과 동일합니다.
 - `petPolicy` — 정책 정보가 없는 장소는 `policyType`이 `unknown`이고 나머지는 대부분 `null`입니다.
+  `not_allowed`인 장소는 이 응답에 도달하지 않습니다(`404`).
 - `reliabilityScore` — 0~100. 정책 정보의 신뢰도로, 출처와 확인 시점에 따라 달라집니다.
 - `isUserCreated` — `created_by_user_id`가 있으면 `true`. 사용자 ID 자체는 노출하지 않습니다.
 
@@ -444,3 +482,4 @@ GET /api/v1/users/me/favorites?limit=20&offset=0
 | 2026-08-12 | 사용자 등록 장소의 노출 규칙 부재를 확인 필요로 기록. 앱에 등록 화면이 없다는 사실도 함께 남김 |
 | 2026-08-15 | PR #29 머지 반영 — `activityLevel` `crowdLevel` `weatherSensitivity` 삭제. 마이그레이션 `8c71f4a2d9e0`에서 `places` 컬럼이 drop되어 응답에서 제거 |
 | 2026-08-18 | 미정 3건 확정 — 사용자 등록 장소 **완전 분리**(`GET /users/me/places` 신설), 등록 화면 **제작 확정**, `petPolicyType` 5종 유지 및 `unknown`은 회색 "정보 없음" 뱃지. 태그 목록은 보류 사유를 "추천 방식 미확정"으로 정정 |
+| 2026-08-31 | 동반 불가(`not_allowed`) 장소를 **서비스 전체에서 미노출**로 확정. 목록·상세·리뷰·즐겨찾기·일정·챗봇 검색에서 모두 제외하고, 저장 해제만 예외로 열어 둠 |

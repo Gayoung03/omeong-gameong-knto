@@ -421,7 +421,7 @@ const PET_SPECIES_LABEL = { dog: '강아지', cat: '고양이', other: '기타' 
 | `trip_pace` | `relaxed` `normal` `packed` |
 | `transport_type` | `rental_car` `own_car` `taxi` `public_transport` `walk` `ferry` `airplane` |
 | `place_environment` | `indoor` `outdoor` `mixed` |
-| `pet_policy_type` | `indoor_allowed` `outdoor_only` `partial_allowed` `not_allowed` `unknown` |
+| `pet_policy_type` | `indoor_allowed` `outdoor_only` `partial_allowed` `not_allowed` `unknown`. `not_allowed` 인 장소는 **응답에 실리지 않습니다** ([places.md](./places.md)) |
 | `data_provider` | `tour_api` `kcisa` `visitjeju` `kakao` `tmap` `weather_api` `internal` |
 | `route_status` | `generating` `generated` `saved` `ongoing` `completed` `failed` |
 | `schedule_item_type` | `attraction` `restaurant` `cafe` `accommodation` `custom` |
