@@ -36,14 +36,26 @@ export function WeatherHero({
   onRetry,
 }: WeatherHeroProps) {
   const scrollRef = useRef<ScrollView>(null);
+  const targetPageRef = useRef<number | null>(null);
   const [width, setWidth] = useState(0);
   const [page, setPage] = useState(0);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (width) setPage(Math.round(event.nativeEvent.contentOffset.x / width));
+    if (!width) return;
+
+    const offset = event.nativeEvent.contentOffset.x;
+    if (targetPageRef.current !== null) {
+      if (Math.abs(offset - targetPageRef.current * width) < 1) targetPageRef.current = null;
+      return;
+    }
+
+    setPage(Math.round(offset / width));
   };
 
   const moveToPage = (index: number) => {
+    if (!width || index === page) return;
+
+    targetPageRef.current = index;
     scrollRef.current?.scrollTo({ x: index * width, animated: true });
     setPage(index);
   };
@@ -71,6 +83,9 @@ export function WeatherHero({
             <ScrollView
               decelerationRate="fast"
               horizontal
+              onScrollBeginDrag={() => {
+                targetPageRef.current = null;
+              }}
               onScroll={handleScroll}
               pagingEnabled
               ref={scrollRef}
@@ -261,13 +276,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pageDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 7,
+    height: 7,
+    borderRadius: radius.full,
     backgroundColor: colors.textTertiary,
   },
   pageDotActive: {
-    width: 17,
     backgroundColor: colors.primary,
   },
   stateArea: {
