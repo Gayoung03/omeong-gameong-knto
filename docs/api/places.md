@@ -167,6 +167,8 @@ WHERE created_by_user_id IS NULL
   "environment": "outdoor",
   "amenities": ["주차장", "화장실", "편의점"],
   "averageStayMinutes": 90,
+  "checkInTime": null,
+  "checkOutTime": null,
   "reservationRequired": false,
   "isUserCreated": false,
   "tags": [
@@ -215,6 +217,7 @@ WHERE created_by_user_id IS NULL
 - `dayOfWeek` — 0(일요일) ~ 6(토요일). DB CHECK 제약과 동일합니다.
 - `petPolicy` — 정책 정보가 없는 장소는 `policyType`이 `unknown`이고 나머지는 대부분 `null`입니다.
 - `categoryDetail` — `category`(불변 enum)의 세부 분류(예: `etc` 안의 동물약국·동물병원). 아직 채워지지 않은 장소는 `null`입니다. 라벨은 앱에서 표기합니다.
+- `checkInTime`·`checkOutTime` — 숙박 장소의 체크인/아웃 시각(`HH:MM:SS`, `null` 가능). 한쪽만 알려진 경우도 있어 짝이 항상 맞지는 않습니다. 숙박이 아닌 장소는 보통 둘 다 `null`입니다.
 - `reliabilityScore` — 0~100. 정책 정보의 신뢰도로, 출처와 확인 시점에 따라 달라집니다.
 - `muzzleRequired`·`foodAreaAllowed` — 3값 불리언입니다. `true`/`false`는 명시, `null`은 미확인이라 "정보 없음"으로 표시하세요(false 로 단정하지 않습니다).
 - `maxPetsPerPerson` — 1인당 동반 마리수 상한(정수, `null`이면 미확인).

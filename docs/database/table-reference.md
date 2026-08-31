@@ -130,6 +130,8 @@
 | `environment` | 실내, 실외, 혼합 |
 | `amenities` | 주차장, 화장실, Wi-Fi 등 편의시설 배열 |
 | `average_stay_minutes` | 추천 일정 체류시간 |
+| `business_hours_raw` | AI 입출력: `place_business_hours.raw_text` 를 장소당 1값으로 이관할 목적지. 아직 응답에 노출하지 않음(요일별 rawText 대체 게이트 뒤) |
+| `check_in_time`, `check_out_time` | AI 입출력: 숙박 체크인/아웃. hours 파싱과 분리한 신규 필드 (nullable, 짝 강제 없음) |
 | `created_by_user_id` | 사용자가 직접 등록한 장소일 때 작성 회원 |
 | `is_active` | 서비스 노출 여부 |
 

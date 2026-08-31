@@ -63,6 +63,12 @@ class Place(Base):
     )
     amenities: Mapped[list[str] | None] = mapped_column(ARRAY(String))
     average_stay_minutes: Mapped[int | None] = mapped_column(Integer)
+    # 영업시간 raw_text 의 장소당 1값 이관 목적지(place_business_hours 정규화 후 드롭 예정).
+    # 아직 응답 노출 안 함 — 기존 요일별 rawText 대체는 명세·프론트 조율 게이트 뒤(8.1).
+    business_hours_raw: Mapped[str | None] = mapped_column(Text)
+    # 숙박 체크인/아웃. hours 파싱 대상에서 분리한 신규 가산 필드. 한쪽만 알 수 있어 CHECK 없음.
+    check_in_time: Mapped[time | None] = mapped_column(Time)
+    check_out_time: Mapped[time | None] = mapped_column(Time)
     reservation_required: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )

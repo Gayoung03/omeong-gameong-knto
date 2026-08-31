@@ -6,6 +6,7 @@
 """
 
 import uuid
+from datetime import time
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -152,6 +153,20 @@ def test_category_detail_은_상세에_그대로_내려온다(client: TestClient
 
     assert client.get(f"/api/v1/places/{plain.id}").json()["categoryDetail"] is None
     assert client.get(f"/api/v1/places/{detailed.id}").json()["categoryDetail"] == "동물약국"
+
+
+def test_숙박_체크인아웃은_상세에_내려온다(client: TestClient, db: Session) -> None:
+    stay = _make_place(db, "반려견 동반 펜션")
+    stay.check_in_time = time(15, 0)
+    stay.check_out_time = time(11, 0)
+    db.flush()
+
+    body = client.get(f"/api/v1/places/{stay.id}").json()
+
+    assert body["checkInTime"] == "15:00:00"
+    assert body["checkOutTime"] == "11:00:00"
+    # business_hours_raw 는 아직 응답에 노출하지 않는다(게이트 뒤).
+    assert "businessHoursRaw" not in body
 
 
 # ---------------------------------------------------------------------------

@@ -177,6 +177,9 @@ Table places {
   environment place_environment
   amenities varchar[]
   average_stay_minutes int
+  business_hours_raw text [note: 'AI 입출력: place_business_hours.raw_text 장소당 1값 이관 목적지(응답 미노출)']
+  check_in_time time [note: 'AI 입출력: 숙박 체크인']
+  check_out_time time [note: 'AI 입출력: 숙박 체크아웃']
   reservation_required boolean [not null, default: false]
   created_by_user_id uuid [ref: > users.id]
   is_active boolean [not null, default: true]

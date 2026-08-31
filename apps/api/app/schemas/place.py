@@ -121,6 +121,9 @@ class PlaceDetail(APISchema):
     environment: PlaceEnvironment | None
     amenities: list[str] | None
     average_stay_minutes: int | None
+    # 숙박 체크인/아웃(신규 가산 필드). 한쪽만 알 수 있어 짝을 강제하지 않는다. null 가능.
+    check_in_time: time | None
+    check_out_time: time | None
     reservation_required: bool
     # created_by_user_id 가 있으면 true. **사용자 id 자체는 내리지 않는다.**
     is_user_created: bool

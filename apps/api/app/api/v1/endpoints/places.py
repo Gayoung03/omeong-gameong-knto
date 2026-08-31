@@ -417,6 +417,8 @@ def _to_detail(db: Session, place: Place, user: User | None) -> PlaceDetail:
         environment=place.environment,
         amenities=place.amenities,
         average_stay_minutes=place.average_stay_minutes,
+        check_in_time=place.check_in_time,
+        check_out_time=place.check_out_time,
         reservation_required=place.reservation_required,
         is_user_created=place.created_by_user_id is not None,
         tags=[PlaceTagResponse(code=code, name=name) for code, name in tag_rows],
