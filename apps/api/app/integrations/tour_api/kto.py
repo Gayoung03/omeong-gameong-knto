@@ -7,7 +7,7 @@ import httpx
 
 from app.core.config import settings
 
-LOCATION_LIST_URL = "https://apis.data.go.kr/B551011/KorService2/locationBasedList2"
+LOCATION_LIST_URL = "https://apis.data.go.kr/B551011/KorPetTourService2/locationBasedList2"
 REQUEST_TIMEOUT_SECONDS = 10.0
 
 
