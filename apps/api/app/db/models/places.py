@@ -43,6 +43,9 @@ class Place(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False)
+    # etc 세부 분류(동물약국·동물병원 등)를 description 에서 추출해 담는 자리.
+    # category enum 은 불변(API 계약 보호) — 세분화는 이 컬럼으로만. 값은 파싱 배치가 채운다.
+    category_detail: Mapped[str | None] = mapped_column(String(50))
     region: Mapped[str | None] = mapped_column(String(50))
     address: Mapped[str | None] = mapped_column(Text)
     road_address: Mapped[str | None] = mapped_column(Text)
@@ -60,6 +63,12 @@ class Place(Base):
     )
     amenities: Mapped[list[str] | None] = mapped_column(ARRAY(String))
     average_stay_minutes: Mapped[int | None] = mapped_column(Integer)
+    # 영업시간 raw_text 의 장소당 1값 이관 목적지(place_business_hours 정규화 후 드롭 예정).
+    # 아직 응답 노출 안 함 — 기존 요일별 rawText 대체는 명세·프론트 조율 게이트 뒤(8.1).
+    business_hours_raw: Mapped[str | None] = mapped_column(Text)
+    # 숙박 체크인/아웃. hours 파싱 대상에서 분리한 신규 가산 필드. 한쪽만 알 수 있어 CHECK 없음.
+    check_in_time: Mapped[time | None] = mapped_column(Time)
+    check_out_time: Mapped[time | None] = mapped_column(Time)
     reservation_required: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
@@ -132,6 +141,10 @@ class PlacePetPolicy(Base):
             "reliability_score IS NULL OR reliability_score BETWEEN 0 AND 100",
             name="reliability_score_range",
         ),
+        CheckConstraint(
+            "max_pets_per_person IS NULL OR max_pets_per_person >= 1",
+            name="max_pets_per_person_positive",
+        ),
         Index("ix_place_pet_policies_place_id", "place_id"),
     )
 
@@ -156,6 +169,13 @@ class PlacePetPolicy(Base):
     source_url: Mapped[str | None] = mapped_column(Text)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reliability_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    # AI 입출력 컬럼(ai-io-column-design 7.1). 전부 nullable — 3값 의미 유지
+    # (True/False = 명시, NULL = 미확인). notes 파싱 배치가 채운다.
+    muzzle_required: Mapped[bool | None] = mapped_column(Boolean)  # 입마개 필수 여부
+    food_area_allowed: Mapped[bool | None] = mapped_column(Boolean)  # 식음료 공간 동반 가능
+    max_pets_per_person: Mapped[int | None] = mapped_column(SmallInteger)  # 1인당 동반 마리수 상한
+    # 정제된 주의사항. 원본 notes 는 그대로 두고(AI 등급 X) 이 컬럼만 관찰에 쓴다.
+    caution_note: Mapped[str | None] = mapped_column(String(150))
 
 
 class PlaceTag(Base):

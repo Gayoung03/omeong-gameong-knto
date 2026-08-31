@@ -37,7 +37,15 @@ from app.db.models.enums import (
 
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = (UniqueConstraint("auth_provider", "provider_user_id"),)
+    __table_args__ = (
+        UniqueConstraint("auth_provider", "provider_user_id"),
+        # local(이메일) 계정은 password_hash 가 반드시 있어야 한다. 소셜 계정은 NULL 허용.
+        # 마이그레이션은 NOT VALID 로 추가하고, 데이터 정리 후 별도 마이그레이션에서 VALIDATE.
+        CheckConstraint(
+            "auth_provider <> 'local' OR password_hash IS NOT NULL",
+            name="local_requires_password",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str | None] = mapped_column(String(255), unique=True)

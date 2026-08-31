@@ -3,11 +3,13 @@
 import uuid
 from datetime import date
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import Favorite, Route, TravelLog, User
-from app.db.models.enums import RouteStatus
+from app.db.models.enums import AuthProvider, RouteStatus
 
 
 def test_내_정보와_활동_요약을_조회한다(
@@ -81,3 +83,38 @@ def test_알림_설정_null은_거부한다(client: TestClient) -> None:
         json={"marketingEnabled": None},
     )
     assert response.status_code == 422
+
+
+def _local_user(**overrides: object) -> User:
+    base = dict(
+        id=uuid.uuid4(),
+        nickname="계정",
+        email=f"{uuid.uuid4().hex}@check.local",
+        auth_provider=AuthProvider.LOCAL,
+        password_hash="test-only-not-a-real-hash",
+    )
+    return User(**{**base, **overrides})
+
+
+class TestLocalRequiresPassword:
+    """ck_users_local_requires_password — NOT VALID 이지만 신규 행은 강제된다."""
+
+    def test_local_without_password_is_rejected(self, db: Session) -> None:
+        db.add(_local_user(password_hash=None))
+        with pytest.raises(IntegrityError):
+            db.flush()
+
+    def test_local_with_password_is_ok(self, db: Session) -> None:
+        db.add(_local_user())
+        db.flush()  # 예외가 나지 않는다
+
+    def test_social_without_password_is_ok(self, db: Session) -> None:
+        # 소셜 계정은 비밀번호가 없어도 된다.
+        db.add(
+            _local_user(
+                auth_provider=AuthProvider.KAKAO,
+                provider_user_id=uuid.uuid4().hex,
+                password_hash=None,
+            )
+        )
+        db.flush()  # 예외가 나지 않는다

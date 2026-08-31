@@ -313,7 +313,19 @@ class RouteCalculationCache(Base):
         CheckConstraint("distance_meters >= 0", name="distance_nonnegative"),
         CheckConstraint("duration_minutes >= 0", name="duration_nonnegative"),
         CheckConstraint("expires_at > calculated_at", name="expiry_order"),
+        # 만료 정리(WHERE expires_at <= now) 용 단일 인덱스.
         Index("ix_route_calculation_cache_expires_at", "expires_at"),
+        # 캐시 조회는 좌표 4개 + 이동수단으로 찾는다. 단일 인덱스뿐이면 Seq Scan 이라
+        # 행이 쌓일수록 느려진다. expires_at 은 INCLUDE 로 얹어 인덱스만으로 유효성 판정.
+        Index(
+            "ix_route_calculation_cache_lookup",
+            "origin_latitude",
+            "origin_longitude",
+            "destination_latitude",
+            "destination_longitude",
+            "transport",
+            postgresql_include=["expires_at"],
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
