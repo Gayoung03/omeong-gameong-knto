@@ -71,3 +71,6 @@ apps/api/region-fixed-*.txt
 
 # 리허설용 DB 덤프. 프로덕션·dev 실데이터가 들어 있으므로 절대 커밋하지 않는다.
 infra/dumps/
+
+# 파싱 배치 스테이징(원문 발췌 포함). 실데이터라 커밋 금지 — 로컬 검수용.
+infra/batch/
