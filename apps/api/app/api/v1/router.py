@@ -16,6 +16,7 @@ from app.api.v1.endpoints import (
     travel_logs,
     uploads,
     users,
+    weather,
 )
 
 api_router = APIRouter()
@@ -31,4 +32,5 @@ api_router.include_router(users.router, tags=["users"])
 api_router.include_router(pets.router, tags=["pets"])
 api_router.include_router(travel_logs.router, tags=["travel-logs"])
 api_router.include_router(uploads.router, tags=["uploads"])
+api_router.include_router(weather.router, tags=["weather"])
 api_router.include_router(chatbot.router, tags=["chat"])

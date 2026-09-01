@@ -1,6 +1,6 @@
 # 날씨 API
 
-작성일: 2026-08-12 · 갱신: 2026-08-18 · 상태: **미정 항목 없음 — 구현 착수 가능**
+작성일: 2026-08-12 · 갱신: 2026-08-31 · 상태: **홈 현재 날씨 구현 완료**
 
 공통 규약은 [`README.md`](./README.md)를 따릅니다.
 
@@ -10,8 +10,10 @@
 
 ## 개념 정리
 
-날씨는 외부 제공처에서 받아 `weather_snapshots`에 저장한 **스냅샷**입니다.
-API는 이 저장된 값을 읽어 내려줄 뿐, 요청마다 외부 API를 호출하지 않습니다.
+홈 현재 날씨는 `WEATHER_API_KEY`를 사용해 기상청 단기예보를 조회합니다.
+앱은 10분 동안 응답을 재사용하며, 키는 백엔드에만 둡니다.
+
+여행 일정 날씨는 별도로 `weather_snapshots`에 저장하는 **스냅샷**입니다.
 
 `(region, forecast_at)`에 UNIQUE 제약이 있어 같은 지역·같은 시각의 예보는 한 행뿐입니다.
 
@@ -56,23 +58,21 @@ sunny  partly_cloudy  cloudy  rainy  snowy  windy
 ### 요청
 
 ```text
-GET /api/v1/weather/current?region=제주시
-GET /api/v1/weather/current?latitude=33.4996&longitude=126.5312
+GET /api/v1/weather/current?region=제주
+GET /api/v1/weather/current?region=한림
 ```
 
 | 파라미터 | 필수 | 설명 |
 | --- | --- | --- |
-| `region` | 조건부 | `weather_snapshots.region` |
-| `latitude` `longitude` | 조건부 | 좌표로 가장 가까운 지역을 찾음 |
+| `region` | ✅ | `제주` `서귀포` `한림` `성산` 중 하나 |
 
-둘 중 하나는 반드시 보내야 합니다. 좌표는 지역을 찾는 데만 쓰고 **저장하지 않습니다**
-([DB 문서](../database/README.md)의 GPS 정책).
+각 권역은 서버에 정의된 대표 좌표로 조회하며 사용자의 GPS는 받거나 저장하지 않습니다.
 
 ### 응답 `200`
 
 ```json
 {
-  "region": "제주시",
+  "region": "제주",
   "forecastAt": "2026-08-12T15:00:00+09:00",
   "condition": "partly_cloudy",
   "temperature": 28.5,
@@ -92,8 +92,8 @@ GET /api/v1/weather/current?latitude=33.4996&longitude=126.5312
 
 | 코드 | 상황 |
 | --- | --- |
-| 404 | 해당 지역의 저장된 예보가 없음 |
-| 422 | `region`과 좌표를 둘 다 보내지 않음, 좌표 범위 초과 |
+| 422 | 지원하지 않는 지역 또는 `region` 누락 |
+| 502 | 기상청 호출 실패 또는 불완전한 응답 |
 
 ### `greeting`·`tip`은 앱이 만듭니다 **[확정]** (2026-08-18)
 
