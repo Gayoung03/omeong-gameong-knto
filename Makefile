@@ -7,6 +7,7 @@ REHEARSAL_COMPOSE = docker compose -f infra/docker-compose.rehearsal.yml
 	db-migrate db-migrate-check db-migrate-local db-seed db-seed-local \
 	db-migration-smoke db-dump-dev db-rehearsal-up db-rehearsal-restore \
 	db-rehearsal-migrate db-rehearsal-down chat-check chat-check-places \
+	chat-check-guardrails \
 	lint typecheck test check
 
 setup: mobile-install api-install
@@ -110,15 +111,26 @@ db-rehearsal-down:
 chat-check:
 	@mkdir -p tmp
 	@$(LOCAL_COMPOSE) run --build --rm -T api .venv/bin/python -m scripts.chat_quality_check \
-		--set rules $(if $(MODELS),--models $(MODELS)) > tmp/chat-quality-rules.md
+		--set rules $(if $(MODELS),--models $(MODELS)) $(if $(REPEAT),--repeat $(REPEAT)) \
+		> tmp/chat-quality-rules.md
 	@echo "→ tmp/chat-quality-rules.md"
+
+# 검색이 필요 없는 질문(인사·제주 밖·의료·되묻기). 탈출구가 열리는지만 보므로
+# 장소 데이터를 타지 않는다 — 로컬로 충분하다.
+chat-check-guardrails:
+	@mkdir -p tmp
+	@$(LOCAL_COMPOSE) run --build --rm -T api .venv/bin/python -m scripts.chat_quality_check \
+		--set guardrails $(if $(MODELS),--models $(MODELS)) $(if $(REPEAT),--repeat $(REPEAT)) \
+		> tmp/chat-quality-guardrails.md
+	@echo "→ tmp/chat-quality-guardrails.md"
 
 # 장소 질문. **팀 RDS 로만 검증된다** — 로컬 씨앗 장소 4건은 region 이 챗봇 어휘
 # 밖이라 어떤 지역 질문도 0건이다. 그래서 컨테이너가 아니라 .env 의 DATABASE_URL 로 붙는다.
 chat-check-places:
 	@mkdir -p tmp
 	@cd apps/api && uv run python -m scripts.chat_quality_check \
-		--set places $(if $(MODELS),--models $(MODELS)) > ../../tmp/chat-quality-places.md
+		--set places $(if $(MODELS),--models $(MODELS)) $(if $(REPEAT),--repeat $(REPEAT)) \
+		> ../../tmp/chat-quality-places.md
 	@echo "→ tmp/chat-quality-places.md"
 
 lint:
