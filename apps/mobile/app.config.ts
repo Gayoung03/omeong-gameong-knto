@@ -6,6 +6,11 @@ const config: ExpoConfig = {
   version: '0.1.0',
   orientation: 'portrait',
   scheme: 'omeonggameong',
+  extra: {
+    eas: {
+      projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID,
+    },
+  },
   userInterfaceStyle: 'automatic',
   ios: {
     supportsTablet: true,
@@ -23,6 +28,7 @@ const config: ExpoConfig = {
   },
   plugins: [
     'expo-router',
+    'expo-notifications',
     'expo-secure-store',
     '@react-native-community/datetimepicker',
     'expo-sharing',
