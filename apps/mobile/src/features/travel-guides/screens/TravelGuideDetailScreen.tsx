@@ -1,17 +1,18 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/src/components/feedback/EmptyState';
+import { ErrorState } from '@/src/components/feedback/ErrorState';
 import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
 import { categoryColors, colors, radius, shadow, spacing, typography } from '@/src/theme';
 
 import {
-  findTransportGuide,
   type GuideBadge,
   type GuideTone,
   type TransportGuide,
 } from '../constants/travelGuideContent';
+import { useTravelGuideDetail } from '../hooks/useTravelGuides';
 
 type TravelGuideDetailScreenProps = {
   guideId: string;
@@ -54,7 +55,27 @@ const toneStyles: Record<
 };
 
 export function TravelGuideDetailScreen({ guideId }: TravelGuideDetailScreenProps) {
-  const guide = findTransportGuide(guideId);
+  const { data: guide, error, isError, isPending, refetch } = useTravelGuideDetail(guideId);
+
+  if (isPending) {
+    return (
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
+        <ScreenHeader title="여행 가이드" />
+        <View style={styles.centered}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (isError) {
+    return (
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
+        <ScreenHeader title="여행 가이드" />
+        <ErrorState error={error} onRetry={() => refetch()} />
+      </SafeAreaView>
+    );
+  }
 
   if (!guide) {
     return (
@@ -219,6 +240,12 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: typography.micro.fontSize,
     fontWeight: '700',
+  },
+  centered: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.xl,
   },
   content: {
     gap: spacing.md,

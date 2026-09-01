@@ -1,26 +1,32 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ErrorState } from '@/src/components/feedback/ErrorState';
 import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
 import { brandAssets } from '@/src/config/brandAssets';
 import { categoryColors, colors, radius, shadow, spacing, typography } from '@/src/theme';
 import type { IoniconName } from '@/src/features/home/types/home';
 
 import {
-  airlineGuides,
   checklistSections,
-  ferryGuides,
-  guideSummary,
-  preparationGuides,
   type ChecklistItem,
   type GuideBadge,
   type GuideTone,
   type PreparationGuide,
   type TransportGuide,
 } from '../constants/travelGuideContent';
+import { useTravelGuideOverview } from '../hooks/useTravelGuides';
 
 type GuideTab = 'airline' | 'ferry' | 'checklist';
 
@@ -32,14 +38,9 @@ type GuideTabItem = {
 };
 
 const GUIDE_TABS: GuideTabItem[] = [
-  { id: 'airline', label: '항공', countLabel: `${airlineGuides.length}`, icon: 'airplane' },
-  { id: 'ferry', label: '여객선', countLabel: `${ferryGuides.length}`, icon: 'boat' },
-  {
-    id: 'checklist',
-    label: '체크리스트',
-    countLabel: `${checklistSections.length}`,
-    icon: 'checkmark-circle-outline',
-  },
+  { id: 'airline', label: '항공', countLabel: '0', icon: 'airplane' },
+  { id: 'ferry', label: '여객선', countLabel: '0', icon: 'boat' },
+  { id: 'checklist', label: '체크리스트', countLabel: '0', icon: 'checkmark-circle-outline' },
 ];
 
 const tabCopy: Record<GuideTab, { title: string; description: string }> = {
@@ -96,9 +97,18 @@ const toneStyles: Record<
 export function TravelPreparationScreen() {
   const [activeTab, setActiveTab] = useState<GuideTab>('airline');
   const [checkedIds, setCheckedIds] = useState<Set<string>>(() => new Set());
+  const { data, error, isError, isPending, refetch } = useTravelGuideOverview();
 
-  const checklistTotal = checklistSections.reduce((count, section) => count + section.items.length, 0);
+  const checklistTotal = checklistSections.reduce(
+    (count, section) => count + section.items.length,
+    0,
+  );
   const checklistProgress = checklistTotal > 0 ? checkedIds.size / checklistTotal : 0;
+  const tabCounts: Record<GuideTab, number> = {
+    airline: data?.airlineGuides.length ?? 0,
+    ferry: data?.ferryGuides.length ?? 0,
+    checklist: checklistSections.length,
+  };
 
   const handleTabPress = (tab: GuideTab) => {
     setActiveTab(tab);
@@ -126,45 +136,60 @@ export function TravelPreparationScreen() {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScreenHeader title="여행 준비 가이드" />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <GuideHero />
-        <OfficialNotice />
-        <GuideTabBar activeTab={activeTab} onPressTab={handleTabPress} />
-
-        <View style={styles.sectionIntro}>
-          <Text style={styles.sectionTitle}>{tabCopy[activeTab].title}</Text>
-          <Text style={styles.sectionDescription}>{tabCopy[activeTab].description}</Text>
+      {isPending ? (
+        <View style={styles.centered}>
+          <ActivityIndicator color={colors.primary} />
         </View>
-
-        {activeTab === 'airline' ? (
-          <TransportGuideList
-            guides={airlineGuides}
-            onPressGuide={openTransportGuide}
+      ) : isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
+      ) : (
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <GuideHero
+            guideCount={data.guideCount}
+            latestVerifiedLabel={data.latestVerifiedLabel}
+            ruleCount={data.ruleCount}
           />
-        ) : null}
+          <OfficialNotice />
+          <GuideTabBar activeTab={activeTab} counts={tabCounts} onPressTab={handleTabPress} />
 
-        {activeTab === 'ferry' ? (
-          <TransportGuideList
-            guides={ferryGuides}
-            onPressGuide={openTransportGuide}
-          />
-        ) : null}
+          <View style={styles.sectionIntro}>
+            <Text style={styles.sectionTitle}>{tabCopy[activeTab].title}</Text>
+            <Text style={styles.sectionDescription}>{tabCopy[activeTab].description}</Text>
+          </View>
 
-        {activeTab === 'checklist' ? (
-          <ChecklistGuide
-            checkedIds={checkedIds}
-            checkedTotal={checkedIds.size}
-            progress={checklistProgress}
-            total={checklistTotal}
-            onToggleItem={toggleChecklistItem}
-          />
-        ) : null}
-      </ScrollView>
+          {activeTab === 'airline' ? (
+            <TransportGuideList guides={data.airlineGuides} onPressGuide={openTransportGuide} />
+          ) : null}
+
+          {activeTab === 'ferry' ? (
+            <TransportGuideList guides={data.ferryGuides} onPressGuide={openTransportGuide} />
+          ) : null}
+
+          {activeTab === 'checklist' ? (
+            <ChecklistGuide
+              checkedIds={checkedIds}
+              checkedTotal={checkedIds.size}
+              progress={checklistProgress}
+              preparationGuides={data.preparationGuides}
+              total={checklistTotal}
+              onToggleItem={toggleChecklistItem}
+            />
+          ) : null}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
 
-function GuideHero() {
+function GuideHero({
+  guideCount,
+  latestVerifiedLabel,
+  ruleCount,
+}: {
+  guideCount: number;
+  latestVerifiedLabel: string;
+  ruleCount: number;
+}) {
   return (
     <View style={styles.hero}>
       <View style={styles.heroCopy}>
@@ -177,9 +202,9 @@ function GuideHero() {
       <Image resizeMode="contain" source={brandAssets.character.sitting} style={styles.heroImage} />
 
       <View style={styles.heroStats}>
-        <SummaryItem label="가이드" value={`${guideSummary.guideCount}편`} />
-        <SummaryItem label="운송 규정" value={`${guideSummary.ruleCount}건`} />
-        <SummaryItem label="확인일" value={guideSummary.latestVerifiedLabel} />
+        <SummaryItem label="가이드" value={`${guideCount}편`} />
+        <SummaryItem label="운송 규정" value={`${ruleCount}건`} />
+        <SummaryItem label="확인일" value={latestVerifiedLabel} />
       </View>
     </View>
   );
@@ -212,9 +237,11 @@ function OfficialNotice() {
 
 function GuideTabBar({
   activeTab,
+  counts,
   onPressTab,
 }: {
   activeTab: GuideTab;
+  counts: Record<GuideTab, number>;
   onPressTab: (tab: GuideTab) => void;
 }) {
   return (
@@ -238,7 +265,7 @@ function GuideTabBar({
               {tab.label}
             </Text>
             <Text style={[styles.tabCount, isSelected && styles.tabCountSelected]}>
-              {tab.countLabel}
+              {counts[tab.id] || tab.countLabel}
             </Text>
           </Pressable>
         );
@@ -257,23 +284,13 @@ function TransportGuideList({
   return (
     <View style={styles.guideList}>
       {guides.map((guide) => (
-        <TransportGuideCard
-          guide={guide}
-          key={guide.id}
-          onPress={() => onPressGuide(guide.id)}
-        />
+        <TransportGuideCard guide={guide} key={guide.id} onPress={() => onPressGuide(guide.id)} />
       ))}
     </View>
   );
 }
 
-function TransportGuideCard({
-  guide,
-  onPress,
-}: {
-  guide: TransportGuide;
-  onPress: () => void;
-}) {
+function TransportGuideCard({ guide, onPress }: { guide: TransportGuide; onPress: () => void }) {
   const iconTone = guide.category === 'airline' ? colors.seaDeep : colors.leaf;
   const iconBackground = guide.category === 'airline' ? colors.seaSoftLight : colors.leafSoft;
 
@@ -331,12 +348,14 @@ function BadgeRow({ badges }: { badges: GuideBadge[] }) {
 function ChecklistGuide({
   checkedIds,
   checkedTotal,
+  preparationGuides,
   progress,
   total,
   onToggleItem,
 }: {
   checkedIds: Set<string>;
   checkedTotal: number;
+  preparationGuides: PreparationGuide[];
   progress: number;
   total: number;
   onToggleItem: (itemId: string) => void;
@@ -347,7 +366,9 @@ function ChecklistGuide({
         <View style={styles.progressHeader}>
           <View>
             <Text style={styles.progressTitle}>공통 체크 진행률</Text>
-            <Text style={styles.progressDescription}>예약, 케이지, 당일 준비를 차례로 점검해요.</Text>
+            <Text style={styles.progressDescription}>
+              예약, 케이지, 당일 준비를 차례로 점검해요.
+            </Text>
           </View>
           <Text style={styles.progressCount}>
             {checkedTotal}/{total}
@@ -476,6 +497,12 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: typography.micro.fontSize,
     fontWeight: '700',
+  },
+  centered: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.xl,
   },
   checkbox: {
     alignItems: 'center',

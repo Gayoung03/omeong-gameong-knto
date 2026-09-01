@@ -1,176 +1,148 @@
 # 여행 가이드 API
 
-작성일: 2026-08-12 · 갱신: 2026-08-18 · 상태: **보류 — 화면 기획 대기**
+작성일: 2026-08-12 · 갱신: 2026-08-30 · 상태: **구현**
 
 공통 규약은 [`README.md`](./README.md)를 따릅니다.
 
-관련 DB 테이블: **없음**
+관련 DB 테이블:
+
+- `guide_documents`
+- `guide_document_sources`
+- `transport_pet_rules`
+- `transport_restricted_breeds`
 
 ---
 
-## 무엇을 하는 기능인가 **[확정]** (2026-08-18)
+## 기능
 
-**반려동물과 여행할 때 도움이 되는 정보를 모아 보는 곳입니다.**
+반려동물과 제주 여행을 준비할 때 필요한 항공사·여객선 탑승 규정과 공통 준비 가이드를 제공합니다.
 
-성격은 이렇게 정해졌습니다. 사람 가이드(투어 가이드)를 매칭하는 기능이 아니라,
-읽을거리 형태의 콘텐츠를 모아 보여주는 화면입니다.
+앱의 여행 준비 가이드 화면은 다음 데이터를 사용합니다.
 
----
-
-## 이 문서가 보류인 이유
-
-성격은 정해졌지만 **화면 기획이 아직 없습니다.**
-어떤 정보를, 어디서 가져와, 어떤 목록·상세 구조로 보여줄지가 정해지지 않았습니다.
-
-근거로 삼을 것도 없습니다.
-
-| | 상태 |
-| --- | --- |
-| DB 테이블 | **없음** |
-| 엔드포인트 | `app/api/v1/endpoints/guides.py`에 docstring 한 줄뿐 |
-| 앱 화면 | `features/travel-guides/`, `app/guides/` 모두 `.gitkeep`만 있음 |
-
-따라서 이 문서는 **요청·응답을 확정하지 않고**, 확인된 사실과 정해야 할 것만 정리합니다.
-화면 기획 → DB 테이블 설계 → API 명세 순서로 진행합니다.
+- 항공사별 기내·위탁 가능 여부
+- 기내·위탁 무게 제한
+- 국내선 요금
+- 신청 마감·온라인 체크인 제한
+- 여객선 항로·소요 시간·동반 조건
+- 출처와 확인일
+- 출발 전 공통 체크리스트
 
 ---
 
-## 확인된 것
-
-### 앱에 존재하는 유일한 관련 화면
-
-홈 화면의 "제주 여행 이야기" 섹션입니다.
-[`ContentRecommendation.tsx`](../../apps/mobile/src/features/home/components/ContentRecommendation.tsx)가
-카드 그리드를 그립니다.
-
-타입은 [`features/home/types/home.ts`](../../apps/mobile/src/features/home/types/home.ts)에 있습니다.
-
-```ts
-export type EditorialCard = {
-  id: string;
-  title: string;
-  imageUrl: string;
-};
-```
-
-목업 데이터는 4건이며, 제목에 줄바꿈(`\n`)이 들어간 문구입니다.
-
-```text
-반려동물과 갈 수 있는\n제주 여름 휴양지
-갑자기 만난 소나기,\n이런 카페는 어떠세요?
-오늘 날씨에 맞는\n실내 장소 추천
-```
-
-### 프론트가 남긴 단서
-
-[`home.mock.ts`](../../apps/mobile/src/features/home/mocks/home.mock.ts)에 주석이 있습니다.
-
-```text
-TODO: 백엔드 크롤링 API가 준비되면 imageUrl과 title을 응답 데이터로 교체합니다.
-```
-
-**"크롤링"** 이라는 단어가 유일한 방향 단서입니다. 다만 어디서 무엇을 수집한다는 것인지는 없습니다.
-
-카드는 `Pressable`로 감싸져 있으나 **`onPress` 핸들러가 없습니다.**
-누르면 어디로 갈지 아직 정해지지 않았다는 뜻입니다.
-
-홈의 빠른 메뉴에도 `coming-soon` 목적지가 있어, 이 영역이 미완성임을 보여줍니다.
-
----
-
-## 정해야 할 것
-
-### 1. 정보를 어디서 가져오는가
-
-"반려동물과 여행할 때 도움이 되는 정보"라는 성격은 정해졌지만,
-그 정보를 **누가 만들고 어디서 가져오는지**가 안 정해졌습니다.
-세 가지 방식이 가능하고 각각 필요한 DB 설계가 다릅니다.
-
-| 방식 | 내용 | 필요한 것 |
-| --- | --- | --- |
-| A. 운영자가 직접 작성 | 팀이 만든 큐레이션 글 | `guides` 테이블 (제목·본문·이미지·공개일) |
-| B. 장소 묶음 | "비 오는 날 실내 장소 10곳" 같은 장소 목록 | `guides` + `guide_places` 연결 테이블 |
-| C. 외부 글 수집 | 블로그·기사를 크롤링해 링크로 연결 | `guides` + 출처 URL·수집 시각 |
-
-목업 제목("이런 카페는 어떠세요?", "실내 장소 추천")을 보면 **B에 가깝습니다.**
-장소를 추천하는 묶음처럼 읽힙니다.
-
-다만 프론트 주석의 "크롤링"은 **C**를 가리킵니다. 둘이 어긋납니다.
-
-### 2. 정적인가 동적인가
-
-목업 문구 중 **"오늘 날씨에 맞는 실내 장소 추천"** 과 **"갑자기 만난 소나기"** 는
-날씨에 따라 내용이 달라지는 카드입니다.
-
-- 미리 만들어 둔 콘텐츠를 그냥 보여주는 것인지
-- 현재 날씨(`weather_snapshots`)를 보고 카드를 골라 주는 것인지
-
-후자라면 [`weather.md`](./weather.md)와 [`places.md`](./places.md)를 조합하는 기능이 되고,
-`guides` 테이블에 "이 카드는 비 올 때 보여준다" 같은 조건 컬럼이 필요합니다.
-
-### 3. 누르면 어디로 가는가
-
-- 가이드 상세 화면 (본문 있는 글)
-- 필터가 적용된 장소 목록 (`GET /places?tags=실내관광`)
-- 외부 링크 (웹뷰 또는 브라우저)
-
-이 선택에 따라 상세 엔드포인트가 필요한지, 목록만 있으면 되는지가 갈립니다.
-
-### 4. 크롤링이라면 저작권은
-
-외부 글을 수집한다면 제목·이미지·본문 중 어디까지 저장할지 확인이 필요합니다.
-DB 설계 문서는 **카카오맵 상세 페이지의 리뷰·이미지를 크롤링해 저장하지 않는다**고
-이미 정해두었습니다. 같은 기준이 이 기능에도 적용되어야 합니다.
-
----
-
-## 임시 엔드포인트 형태
-
-**확정이 아닙니다. 화면 기획이 나오면 이 절은 통째로 다시 씁니다.**
-지금은 "이 정도 규모"를 가늠하는 참고용입니다.
-
-가장 단순한 해석(A: 운영자 콘텐츠)을 가정하면 이 정도입니다.
+## 엔드포인트
 
 ```text
 GET /api/v1/guides
-GET /api/v1/guides/{guideId}
+GET /api/v1/guides/{guideSlug}
+GET /api/v1/guides/transport-rules
+GET /api/v1/guides/transport-rules/{ruleId}
 ```
+
+### `GET /api/v1/guides`
+
+가이드 문서 목록을 조회합니다. 비활성 문서는 내려주지 않습니다.
+
+쿼리:
+
+| 이름 | 타입 | 설명 |
+| --- | --- | --- |
+| `category` | `airline` \| `ferry` \| `preparation` | 선택 시 해당 분류만 조회 |
+| `limit` | number | 기본 20, 최대 100 |
+| `offset` | number | 기본 0 |
+
+응답 예시:
 
 ```json
 {
   "items": [
     {
       "id": "550e8400-e29b-41d4-a716-446655440000",
-      "title": "반려동물과 갈 수 있는 제주 여름 휴양지",
-      "imageUrl": "https://...",
-      "publishedAt": "2026-08-01T09:00:00+09:00"
+      "slug": "prep-packing",
+      "title": "반려동물 제주 여행 준비물",
+      "category": "preparation",
+      "summary": "이동 전 준비해야 할 물품을 정리합니다.",
+      "verifiedAt": "2026-08-27T00:00:00+09:00",
+      "sources": [
+        {
+          "sourceName": "공식 안내",
+          "sourceUrl": "https://example.com",
+          "sourceNote": null,
+          "verifiedAt": "2026-08-27T00:00:00+09:00"
+        }
+      ]
     }
   ],
-  "total": 4,
+  "total": 15,
   "limit": 20,
   "offset": 0
 }
 ```
 
-앱의 `EditorialCard`와 필드 이름이 일치하므로, 이 형태라면 앱 타입 수정이 거의 없습니다.
-`id`는 목업이 `'summer-jeju'` 같은 문자열을 쓰고 있어 UUID로 바꿔야 합니다.
+### `GET /api/v1/guides/{guideSlug}`
 
-제목의 줄바꿈은 데이터에 넣지 않는 편이 낫습니다. 화면 폭에 따라 줄이 달라지는데
-데이터에 `\n`이 박혀 있으면 다른 화면에서 재사용할 수 없습니다.
+가이드 문서 상세를 조회합니다. 목록 응답 필드에 `body`가 추가됩니다.
+
+### `GET /api/v1/guides/transport-rules`
+
+항공사·여객선별 반려동물 운송 규정을 조회합니다.
+
+쿼리:
+
+| 이름 | 타입 | 설명 |
+| --- | --- | --- |
+| `carrierType` | `airline` \| `ferry` | 선택 시 운송수단 분류로 필터 |
+| `q` | string | 운송사명, 항로, 문서 제목 검색 |
+| `limit` | number | 기본 50, 최대 100 |
+| `offset` | number | 기본 0 |
+
+응답 주요 필드:
+
+| 이름 | 설명 |
+| --- | --- |
+| `carrierName` | 항공사 또는 선사명 |
+| `carrierType` | `airline` 또는 `ferry` |
+| `route` | 여객선 항로. 항공사는 보통 `null` |
+| `cabinAllowed` | 기내·객실 동반 가능 여부 |
+| `cabinMaxWeightKg` | 기내·객실 무게 제한 |
+| `cargoAllowed` | 위탁 운송 가능 여부 |
+| `cargoMaxWeightKg` | 위탁 무게 제한 |
+| `cabinFeeKrw` | 국내선 기내 요금 |
+| `requestDeadlineHours` | 사전 신청 마감 시간 |
+| `durationMinutes` | 여객선 소요 시간 |
+| `notes` | 주의사항과 보충 설명 |
+| `sources` | 공식 출처 목록 |
+
+### `GET /api/v1/guides/transport-rules/{ruleId}`
+
+운송 규정 상세를 조회합니다. 존재하지 않거나 연결된 문서가 비활성 상태면 404를 반환합니다.
 
 ---
 
-## 다음 단계
+## 앱 연결
 
-0. **화면 기획을 먼저 만든다** — 목록·상세가 어떻게 생겼는지가 아래 전부의 전제입니다
-1. 위 1~4번을 기획 차원에서 정한다
-2. 정해진 내용으로 `guides` 테이블을 설계하고 [`docs/database/`](../database/)에 반영한다
-3. Alembic 마이그레이션을 추가한다
-4. 그 뒤에 이 문서를 실제 명세로 다시 쓴다
+모바일 앱은 [`guidesApi.ts`](../../apps/mobile/src/features/travel-guides/api/guidesApi.ts)에서 위 API를 읽고,
+[`TravelPreparationScreen.tsx`](../../apps/mobile/src/features/travel-guides/screens/TravelPreparationScreen.tsx)와
+[`TravelGuideDetailScreen.tsx`](../../apps/mobile/src/features/travel-guides/screens/TravelGuideDetailScreen.tsx)에 표시합니다.
 
-**이 문서는 DB 테이블을 임의로 제안하지 않았습니다.**
-DB 설계는 [`docs/database/README.md`](../database/README.md)가 원본이며,
-테이블 추가는 그쪽에서 논의되어야 합니다.
+체크리스트 항목은 앱 안에서 공통 준비 흐름으로 유지하고, 운송사별 규정과 준비 가이드 문서는 DB 응답을 사용합니다.
+
+---
+
+## 확인 방법
+
+루트에서 전체 개발 서버를 띄운 뒤 앱에서 여행 준비 가이드 화면을 엽니다.
+
+```bash
+make dev
+```
+
+API만 확인할 때는 다음 요청을 사용합니다.
+
+```bash
+curl http://localhost:8000/api/v1/guides
+curl http://localhost:8000/api/v1/guides/transport-rules
+curl 'http://localhost:8000/api/v1/guides/transport-rules?carrierType=airline'
+```
 
 ---
 
@@ -179,4 +151,5 @@ DB 설계는 [`docs/database/README.md`](../database/README.md)가 원본이며,
 | 날짜 | 내용 |
 | --- | --- |
 | 2026-08-12 | 초안 작성. 대응 DB 테이블 부재로 설계 보류 상태 기록 |
-| 2026-08-18 | 기능 성격 확정 — **반려동물과 여행할 때 도움이 되는 정보를 모아 보는 곳**. 화면 기획이 없어 보류는 유지. PR #30 파일 이동으로 깨진 `homeMockData.ts` 링크를 `home.mock.ts`로 수정 |
+| 2026-08-18 | 기능 성격 확정 — 반려동물과 여행할 때 도움이 되는 정보를 모아 보는 곳 |
+| 2026-08-30 | DB 기반 가이드 문서·운송 규정 API 구현 및 모바일 여행 준비 가이드 화면 연결 |
