@@ -1,7 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { appNotifications } from '@/src/features/notifications/mocks/notification.mock';
+import { markNotificationRead } from '@/src/features/notifications/api/notificationApi';
+import { useNotifications } from '@/src/features/notifications/hooks/useNotifications';
+import { openNotification } from '@/src/features/notifications/services/pushNotifications';
 import { colors, overlayColors, radius, spacing, typography } from '@/src/theme';
 
 /** 팝업은 최신 알림 몇 건만 보여준다. 전체 목록은 `/notifications` 화면에 있다. */
@@ -19,6 +23,10 @@ type Props = {
  * 작업 흐름이 끊기면 안 되는 화면에서 겹쳐 띄운다.
  */
 export function NotificationPopup({ visible, onClose }: Props) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { data: notifications = [] } = useNotifications();
+
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
       <View style={styles.backdrop}>
@@ -33,8 +41,20 @@ export function NotificationPopup({ visible, onClose }: Props) {
           </View>
 
           <View style={styles.list}>
-            {appNotifications.slice(0, PREVIEW_COUNT).map((item) => (
-              <View key={item.id} style={styles.item}>
+            {notifications.slice(0, PREVIEW_COUNT).map((item) => (
+              <Pressable
+                key={item.id}
+                onPress={() => {
+                  onClose();
+                  openNotification(router, item.type, item.targetId);
+                  if (!item.isRead) {
+                    void markNotificationRead(item.id).then(() =>
+                      queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+                    );
+                  }
+                }}
+                style={styles.item}
+              >
                 <View style={[styles.icon, item.tone === 'sea' && styles.iconSea]}>
                   <Ionicons
                     color={item.tone === 'sea' ? colors.sea : colors.primary}
@@ -46,7 +66,7 @@ export function NotificationPopup({ visible, onClose }: Props) {
                   <Text style={styles.itemTitle}>{item.title}</Text>
                   <Text style={styles.itemText}>{item.description}</Text>
                 </View>
-              </View>
+              </Pressable>
             ))}
           </View>
         </View>

@@ -37,6 +37,7 @@ from app.recommend.schemas import Candidate, ScoredCandidate, Weights
 from app.recommend.scoring import ScoringContext, score_candidates
 from app.recommend.tmap import TMapError, get_route
 from app.recommend.weights import resolve_weights
+from app.services.notifications import add_notification, send_pushes
 
 logger = logging.getLogger(__name__)
 Coordinate = tuple[float, float]
@@ -250,6 +251,20 @@ def run_route_generation(route_id: uuid.UUID, open_session: Callable) -> None:
                 route.status = RouteStatus.FAILED
                 db.commit()
             logger.exception("route recommendation failed", extra={"route_id": str(route_id)})
+            return
+
+        route = db.get(Route, route_id)
+        if route is not None:
+            notification = add_notification(
+                db,
+                user_id=route.user_id,
+                type="route_ready",
+                target_id=route.id,
+                title="추천 루트가 완성됐어요",
+                content=f"{route.title} 일정을 확인해보세요.",
+            )
+            db.commit()
+            send_pushes(db, notification)
 
 
 def suggest_replacements(

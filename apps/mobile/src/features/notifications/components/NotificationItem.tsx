@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, radius, spacing, typography } from '@/src/theme';
 
@@ -9,13 +9,22 @@ const ICON_SIZE = 38;
 
 type NotificationItemProps = {
   notification: AppNotification;
+  onPress: () => void;
 };
 
-export function NotificationItem({ notification }: NotificationItemProps) {
+export function NotificationItem({ notification, onPress }: NotificationItemProps) {
   const isSea = notification.tone === 'sea';
 
   return (
-    <View style={[styles.item, notification.isRead && styles.itemRead]}>
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.item,
+        notification.isRead && styles.itemRead,
+        pressed && styles.itemPressed,
+      ]}
+    >
       <View style={[styles.icon, isSea && styles.iconSea]}>
         <Ionicons color={isSea ? colors.sea : colors.primary} name={notification.icon} size={19} />
       </View>
@@ -30,7 +39,7 @@ export function NotificationItem({ notification }: NotificationItemProps) {
         <Text style={styles.description}>{notification.description}</Text>
         <Text style={styles.receivedAt}>{notification.receivedAt}</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -66,6 +75,9 @@ const styles = StyleSheet.create({
   },
   itemRead: {
     backgroundColor: colors.neutralGray,
+  },
+  itemPressed: {
+    opacity: 0.7,
   },
   receivedAt: {
     color: colors.textTertiary,
