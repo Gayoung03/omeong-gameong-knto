@@ -1,6 +1,7 @@
-"""기상청 단기예보에서 여행 날짜별 강수확률을 조회한다."""
+"""기상청 단기예보에서 현재 날씨와 여행 날짜별 강수확률을 조회한다."""
 
 import math
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from urllib.parse import unquote
 from zoneinfo import ZoneInfo
@@ -19,6 +20,63 @@ class WeatherForecastError(RuntimeError):
     """기상청 예보를 조회하거나 해석하지 못했다."""
 
 
+@dataclass(frozen=True)
+class CurrentWeather:
+    forecast_at: datetime
+    condition: str
+    temperature: float
+    precipitation_probability: int
+    humidity: int
+    wind_speed: float
+    source_updated_at: datetime
+
+
+def get_current_weather(
+    latitude: float,
+    longitude: float,
+    *,
+    now: datetime | None = None,
+    client: httpx.Client | None = None,
+) -> CurrentWeather:
+    """좌표에서 현재 시각과 가장 가까운 단기예보를 반환한다."""
+
+    current = (now or datetime.now(KST)).astimezone(KST)
+    items, source_updated_at = _fetch_forecast_items(latitude, longitude, current, client)
+    forecasts: dict[datetime, dict[str, str]] = {}
+    for item in items:
+        try:
+            forecast_at = datetime.strptime(
+                f"{item['fcstDate']}{item['fcstTime']}", "%Y%m%d%H%M"
+            ).replace(tzinfo=KST)
+            forecasts.setdefault(forecast_at, {})[item["category"]] = item["fcstValue"]
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    if not forecasts:
+        raise WeatherForecastError("기상청 현재 예보가 비어 있습니다")
+
+    forecast_at = min(forecasts, key=lambda value: abs(value - current))
+    values = forecasts[forecast_at]
+    try:
+        temperature = float(values["TMP"])
+        precipitation_probability = int(values["POP"])
+        humidity = int(values["REH"])
+        wind_speed = float(values["WSD"])
+        condition = _weather_condition(values["SKY"], values["PTY"], wind_speed)
+    except (KeyError, TypeError, ValueError) as error:
+        raise WeatherForecastError("기상청 현재 예보 항목이 불완전합니다") from error
+
+    return CurrentWeather(
+        forecast_at=forecast_at,
+        condition=condition,
+        temperature=temperature,
+        precipitation_probability=precipitation_probability,
+        humidity=humidity,
+        wind_speed=wind_speed,
+        source_updated_at=source_updated_at,
+    )
+
+
 def get_precipitation_probabilities(
     latitude: float,
     longitude: float,
@@ -31,10 +89,32 @@ def get_precipitation_probabilities(
 
     if not dates:
         return {}
+    items, _ = _fetch_forecast_items(latitude, longitude, now or datetime.now(KST), client)
+
+    result: dict[date, int] = {}
+    for item in items:
+        if item.get("category") != "POP":
+            continue
+        try:
+            forecast_date = datetime.strptime(item["fcstDate"], "%Y%m%d").date()
+            probability = int(item["fcstValue"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if forecast_date in dates and 0 <= probability <= 100:
+            result[forecast_date] = max(result.get(forecast_date, 0), probability)
+    return result
+
+
+def _fetch_forecast_items(
+    latitude: float,
+    longitude: float,
+    now: datetime,
+    client: httpx.Client | None,
+) -> tuple[list[dict[str, str]], datetime]:
     if not settings.weather_api_key:
         raise WeatherForecastError("WEATHER_API_KEY가 설정되지 않았습니다")
 
-    base_date, base_time = _latest_base(now or datetime.now(KST))
+    base_date, base_time = _latest_base(now)
     nx, ny = _to_grid(latitude, longitude)
     params = {
         "serviceKey": unquote(settings.weather_api_key),
@@ -58,23 +138,27 @@ def get_precipitation_probabilities(
         if header["resultCode"] != "00":
             raise WeatherForecastError(f"기상청 예보 오류: {header['resultMsg']}")
         items = body["response"]["body"]["items"]["item"]
+        if not isinstance(items, list):
+            raise WeatherForecastError("기상청 단기예보 항목이 비어 있습니다")
     except WeatherForecastError:
         raise
     except (httpx.HTTPError, KeyError, TypeError, ValueError) as error:
         raise WeatherForecastError("기상청 단기예보 조회에 실패했습니다") from error
 
-    result: dict[date, int] = {}
-    for item in items:
-        if item.get("category") != "POP":
-            continue
-        try:
-            forecast_date = datetime.strptime(item["fcstDate"], "%Y%m%d").date()
-            probability = int(item["fcstValue"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        if forecast_date in dates and 0 <= probability <= 100:
-            result[forecast_date] = max(result.get(forecast_date, 0), probability)
-    return result
+    source_updated_at = datetime.combine(
+        base_date, datetime.min.time(), tzinfo=KST
+    ) + timedelta(hours=base_time)
+    return items, source_updated_at
+
+
+def _weather_condition(sky: str, precipitation: str, wind_speed: float) -> str:
+    if precipitation in {"3", "7"}:
+        return "snowy"
+    if precipitation != "0":
+        return "rainy"
+    if wind_speed >= 9:
+        return "windy"
+    return {"1": "sunny", "3": "partly_cloudy", "4": "cloudy"}[sky]
 
 
 def _latest_base(now: datetime) -> tuple[date, int]:

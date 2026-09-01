@@ -4,14 +4,23 @@ import type { ComponentProps } from 'react';
 export type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 export type WeatherSummary = {
-  greeting: string;
   location: string;
   temperature: number;
-  condition: string;
+  condition: WeatherCondition;
+  conditionLabel: string;
+  precipitationProbability: number;
   humidity: number;
   windSpeed: number;
   tip: string;
 };
+
+export type WeatherCondition =
+  | 'sunny'
+  | 'partly_cloudy'
+  | 'cloudy'
+  | 'rainy'
+  | 'snowy'
+  | 'windy';
 
 export type QuickMenuDestination =
   'chatbot' | 'place-explorer' | 'travel-preparation' | 'travel-log-new' | 'saved-places';

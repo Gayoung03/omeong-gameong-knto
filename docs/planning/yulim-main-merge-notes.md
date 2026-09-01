@@ -121,8 +121,8 @@
 | `src/components/ui/StatTile.tsx`                                      | **variant 를 2색에서 4색으로.** `mint`·`orange` → `blue`·`green`·`orange`·`yellow` 이고 값은 `categoryColors` 를 참조한다. 마이페이지에서만 쓰는 컴포넌트 | #32     |
 | `src/types/place.ts` (신규)                                           | **`PetPolicy` 정본을 features 밖으로 승격.** 내 여행·장소 탐색이 함께 쓴다. `trips/types/trip.ts` 가 재export 하므로 기존 import 경로는 그대로 동작한다   | #32     |
 | `src/components/domain/PetPolicyBadge.tsx` (신규)                     | 동반정책 배지를 공용으로 승격. `trips/components/PetPolicyBadge.tsx` 는 재export 만 남은 **삭제 가능 파일**                                               | #32     |
-| `src/types/place.ts`                                                  | **`PetPolicy` 를 4종 → 5종으로.** `unknown`(정보 없음) 추가. 서버 `petPolicy.policyType` 과 1:1 대응                                                      | 예정    |
-| `src/components/domain/PetPolicyBadge.tsx`                            | `BADGE_COLORS` 에 `unknown` 추가(회색). 없으면 서버가 `unknown` 을 내려줄 때 화면이 죽는다                                                                | 예정    |
+| `src/types/place.ts`                                                  | **`PetPolicy` 를 4종 → 5종으로.** `unknown`(정보 없음) 추가. 서버 `petPolicy.policyType` 과 1:1 대응                                                      | #37    |
+| `src/components/domain/PetPolicyBadge.tsx`                            | `BADGE_COLORS` 에 `unknown` 추가(회색). 없으면 서버가 `unknown` 을 내려줄 때 화면이 죽는다                                                                | #37    |
 | `features/trips/utils/tripFormat.ts`                                  | `getPetPolicyLabel` 라벨 정본이 `src/types/place.ts` 로 옮겨져 재export 로 바뀜. 함수 시그니처·import 경로 변화 없음                                      | #32     |
 | `assets/images/pets/` (신규)                                          | 몽이·코코 프로필 일러스트 (각 256×256 JPG, 15~17KB)                                                                                                       | #32     |
 | `assets/images/profile/default-user.jpg` (신규)                       | 사용자 기본 프로필 일러스트 (256×256, 10KB)                                                                                                               | #32     |
@@ -133,9 +133,9 @@
 | `src/services/apiError.ts`                                            | `getApiErrorDetail()` 추가(신규 export, 기존 동작 변화 없음). `__DEV__` 에서만 서버가 보낸 `detail` 원문을 돌려준다 — 422 처럼 이유가 본문에만 있는 오류를 화면에서 바로 읽기 위해서다. 파일 소유는 lucky 님 | #90    |
 | `src/components/feedback/ConfirmModal.tsx` (신규)                     | **예/아니오 확인 창 공용화.** 같은 생김새의 모달을 네 벌 따로 들고 있었다(`LogoutConfirmModal`·`DiscardChangesModal`·`ReviewDeleteConfirmModal`·`TripDeleteConfirmModal`). 넷을 얇은 래퍼로 바꿔 **호출부는 하나도 안 고쳤다** | #91    |
 | `src/hooks/useSafeBack.ts` (신규)                                     | 뒤로 가되 갈 곳이 없으면 지정한 화면으로 보낸다. `router.back()` 만 부르면 **웹에서 히스토리가 없을 때 죽는다** | #91    |
-| `public/kakao-map-frame.html` (신규)                                   | **웹 지도 프레임 신설.** 지도 HTML 을 담을 빈 문서. `srcDoc` 을 쓰면 문서 주소가 `about:srcdoc` 이라 카카오 SDK 가 지도 스크립트를 http 로 불러 HTTPS 배포에서 차단된다 | 예정    |
-| `src/components/web/HtmlFrame.web.tsx` (신규)                          | 위 문서에 지도 HTML 을 써 넣는 공통 컴포넌트. 장소 지도·내 여행 지도가 함께 쓴다                                                                                        | 예정    |
-| `apps/mobile/.gitignore`                                              | `.vercel` 추가 (Vercel 연결 정보 커밋 방지)                                                                                                                             | 예정    |
+| `public/kakao-map-frame.html` (신규)                                   | **웹 지도 프레임 신설.** 지도 HTML 을 담을 빈 문서. `srcDoc` 을 쓰면 문서 주소가 `about:srcdoc` 이라 카카오 SDK 가 지도 스크립트를 http 로 불러 HTTPS 배포에서 차단된다 | #177   |
+| `src/components/web/HtmlFrame.web.tsx` (신규)                          | 위 문서에 지도 HTML 을 써 넣는 공통 컴포넌트. 장소 지도·내 여행 지도가 함께 쓴다                                                                                        | #177   |
+| `apps/mobile/.gitignore`                                              | `.vercel` 추가 (Vercel 연결 정보 커밋 방지)                                                                                                                             | #177   |
 
 > **`app/_layout.tsx`는 충돌 위험이 큰 파일이다.** 다른 팀원도 라우트를 추가하면서 건드리게 된다.
 > 변경 내용 자체는 기존 트리를 `GestureHandlerRootView`로 한 겹 감싼 것뿐이라
@@ -240,10 +240,10 @@
 | ---- | --------------------------------- | ------------------------------------------- |
 | 제목 | 18pt `800` → 18pt `700`           | 16pt → **18pt** (`typography.sectionTitle`) |
 | 링크 | 회색 → **주황**(`colors.primary`) | 16pt → **13pt** (`typography.label`)        |
-| `apps/api/app/db/session.py`                                          | **DB 세션 시간대를 `Asia/Seoul` 로 고정** (`connect_args`). 저장 방식(`timestamptz`) 변경이 아니라 **읽어올 때 표기만** KST(`+09:00`)로 통일한다. UTC 로 내려가면 앱이 `startDate` 앞 10글자를 자를 때 이른 아침 일정의 날짜가 하루 밀린다 | 예정    |
-| `apps/api/scripts/seed_dev.py` (신규)                                 | 개발용 씨앗 데이터. 사용자·반려동물·장소 4곳·여행 1개(3일 / 일정 6개). 여러 번 돌려도 중복이 쌓이지 않는다. 테스트 계정 `00000000-0000-0000-0000-000000000001` / `seed@omeong.local` 은 **A 와 공유한 고정 값**              | 예정    |
-| `apps/api/app/api/dependencies.py`                                    | **`get_current_user` 신설** (임시 구현 — 개발용 고정 사용자 반환). 인증 담당이 **함수 안쪽만** JWT 검증으로 바꾸면 엔드포인트는 수정이 없다. 테스트는 `dependency_overrides` 로 갈아끼운다. 타입 별칭 `CurrentUser` 제공 | 예정    |
-| `Makefile`                                                            | `db-seed` 타깃 추가 — 씨앗 데이터는 컨테이너 기동 시 자동 실행하지 않고 이 명령으로만 심는다                                                                                                                              | 예정    |
+| `apps/api/app/db/session.py`                                          | **DB 세션 시간대를 `Asia/Seoul` 로 고정** (`connect_args`). 저장 방식(`timestamptz`) 변경이 아니라 **읽어올 때 표기만** KST(`+09:00`)로 통일한다. UTC 로 내려가면 앱이 `startDate` 앞 10글자를 자를 때 이른 아침 일정의 날짜가 하루 밀린다 | #51    |
+| `apps/api/scripts/seed_dev.py` (신규)                                 | 개발용 씨앗 데이터. 사용자·반려동물·장소 4곳·여행 1개(3일 / 일정 6개). 여러 번 돌려도 중복이 쌓이지 않는다. 테스트 계정 `00000000-0000-0000-0000-000000000001` / `seed@omeong.local` 은 **A 와 공유한 고정 값**              | #51    |
+| `apps/api/app/api/dependencies.py`                                    | **`get_current_user` 신설** (임시 구현 — 개발용 고정 사용자 반환). 인증 담당이 **함수 안쪽만** JWT 검증으로 바꾸면 엔드포인트는 수정이 없다. 테스트는 `dependency_overrides` 로 갈아끼운다. 타입 별칭 `CurrentUser` 제공 | #51    |
+| `Makefile`                                                            | `db-seed` 타깃 추가 — 씨앗 데이터는 컨테이너 기동 시 자동 실행하지 않고 이 명령으로만 심는다                                                                                                                              | #51    |
 
 바깥 여백은 화면마다 달라서 컴포넌트에서 빼고 `style` prop 으로 넘기도록 했다.
 
@@ -352,50 +352,54 @@ git add package-lock.json
 ## 5. main PR 본문에 옮길 내용
 
 > **이 블록은 "아직 main 에 안 올라간 것"만 담는다.** main PR 을 낼 때마다 비우고 다시 쓴다.
-> 직전 내용(리뷰 API 5개 · 여행 관리 API 3개 · 웹 호환 정리)은 **이미 main 에 반영되었다.**
-> 2026-08-28 에 `git log --oneline origin/main..origin/dev/yulim-main` 으로 확인하고 다시 썼다.
+> 직전 내용(챗봇 답변 가이드라인 · 가이드/운송규정 검색 도구, PR #125 · #126)은 **이미 main 에 반영되었다.**
+> 2026-09-01 에 `git log --oneline --no-merges origin/main..HEAD` 로 확인하고 다시 썼다.
 >
-> 현재 대상: **챗봇 답변 가이드라인 + 가이드·운송규정 검색 도구** (PR #125 · #126 / 파일 5개)
+> 현재 대상: **여행 가이드 API + 여행 준비 가이드 화면 연결 + 챗봇 파서 이동** (PR #212 / 파일 13개)
 >
-> **공통 파일 변경 없음. 신규 라이브러리 없음. 마이그레이션 없음.** 전부 백엔드 챗봇 안쪽이다.
+> **공통 파일 변경 없음. 신규 라이브러리 없음. 마이그레이션 없음.**
+> 가영님 푸시 알림 작업(`expo-notifications` · `pywebpush` · revision 2개)은 **이미 main 에 있다** —
+> 이 PR 이 가져오는 것이 아니므로 아래 안내에 넣지 않는다.
 
 ````markdown
 ## 신규 설치 라이브러리
 
 없습니다. 마이그레이션도, 공통 파일 변경도 없습니다.
-앱 파일은 한 줄도 건드리지 않았습니다.
 
 ## 이번 PR 내용
 
-### 챗봇이 항공사·여객선 규정에 답할 수 있게 됐습니다
+### 여행 준비 가이드 화면이 서버를 봅니다
 
-수집해 둔 항공사 7곳 · 여객선 4항로 규정과 가이드 문서 15편을 챗봇이 직접 읽습니다.
-`search_guides`(준비물·절차 안내 글)와 `search_transport_rules`(무게·요금·기한) 두 도구를
-붙였습니다. 설계 문서 B3 의 도구 개수가 2개에서 3개로 늘었습니다.
+화면이 직접 들고 있던 항공사·여객선 콘텐츠 **379줄을 걷어내고** 서버에서 받아 그립니다.
+항공 7곳(대한항공·아시아나·제주항공·티웨이·진에어·에어부산·이스타)과 여객선 4항로가
+`GET /guides` · `GET /guides/transport-rules` 로 내려옵니다.
 
-**"12kg 인데 기내 되나요" 같은 질문은 숫자 비교라 글 검색으로 답이 안 나옵니다.**
-그래서 읽는 글과 숫자로 거르는 값을 도구 두 개로 나눴습니다.
+**엔드포인트 4개를 새로 만들었습니다** — 가이드 목록·상세, 운송 규정 목록·상세.
+로그인을 요구하지 않습니다(공개 정보라서입니다). 테스트 4개를 함께 넣었습니다.
 
-**무게 판정은 파이썬에서 계산합니다.** `12 > 7` 을 모델에 맡기면 틀리고,
-여기서 틀리면 공항에서 탑승을 거부당합니다. `확인 안 됨` 과 `불가` 도 구분해서 남깁니다 —
-뭉개면 확인 못 한 항목이 불가로 바뀌어 없는 규정을 만들어 답하게 됩니다.
+**서버 타입과 화면 타입 사이에는 어댑터를 뒀습니다**(`travel-guides/api/guidesApi.ts`).
+장소 상세·리뷰에서 쓴 방식과 같습니다 — 서버가 무게·요금·기한을 숫자로 내리면
+어댑터가 `케이지 포함 7kg 이하` · `기내 2만 원` 같은 문구와 배지로 바꿉니다.
+**숫자 판정은 어댑터가 합니다.** 화면은 만들어진 문구만 그립니다.
 
-### 챗봇 답변 가이드라인 4건을 넣었습니다
+**`확인 필요` 와 `불가` 를 구분합니다.** 서버 값이 `null` 이면 `확인 필요`,
+`false` 여야 `불가` 입니다. 뭉개면 확인 못 한 항목이 "안 된다"로 바뀌어
+없는 규정을 만들어 보여주게 됩니다.
 
-회의에서 정했던 **수의학 답변 금지가 프롬프트에 한 줄도 없었습니다.**
-확인하다 **이동수단 규정도 같은 상태**인 것이 드러났습니다 — 규정을 DB 에 다 넣어두고도
-읽는 도구가 없어 GPT 가 지어내고 있었습니다.
+`constants/travelGuideContent.ts` 에는 타입과 체크리스트만 남겼습니다 —
+체크리스트는 대응 테이블이 없는 화면 설정값이라 `constants/` 에 남는 것이 맞습니다.
 
-| 규칙 | 내용 |
-| --- | --- |
-| 건강·의료 | 답하지 않고 수의사에게 안내. 단 **탑승·반입 서류와 절차는 규정**이라 안내합니다 |
-| 이동수단 규정 | 도구로 찾아 안내하고 **확인일(2026년 8월 기준)을 함께 밝힙니다** |
-| 미확인 정보 | 단정하지 않습니다. 빈 칸을 그럴듯한 말로 메우지 않습니다 |
-| 견종 제한 | **되는지 안 되는지 어느 쪽도 단정하지 않습니다** |
+### 챗봇 답변 파서를 옮겼습니다 (이번 기능과 무관)
 
-마지막 항목은 실제로 오답이 나와서 넣었습니다. `"복서인데 위탁 돼?"` 에 챗봇이
-**"허용되지 않는 맹견으로 분류됩니다"** 라고 답했는데, 복서는 우리 데이터에도
-동물보호법 맹견 5종에도 없습니다.
+`features/chatbot/components/` 안에 **이름이 대소문자만 다른 두 파일**이 있었습니다 —
+`AnswerMarkdown.tsx`(그리는 컴포넌트)와 `answerMarkdown.ts`(파싱 함수).
+macOS 파일시스템은 대소문자를 구분하지 않아, `ChatbotScreen` 의
+`import { AnswerMarkdown } from '../components/AnswerMarkdown'` 이 **파서 파일로 잡힙니다.**
+
+**지금 main 에서 누가 `npm run lint` 를 돌려도 이 오류가 납니다.**
+이번 작업의 lint 가 통과하지 않아 첫 커밋에서 먼저 고쳤습니다.
+파서를 `utils/answerMarkdown.ts` 로 옮겼습니다 — 이름 충돌이 사라지고,
+순수 함수는 `utils/` 에 둔다는 폴더 규칙에도 맞습니다. import 한 줄만 바뀝니다.
 
 ## 공통 파일 변경
 
@@ -403,29 +407,40 @@ git add package-lock.json
 
 ## 팀원 확인 사항
 
-- **가이드 데이터가 없으면 규정 질문에 "해당 규정이 없다"고 답합니다.**
-  `make db-seed-local` (또는 `make db-seed`) 로 넣어주세요.
-  가이드 15편 · 운송 규정 12건이 들어갑니다.
-- **`app/rag/prompts/system.py` 와 `app/integrations/llm/chat.py` 를 크게 고쳤습니다.**
-  챗봇 쪽 작업(SSE·중지 버튼)과 겹치는 파일이라 미리 알려드립니다.
-- 챗봇 톤이 달라 보이면 프롬프트 규칙이 늘어난 것입니다. 설계 문서 A5~A8 을 봐주세요.
+- **가이드 화면이 비어 보이면 데이터가 없는 것입니다.** `make db-seed-local` (또는 `make db-seed`)
+  로 넣어주세요. 가이드 15편 · 운송 규정 12건이 들어갑니다.
+- **`make db-seed` 와 `make db-seed-local` 이 지금 전원 실패합니다.** 씨앗 계정에 비밀번호가
+  필수가 되면서 `SEED_DEV_PASSWORD` 를 요구하는데, `infra/docker-compose.yml` 의 `api` 서비스
+  `environment` 목록에 그 항목이 없어 **컨테이너 안까지 전달되지 않습니다.**
+  셸에 넣어도, `.env` 에 넣어도 안 됩니다. 통로를 뚫는 한 줄짜리 수정을 별도 PR 로 올리겠습니다.
+  그 전까지는 아래로 우회하세요.
+
+      docker compose --env-file .env \
+        -f infra/docker-compose.yml -f infra/docker-compose.local.yml \
+        run --rm -e SEED_DEV_PASSWORD=<비밀번호> \
+        api .venv/bin/python -m scripts.seed_dev
+
+- **배포 서버(Railway)에는 아직 `/guides` 가 없습니다.** 배포 앱으로 열면 404 가 납니다.
+  배포에 반영된 뒤에 보시거나, 로컬 백엔드(`make dev-local`)로 확인해 주세요.
+- **챗봇 파트 파일 2개를 건드렸습니다**(`components/AnswerMarkdown.tsx`,
+  `components/answerMarkdown.ts` → `utils/`). 같은 파일을 작업 중이시면 미리 알려드립니다.
 
 ## 협의가 필요한 사항
 
-- **`OPENAI_MODEL` 을 `gpt-4o` 로 올릴지 (비용 증가).**
-  `gpt-4o-mini` 가 `"12kg 제주공항 기내 가능해?"` 에서 위탁을 **세 번 연속** 틀렸습니다
-  (제주항공·티웨이·이스타는 위탁 제도가 없는데 "모두 가능"으로 묶음).
-  프롬프트 → 도구 분류 → 회사별 결론 문장 순으로 세 번 고쳤지만 계속 새어나갔고,
-  `gpt-4o` 로 올리니 한 번에 정확해졌습니다.
-  **코드 기본값과 `.env.example` 은 그대로 두었습니다** — 팀이 정할 일이라서입니다.
-  근거는 설계 문서 C1 에 시도 3건과 함께 정리했습니다.
-- **`"애월에서 강아지랑 갈 수 있는 카페"` 가 RDS 에서 0건입니다.**
-  추천 질문 칩에 있는 문구인데 답을 못 합니다. 지역 어휘는 정상이라
-  `restaurant` / `restaurant_cafe` 카테고리 중복이 원인으로 의심됩니다 — 장소 데이터 안건입니다.
-- **견종 제한 전체 목록이 필요합니다.** `transport_restricted_breeds` 테이블이 비어 있어
-  지금은 프롬프트로 막고 있습니다. 수집한 본문에 견종이 예시로만 적혀 있어
-  ("퍼그·시추·불독 **같은**"), 부분 목록을 채우면 목록에 없는 견종을 "괜찮다"고
-  답하게 됩니다. 다음 작업으로 잡았습니다.
+- **씨앗 사용자 ID 와 테스트가 같은 고정 ID 를 씁니다.** `seed_dev.py` 의 `SEED_USER_ID` 가
+  `dependencies.py` 의 `DEV_USER_ID`(`0000...0001`) 와 같은 값이라, **씨앗을 심어둔 개발 DB 에**
+  **대고 테스트를 돌리면** `test_auth_guard.py` 의 폴백 테스트가 `duplicate key` 로 깨집니다.
+  테스트는 트랜잭션을 롤백하지만 이미 커밋된 씨앗은 롤백 대상이 아닙니다.
+  테스트 전용 DB 를 쓰면 456개 전부 통과합니다.
+
+      docker exec omeong-gameong-postgres createdb -U omeong omeong_test
+      TEST_DATABASE_URL=postgresql+psycopg://omeong:omeong@localhost:5432/omeong_test uv run pytest
+
+  씨앗 ID 를 다른 값으로 바꾸든, 테스트 전용 DB 를 규칙으로 못 박든 정하면 좋겠습니다.
+- **ESLint 캐시가 옛 결과를 재생합니다.** `expo lint` 는 결과를 `.expo/cache/eslint` 에 저장하고
+  파일 내용이 그대로면 다시 검사하지 않습니다. **`npm ci` 직후나 파일을 옮긴 뒤에는**
+  이미 고친 오류가 그대로 다시 뜹니다. `rm -rf .expo/cache/eslint` 로 지우면 됩니다.
+  오늘 이걸로 두 번 헤맸습니다. README 나 개발 가이드에 한 줄 넣을지 의견 주세요.
 ````
 
 ## 변경 이력
@@ -478,3 +493,5 @@ git add package-lock.json
 | 2026-08-25 | **최신 main 을 받아와 합치고 5번 항목을 다시 썼다.** lucky 님 PR #88·#89(홈 빠른 메뉴 정리·마이페이지 디자인 통일)와 겹친 파일은 셋(`app/_layout.tsx`·`StatTile.tsx`·`TravelSummarySection.tsx`)이고 **실제 충돌은 하나**였다 — 같은 자리에 lucky 님은 가이드 아이콘을 바꾸고 나는 '내가 쓴 리뷰' 타일을 넣었다. 양쪽을 모두 살렸다. **`StatTile` 의 작은 글자(라벨 13px / 숫자 10px)는 lucky 님이 의도적으로 정한 값**이다 — 가이드의 '11px 미만 금지'와 어긋나 보여 확인했더니 홈 빠른 메뉴와 맞춘 것이었다. **되돌리지 말 것.** 5번 항목의 직전 내용(PR #84)은 이미 main 에 반영돼 비우고 다시 썼다 |
 | 2026-08-28 | **5번 항목을 현재 기준으로 다시 썼다** — 직전 내용(리뷰 API·여행 관리·웹 호환 정리)이 이미 main 에 반영됐는데 그대로 남아 있었다(`git log origin/main..origin/dev/yulim-main` 으로 확인). 이번 대상은 **챗봇 답변 가이드라인(PR #125)과 가이드·운송규정 검색 도구(PR #126)** 다. **공통 파일 변경·신규 라이브러리·마이그레이션이 모두 없고 앱 파일도 건드리지 않았다** — 전부 백엔드 챗봇 안쪽이라 3번 표에 추가할 것이 없다. 협의 사항 3건(모델 상향·애월 카페 0건·견종 목록 수집)을 올렸다. `system.py` 와 `chat.py` 는 챗봇 파트 팀원 작업과 겹치는 파일이라 확인 사항에 따로 적었다 |
 | 2026-08-30 | **Vercel 웹 배포에서 카카오 지도만 안 뜨던 문제 수정.** 콘솔 설정(도메인 등록·카카오맵 사용 ON)은 정상이었고 원인은 코드였다. 웹은 지도 HTML 을 `iframe` 의 `srcDoc` 으로 넣는데, srcDoc 문서의 주소는 `about:srcdoc` 이라 그 안에서 `location.protocol` 이 `https:` 가 아니다. 카카오 SDK 로더는 이 값을 보고 실제 지도 스크립트 주소를 만들기 때문에 `http://t1.daumcdn.net/...` 을 부르고, **HTTPS 페이지에서 이 요청은 혼합 콘텐츠로 차단된다.** 로컬은 `http://localhost:8081` 이라 차단이 일어나지 않아 배포해야만 드러났다. 같은 출처의 빈 문서(`public/kakao-map-frame.html`)를 먼저 띄우고 그 안에 지도 HTML 을 써 넣도록 바꿨다 — 문서 주소가 `https://…` 가 되어 SDK 도 https 로 받는다. **`no-referrer` meta 는 `__DEV__` 일 때만 넣는다** — 콘솔에 `http://localhost:8081` 은 등록돼 있지 않아 그냥 지우면 로컬 개발에서 지도가 깨진다. 배포 빌드에서는 등록된 도메인이 그대로 전달된다. 신규 라이브러리 없음 |
+| 2026-09-01 | **임시 저장해둔 여행가이드 API 작업을 최신 main 위로 복원.** 8/30 stash 를 `work/yulim/feat/travel-guide-api` 에 `stash apply` 로 올렸고 **충돌은 없었다** — `router.py` 만 3-way 병합됐다(main 이 넣은 `weather` 등록줄은 그대로 두고 그 아래에 `guides` 가 붙었다). 백엔드는 `endpoints/guides.py`·`schemas/guide.py`·`tests/test_guides.py` 신설이고, 초기 구조 커밋(`e03ab28`)이 만들어둔 **한 줄짜리 껍데기 `guides.py`** 위에 얹혔다(중복 아님). 프론트는 `travel-guides/api/guidesApi.ts`(어댑터)와 `hooks/useTravelGuides.ts` 신설이고, 여행 준비 가이드·가이드 상세 두 화면이 `useTravelGuideOverview()` 로 실서버를 부른다 — 로딩은 `ActivityIndicator`, 실패는 공용 `ErrorState`. **`constants/travelGuideContent.ts` 에서 하드코딩 콘텐츠 379줄을 걷어내고 타입과 `checklistSections` 만 남겼다** — 체크리스트는 대응 테이블이 없는 화면 설정값이라 `constants/` 에 남는 것이 맞다(`mocks/` 가 아니다). **공통 파일 변경·신규 라이브러리·마이그레이션이 모두 없어 3번 표에 추가할 것이 없다.** `.vercel` 은 `apps/mobile/.gitignore` 가 이미 무시하고 있어 루트 `.gitignore` 는 건드리지 않았다. 대신 **3번 표에 '예정' 으로 남아 있던 9칸을 실제 PR 번호로 갱신했다**(#37·#177·#51) — 머지된 지 오래된 항목들이었다. **타입체크에서 이번 작업과 무관한 기존 오류 2건을 발견했다** — `features/chatbot/components/` 에 `AnswerMarkdown.tsx`(컴포넌트)와 `answerMarkdown.ts`(파서)가 **대소문자만 다르게 공존**해 `ChatbotScreen` 의 `import { AnswerMarkdown } from '../components/AnswerMarkdown'` 이 파서 파일로 잡힌다(`d269c16`). macOS 파일시스템이 대소문자를 구분하지 않아 로컬에서는 드러나지 않는다. **이번 브랜치와 목적이 달라 고치지 않았다** — 챗봇 파트와 별도로 정리해야 한다 |
+| 2026-09-01 | **최신 main 을 받아와 합치고 5번 항목을 다시 썼다.** 여행가이드 작업(PR #212)이 `dev/yulim-main` 에 머지된 뒤, 가영님 웹 푸시 알림 PR #211 이 들어간 main 을 합쳤다. **충돌은 없었고** `router.py` 만 3-way 병합됐다. **합친 뒤에 설치·마이그레이션이 필요했다** — `expo-notifications`(프론트), `pywebpush`(백엔드), Alembic revision 2개. 이건 main 에서 온 것이라 **이번 main PR 의 안내에는 넣지 않았다**(팀원은 main 에서 이미 받는다). 합친 결과로 검사를 다시 돌렸다 — lint·typecheck·ruff 통과, pytest 456개 통과. **`npm ci` 직후 lint 가 옛 오류를 그대로 재생했다** — `expo lint` 가 `.expo/cache/eslint` 에 결과를 저장하고 파일 내용이 그대로면 다시 검사하지 않는다. 오늘 이걸로 두 번 헤맸고 협의 사항에 올렸다. **pytest 1건이 개발 DB 에서만 깨졌다** — 씨앗 사용자 ID 가 `DEV_USER_ID` 와 같은 값이라 `test_auth_guard` 의 폴백 테스트가 `duplicate key` 를 만든다. 테스트 전용 DB(`omeong_test`)를 만들어 돌리니 전부 통과했고, 이것도 협의 사항에 올렸다. 5번 직전 내용(PR #125·#126)은 이미 main 에 반영돼 비우고 다시 썼다 |

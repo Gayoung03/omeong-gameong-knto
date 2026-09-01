@@ -85,6 +85,24 @@ def policy_type_expr() -> ColumnElement[str]:
     return func.coalesce(_stored_policy_type(), cast(literal(PetPolicyType.UNKNOWN.value), Text))
 
 
+def pet_friendly_condition() -> ColumnElement[bool]:
+    """동반 불가 장소를 뺀다. **장소를 내려주는 모든 쿼리가 이걸 건다.**
+
+    우리는 동반 가능한 장소만 소개하는 서비스다. 동반 불가인 곳을 목록에 섞으면
+    검색 오류가 아니라 사용자를 헛걸음시키는 사고다(2026-08-31 확정).
+
+    정책 행이 없는 장소는 `unknown` 으로 나가므로 **남긴다** — 수집 대상 자체가
+    동반 가능한 곳이라 `unknown` 은 "동반 여부 모름"이 아니라 "실내·야외 세부를
+    모름"이다(`policy_type_expr` 및 앱의 `src/types/place.ts` 와 같은 규칙).
+
+    그래서 `stored != 'not_allowed'` 만으로는 안 된다. NULL 비교는 참이 아니라
+    NULL 이라 **정책 행이 없는 장소가 통째로 탈락한다.** `is_(None)` 을 OR 로
+    붙이는 이유다.
+    """
+    stored = _stored_policy_type()
+    return or_(stored.is_(None), stored != PetPolicyType.NOT_ALLOWED.value)
+
+
 def is_favorite_expr(user: User | None) -> ColumnElement[bool]:
     """비로그인이면 항상 false. 명세가 그렇게 정해뒀다."""
     if user is None:
@@ -129,6 +147,10 @@ def pet_policy_condition(policy_types: Sequence[PetPolicyType]) -> ColumnElement
     `unknown` 을 고른 경우 **정책 행이 아예 없는 장소도 포함**해야 한다.
     그 장소들이 응답에서 unknown 으로 나가기 때문이다. 값만 비교하면
     "화면에는 정보 없음이라고 떠 있는데 정보 없음 필터에는 안 잡히는" 일이 생긴다.
+
+    `not_allowed` 를 골라도 결과는 비어 있다. 호출부가 `pet_friendly_condition()`
+    을 항상 AND 로 함께 걸기 때문이다. 여기서 값을 걸러내지 않는 이유는, 제외
+    규칙이 두 군데로 갈라지면 한쪽만 고쳐지기 때문이다.
     """
     values = [policy.value for policy in policy_types]
     stored = _stored_policy_type()

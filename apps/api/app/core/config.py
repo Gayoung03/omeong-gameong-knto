@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     kakao_rest_api_key: str = ""
     weather_api_key: str = ""
     tour_api_key: str = ""
+    web_push_vapid_public_key: str = ""
+    web_push_vapid_private_key: str = ""
+    web_push_vapid_subject: str = ""
 
     # --- 소셜 로그인 (카카오) -------------------------------------------
     #: 카카오 로그인 REST 앱 키(client_id). 인가·토큰 교환에 쓴다.
