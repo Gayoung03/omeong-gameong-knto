@@ -33,7 +33,7 @@ from sqlalchemy import Integer, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.dependencies import CurrentUser
-from app.db.models import Notification, Pet, Route, TravelLog, TravelLogPet, User
+from app.db.models import Pet, Route, TravelLog, TravelLogPet, User
 from app.db.models.enums import GenerationStatus, MomentMood, WritingStyle
 from app.db.session import BackgroundSessionFactory, get_background_session, get_db
 from app.integrations.llm.travel_log_image import generate_log_image
@@ -51,6 +51,7 @@ from app.schemas.travel_log import (
     TravelLogRouteSummary,
     TravelLogUpdate,
 )
+from app.services.notifications import add_notification, send_pushes
 from app.services.place_access import load_visible_place
 from app.services.route_access import load_owned_route, pets_of
 
@@ -425,27 +426,18 @@ def run_image_generation(
             return
 
         log.generation_status = GenerationStatus.COMPLETED
-        db.add(_ready_notification(log))
         db.commit()
 
-
-def _ready_notification(log: TravelLog) -> Notification:
-    """생성 완료 알림.
-
-    생성이 오래 걸려 사용자가 화면을 벗어나도 완료를 알 수 있게 한다.
-    실패했을 때는 보내지 않는다(docs/api/notifications.md).
-
-    앱이 이 알림을 읽는 창구(`GET /notifications`)는 아직 없다. 지금은 쌓아만
-    두고, 알림 화면을 만들 때 그대로 쓰인다.
-    """
-    return Notification(
-        user_id=log.user_id,
-        type="travel_log_ready",
-        title="여행기록이 완성됐어요",
-        content=f"{log.place_name_snapshot}에서의 순간이 기록으로 만들어졌어요.",
-        icon_key="image-outline",
-        action_path=f"/travel-logs/{log.id}",
-    )
+        notification = add_notification(
+            db,
+            user_id=log.user_id,
+            type="travel_log_ready",
+            target_id=log.id,
+            title="여행기록이 완성됐어요",
+            content=f"{log.place_name_snapshot}에서의 순간이 기록으로 만들어졌어요.",
+        )
+        db.commit()
+        send_pushes(db, notification)
 
 
 # ---------------------------------------------------------------------------

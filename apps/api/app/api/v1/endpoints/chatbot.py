@@ -67,6 +67,7 @@ from app.services.chat_access import (
     to_conversation_item,
     with_conversation_stats,
 )
+from app.services.notifications import add_notification, send_pushes
 from app.services.route_access import load_owned_route
 
 router = APIRouter()
@@ -379,6 +380,19 @@ def create_message(
         db.add(reply)
         db.commit()
         db.refresh(reply)
+
+        notification = add_notification(
+            db,
+            user_id=current_user.id,
+            type="chat_answer_ready",
+            target_id=conversation_id,
+            title="혼디의 답변이 도착했어요",
+            content="요청하신 답변이 완성됐어요.",
+        )
+        db.commit()
+        # 완료 이벤트를 내보내기 전에 발송해, 클라이언트가 스트림을 닫더라도
+        # 이미 생성된 답변의 푸시가 빠지는 구간을 없앤다.
+        send_pushes(db, notification)
 
         summaries = places_of(db, [reply])
         yield _sse_event(

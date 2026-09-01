@@ -1,15 +1,4 @@
-import type { EditorialStory, WeatherSummary } from '../types/home';
-
-// TODO: 백엔드 날씨 API 연동 후 동일한 WeatherSummary 타입으로 교체합니다.
-export const mockWeather: WeatherSummary = {
-  greeting: '안녕, 보호자님!',
-  location: '제주시',
-  temperature: 24,
-  condition: '구름 많음',
-  humidity: 72,
-  windSpeed: 4,
-  tip: '바람이 많이 불어요. 산책할 때 옷을 챙겨주세요!',
-};
+import type { EditorialStory } from '../types/home';
 
 // TODO: 관리자용 콘텐츠 API가 준비되면 EditorialStory[] 응답으로 교체합니다.
 export const mockEditorialStories: EditorialStory[] = [

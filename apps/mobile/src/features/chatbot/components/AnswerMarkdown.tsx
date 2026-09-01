@@ -3,10 +3,10 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { colors, spacing } from '@/src/theme';
 
-import { type Span, parseAnswer } from './answerMarkdown';
+import { type Span, parseAnswer } from '../utils/answerMarkdown';
 
 /**
- * 혼디 답변을 서식대로 그린다. 무엇을 그릴지 읽어내는 쪽은 `answerMarkdown.ts` 다 —
+ * 혼디 답변을 서식대로 그린다. 무엇을 그릴지 읽어내는 쪽은 `utils/answerMarkdown.ts` 다 —
  * **부분 마크다운을 깜빡임 없이 처리하는 규칙 둘**이 거기 적혀 있다.
  */
 

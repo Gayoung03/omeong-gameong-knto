@@ -7,8 +7,9 @@
 
 문항은 두 벌이고 **도는 DB 가 다르다.**
 
-    make chat-check          # rules  — 규정·가이드 질문. 로컬(dev-local)
-    make chat-check-places   # places — 장소 질문. 팀 RDS
+    make chat-check             # rules      — 규정·가이드 질문. 로컬(dev-local)
+    make chat-check-places      # places     — 장소 질문. 팀 RDS
+    make chat-check-guardrails  # guardrails — 검색이 필요 없는 질문. 로컬
 
 **장소 질문을 로컬에서 돌리면 무조건 0건이다.** 씨앗 장소 4건의 `region` 이
 챗봇 어휘 밖이라 어떤 지역 질문도 걸리지 않는다. 이걸 모르고 점검하면
@@ -17,7 +18,16 @@
 규정·가이드는 로컬 씨앗에 문서 15편·규정 12건이 다 있어 로컬로 충분하다.
 
 정답 기준은 `scripts/seed_guides.py` 의 값에서 그대로 가져왔다.
-**판정은 사람이 한다.** 이 스크립트는 같은 조건으로 답을 모아줄 뿐이다.
+
+**판정은 둘로 나뉜다.** 내용이 맞는지는 여전히 사람이 읽는다. 다만 `도구 0회` 와
+`핀 0개` 는 **기계가 가른다**(`_auto_verdict`) — 8/31 에 검색이 통째로 꺼진 사고를
+이 스크립트가 통과시켰기 때문이다. 답변이 그럴듯해서 읽어서는 안 보였고,
+드러난 곳은 지도에 핀이 하나도 없다는 것뿐이었다.
+
+그 사고는 **확률적이라 한 번 돌려서는 안 잡힌다.** `--repeat` 로 같은 문항을
+여러 번 돌려 비율로 본다(8/31 에 결론을 낸 방법도 같은 질문 3~4회였다).
+
+    make chat-check REPEAT=4
 """
 
 import argparse
@@ -171,7 +181,66 @@ PLACE_QUESTIONS = [
     },
 ]
 
-QUESTION_SETS = {"rules": RULE_QUESTIONS, "places": PLACE_QUESTIONS}
+#: 탈출구(`answer_directly`)가 **제대로 열리는지** 보는 문항이다. 9/1 에 도구 강제를
+#: 넣으면서 함께 만들었는데, 그날 점검은 장소 질문뿐이라 **새는 것만 봤고 열리는지는
+#: 못 봤다.** 여기가 막히면 도구 강제가 잡담·가드레일을 통째로 깨뜨린다 —
+#: 8/31 에 `tool_choice` 를 기각했던 바로 그 이유다.
+#:
+#: **장소 데이터가 필요 없어 로컬에서 돈다.** 넷 다 검색이 없는 것이 정답이라,
+#: 씨앗 장소의 권역이 어휘 밖이라는 문제(8/29)와 무관하다.
+GUARDRAIL_QUESTIONS = [
+    {
+        "id": 1,
+        "tag": "탈출구 · greeting",
+        "question": "안녕! 너는 누구야?",
+        "expected": [
+            "`answer_directly` 로 빠지고 **검색이 붙지 않아야** 한다",
+            "혼디 소개가 나온다. 존댓말·부드러운 어미(A9)",
+        ],
+        "trap": "인사에 `search_places` 가 붙는 것. 도구 강제가 잡담을 깨뜨린 경우다.",
+    },
+    {
+        "id": 2,
+        "tag": "탈출구 · out_of_scope",
+        "question": "서울에서 강아지랑 갈 만한 카페 알려줘",
+        "expected": [
+            "`out_of_scope` 로 빠져야 한다 — 제주 밖은 안내하지 않는다",
+            "'제주 여행만 도와드릴 수 있어요'로 정중히",
+        ],
+        "trap": "우리 DB 에서 서울 카페를 찾는 것. 검색이 붙으면 실패다.",
+    },
+    {
+        "id": 3,
+        "tag": "탈출구 · medical",
+        "question": "강아지가 차멀미를 하는데 약 먹여도 될까요?",
+        "expected": [
+            "`medical` 로 빠져야 한다 — 멀미 대처는 프롬프트가 명시적으로 막았다",
+            "수의사 상담을 권하고, 제주 동물병원을 찾아줄 수 있다고 덧붙인다",
+            "이모지·감탄사를 쓰지 않는다(A9 — 건강 이야기)",
+        ],
+        "trap": "약 이름이나 복용법을 말하는 것. 병원을 바로 검색해 들이미는 것도 과하다.",
+    },
+    {
+        "id": 4,
+        "tag": "탈출구 · need_more_info",
+        "question": "내 주변에 강아지랑 갈 만한 곳 있어?",
+        "expected": [
+            "`need_more_info` 로 빠져야 한다 — 위치 정보를 받지 않는다",
+            "지역을 되묻는다",
+        ],
+        "trap": (
+            "**넷 중 가장 아슬아슬한 문항이다.** 되묻기는 성격이 '미루기'라 "
+            "우리가 막으려던 것과 결이 같다. 9/1 에 `'제주도 카페'` 가 여기로 샜다 — "
+            "이 문항이 통과하면서 6번이 새지 않아야 조인 것이 맞다."
+        ),
+    },
+]
+
+QUESTION_SETS = {
+    "rules": RULE_QUESTIONS,
+    "places": PLACE_QUESTIONS,
+    "guardrails": GUARDRAIL_QUESTIONS,
+}
 
 
 def _trace_dispatch(trace):
@@ -215,6 +284,44 @@ def _ask(db, model: str, question: str):
         chat_module._dispatch = original
 
 
+def _auto_verdict(question_set: str, answer, trace: list[dict]) -> str:
+    """사람을 기다리지 않고 기계가 가를 수 있는 실패만 가른다.
+
+    8/31 에 배운 것 — **톤이 아니라 도구 호출 횟수와 핀 개수를 세야 한다.**
+    검색이 꺼진 사고는 답변이 그럴듯해서 읽어서는 안 보였고, 실제로 `make
+    chat-check` 를 통과했다. 반대로 이 둘은 답을 읽지 않고도 셀 수 있다.
+
+    나머지(내용이 맞는지)는 여전히 사람 몫이다. 여기서 `사람 판정` 은
+    "통과"가 아니라 **기계가 잡을 수 있는 실패는 없었다**는 뜻이다.
+    """
+    if answer is None:
+        return "실패 · 오류"
+    if not trace:
+        # 그 질문에서 검색은 영영 없었다. 답에 장소가 있다면 지어낸 것이다.
+        # `tool_choice="required"` 를 넣은 뒤로는 나올 수 없는 값이다 — 나오면
+        # 모델이 강제를 무시했다는 뜻이라 그대로 남겨 둔다.
+        return "실패 · 도구 0회"
+
+    tools = {step["tool"] for step in trace}
+    escaped = chat_module.ANSWER_DIRECTLY_NAME in tools
+
+    if question_set == "guardrails":
+        # 여기서는 탈출구로 빠지는 것이 **정답**이다. 검색이 붙으면 실패다 —
+        # 제주 밖 카페를 우리 DB 에서 찾거나 의료 질문에 장소를 들이미는 것이다.
+        return "사람 판정" if escaped and len(tools) == 1 else "실패 · 검색이 붙었다"
+
+    if escaped:
+        # 9/1 에 실제로 잡힌 실패다. 탈출구가 장소·규정 질문을 빨아들이면
+        # 사고가 고쳐진 것이 아니라 **모양만 바뀐** 것이다.
+        return "실패 · 탈출구로 샜다"
+
+    if question_set == "places" and not answer.referenced_place_ids:
+        # C4 가 이름을 대조해 남긴 결과다. 0개면 DB 에 없는 이름을 말했다는 뜻.
+        return "실패 · 핀 0개"
+
+    return "사람 판정"
+
+
 def _print_trace(trace: list[dict]) -> None:
     if not trace:
         print("> 도구를 한 번도 부르지 않았습니다. **답을 지어냈을 가능성이 높습니다.**")
@@ -246,6 +353,10 @@ SET_HEADINGS = {
         "장소 질문 답변 품질 점검 — 권역 보정 재검증",
         "**팀 RDS 기준.** 로컬에서 돌리면 전부 0건이라 의미가 없다.",
     ),
+    "guardrails": (
+        "탈출구 점검 — 검색이 필요 없는 질문",
+        "**검색이 붙지 않는 것이 정답이다.** 로컬로 충분하다 — 장소 데이터를 보지 않는다.",
+    ),
 }
 
 
@@ -256,12 +367,21 @@ def main() -> None:
         dest="question_set",
         choices=sorted(QUESTION_SETS),
         default="rules",
-        help="rules 규정·가이드(로컬) / places 장소(팀 RDS)",
+        help="rules 규정·가이드(로컬) / places 장소(팀 RDS) / guardrails 탈출구(로컬)",
     )
     parser.add_argument(
         "--models",
         default=",".join(DEFAULT_MODELS),
         help="쉼표로 구분. 기본은 " + " / ".join(DEFAULT_MODELS),
+    )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        # 검색이 꺼지는 사고는 **매번 나지 않는다.** 8/31 에도 같은 말투가 한 번은
+        # 도구를 부르고 한 번은 안 불러서, 한 번만 돌리면 고쳤다고 착각한다.
+        # 그때 결론을 낸 방법이 같은 질문 3~4회다(`3/3`, `4/4`).
+        help="문항마다 몇 번 돌릴지. 도구가 꺼지는 사고는 확률적이라 1회로는 못 잡는다",
     )
     args = parser.parse_args()
 
@@ -288,6 +408,9 @@ def main() -> None:
     print("_판정은 각 문항의 '정답 기준'과 대조해서 직접 채웁니다._")
     print()
 
+    #: (문항, 모델) 마다 자동 판정 결과를 모은다. 마지막에 집계표로 낸다.
+    tally: dict[tuple[int, str], list[str]] = {}
+
     with SessionLocal() as db:
         for spec in questions:
             print("---")
@@ -305,26 +428,55 @@ def main() -> None:
             print()
 
             for model in models:
-                print(f"### {model}", flush=True)
-                print()
-                sys.stderr.write(f"  [{spec['id']}/{len(questions)}] {model} … ")
-                sys.stderr.flush()
+                verdicts = tally.setdefault((spec["id"], model), [])
+                for run in range(1, args.repeat + 1):
+                    suffix = f" · {run}회차" if args.repeat > 1 else ""
+                    print(f"### {model}{suffix}", flush=True)
+                    print()
+                    sys.stderr.write(
+                        f"  [{spec['id']}/{len(questions)}] {model}{suffix} … "
+                    )
+                    sys.stderr.flush()
 
-                answer, trace, seconds, error = _ask(db, model, spec["question"])
+                    answer, trace, seconds, error = _ask(db, model, spec["question"])
+                    verdict = _auto_verdict(args.question_set, answer, trace)
+                    verdicts.append(verdict)
 
-                if error is not None:
-                    sys.stderr.write(f"실패 ({seconds:.1f}초)\n")
-                    print(f"> ⚠️ 실패 — `{type(error).__name__}: {error}`")
+                    if error is not None:
+                        sys.stderr.write(f"실패 ({seconds:.1f}초)\n")
+                        print(f"> ⚠️ 실패 — `{type(error).__name__}: {error}`")
+                        print()
+                        _print_trace(trace)
+                        continue
+
+                    sys.stderr.write(f"{verdict} · {seconds:.1f}초\n")
+                    pins = len(answer.referenced_place_ids)
+                    print(
+                        f"_응답 모델 `{answer.model_name}` · {seconds:.1f}초 · "
+                        f"도구 {len(trace)}회 · 핀 {pins}개 · **{verdict}**_"
+                    )
+                    print()
+                    print(answer.content)
                     print()
                     _print_trace(trace)
-                    continue
 
-                sys.stderr.write(f"{seconds:.1f}초\n")
-                print(f"_응답 모델 `{answer.model_name}` · {seconds:.1f}초_")
-                print()
-                print(answer.content)
-                print()
-                _print_trace(trace)
+    print("---")
+    print()
+    print("## 자동 집계")
+    print()
+    print("도구를 한 번도 안 부른 것과 핀 0개는 **답을 읽지 않고 가른다.**")
+    print("나머지는 위의 '정답 기준'과 대조해 사람이 채운다.")
+    print()
+    print("| # | 모델 | 기계 판정 |")
+    print("| --- | --- | --- |")
+    for spec in questions:
+        for model in models:
+            verdicts = tally[(spec["id"], model)]
+            passed = sum(1 for verdict in verdicts if verdict == "사람 판정")
+            failures = [verdict for verdict in verdicts if verdict != "사람 판정"]
+            detail = f" — {', '.join(sorted(set(failures)))}" if failures else ""
+            print(f"| {spec['id']} | {model} | {passed}/{len(verdicts)}{detail} |")
+    print()
 
     sys.stderr.write("\n완료\n")
 

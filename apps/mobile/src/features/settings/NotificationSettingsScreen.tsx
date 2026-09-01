@@ -11,7 +11,6 @@ import { useNotificationPreferencesStore } from './stores/useNotificationPrefere
 
 /**
  * 알림 수신 여부만 관리하는 화면이다.
- * TODO: 기기 알림 권한 요청 / Expo Push Token 발급·서버 등록은 아직 구현하지 않았다.
  * TODO: 1:1 문의 답변 푸시 흐름(답변 등록 → inquiryAnswerEnabled 확인 → 토큰 조회 → 발송 →
  *       알림 탭 시 /inquiries/{id}로 이동)도 서버 연동 시점에 붙인다.
  */

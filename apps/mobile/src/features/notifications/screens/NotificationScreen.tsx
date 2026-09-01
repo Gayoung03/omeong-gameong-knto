@@ -1,4 +1,6 @@
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/src/components/feedback/EmptyState';
@@ -6,17 +8,32 @@ import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
 import { colors, spacing } from '@/src/theme';
 
 import { NotificationItem } from '../components/NotificationItem';
-import { appNotifications } from '../mocks/notification.mock';
+import { markNotificationRead } from '../api/notificationApi';
+import { useNotifications } from '../hooks/useNotifications';
+import { openNotification } from '../services/pushNotifications';
+import type { AppNotification } from '../types/notification';
 
 export function NotificationScreen() {
-  // TODO: 알림 API 가 준비되면 TanStack Query 훅으로 교체한다.
-  const notifications = appNotifications;
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { data: notifications = [], isLoading } = useNotifications();
+
+  const handlePress = (notification: AppNotification) => {
+    openNotification(router, notification.type, notification.targetId);
+    if (!notification.isRead) {
+      void markNotificationRead(notification.id).then(() =>
+        queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+      );
+    }
+  };
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScreenHeader title="알림" />
 
-      {notifications.length === 0 ? (
+      {isLoading ? (
+        <ActivityIndicator color={colors.primary} style={styles.loading} />
+      ) : notifications.length === 0 ? (
         <EmptyState
           description="여행 일정과 날씨 소식이 도착하면 여기에 모아드릴게요."
           icon="notifications-outline"
@@ -26,7 +43,11 @@ export function NotificationScreen() {
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.list}>
             {notifications.map((notification) => (
-              <NotificationItem key={notification.id} notification={notification} />
+              <NotificationItem
+                key={notification.id}
+                notification={notification}
+                onPress={() => handlePress(notification)}
+              />
             ))}
           </View>
         </ScrollView>
@@ -43,6 +64,9 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: spacing.sm,
+  },
+  loading: {
+    marginTop: spacing.xl,
   },
   safeArea: {
     backgroundColor: colors.background,
