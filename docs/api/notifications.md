@@ -33,9 +33,16 @@
 | POST | `/notifications/read-all` | 전체 읽음 처리 | 필요 |
 | POST | `/push-tokens` | 현재 기기 Expo Push Token 등록 | 필요 |
 | DELETE | `/push-tokens` | 현재 기기 Expo Push Token 해제 | 필요 |
+| GET | `/web-push/public-key` | 브라우저 구독용 VAPID 공개키 | 불필요 |
+| POST | `/web-push/subscriptions` | 현재 브라우저 Web Push 구독 등록 | 필요 |
+| DELETE | `/web-push/subscriptions` | 현재 브라우저 Web Push 구독 해제 | 필요 |
 
-앱 밖 알림은 Expo Push Service를 사용합니다. 모바일 빌드에는
-`EXPO_PUBLIC_EAS_PROJECT_ID`와 iOS/Android 푸시 인증 정보가 필요합니다.
+앱 밖 알림은 모바일에서 Expo Push Service, 웹에서 브라우저 표준 Web Push를 사용합니다.
+모바일 빌드에는 `EXPO_PUBLIC_EAS_PROJECT_ID`와 iOS/Android 푸시 인증 정보가 필요합니다.
+웹 푸시는 Railway에 `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`,
+`WEB_PUSH_VAPID_SUBJECT`를 등록해야 하며 브라우저가 HTTPS에서 알림 권한을 허용해야 합니다.
+키는 `apps/api`에서 `uv run python -m scripts.generate_vapid_keys`로 한 번 생성합니다.
+`WEB_PUSH_VAPID_SUBJECT`에는 운영 연락처를 `mailto:team@example.com` 형식으로 넣습니다.
 
 ### 1:1 문의
 

@@ -261,8 +261,10 @@ class PushToken(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    token: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    token: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     platform: Mapped[str] = mapped_column(String(20), nullable=False)
+    p256dh: Mapped[str | None] = mapped_column(Text)
+    auth: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

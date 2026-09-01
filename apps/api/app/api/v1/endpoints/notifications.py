@@ -9,6 +9,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser
+from app.core.config import settings
 from app.db.models import Notification, PushToken
 from app.db.session import get_db
 from app.schemas.notification import (
@@ -17,6 +18,9 @@ from app.schemas.notification import (
     PushTokenCreate,
     PushTokenDelete,
     UnreadCountResponse,
+    WebPushPublicKeyResponse,
+    WebPushSubscriptionCreate,
+    WebPushSubscriptionDelete,
 )
 
 router = APIRouter()
@@ -118,5 +122,52 @@ def delete_push_token(
     )
     if token is not None:
         db.delete(token)
+        db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/web-push/public-key", response_model=WebPushPublicKeyResponse)
+def web_push_public_key() -> WebPushPublicKeyResponse:
+    if not settings.web_push_vapid_public_key:
+        raise HTTPException(status_code=503, detail="웹 푸시가 설정되지 않았습니다")
+    return WebPushPublicKeyResponse(public_key=settings.web_push_vapid_public_key)
+
+
+@router.post("/web-push/subscriptions", status_code=status.HTTP_204_NO_CONTENT)
+def register_web_push_subscription(
+    payload: WebPushSubscriptionCreate, current_user: CurrentUser, db: DbSession
+) -> Response:
+    subscription = db.scalar(select(PushToken).where(PushToken.token == payload.endpoint))
+    if subscription is None:
+        subscription = PushToken(
+            user_id=current_user.id,
+            token=payload.endpoint,
+            platform="web",
+            p256dh=payload.p256dh,
+            auth=payload.auth,
+        )
+        db.add(subscription)
+    else:
+        subscription.user_id = current_user.id
+        subscription.platform = "web"
+        subscription.p256dh = payload.p256dh
+        subscription.auth = payload.auth
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/web-push/subscriptions", status_code=status.HTTP_204_NO_CONTENT)
+def delete_web_push_subscription(
+    payload: WebPushSubscriptionDelete, current_user: CurrentUser, db: DbSession
+) -> Response:
+    subscription = db.scalar(
+        select(PushToken).where(
+            PushToken.token == payload.endpoint,
+            PushToken.user_id == current_user.id,
+            PushToken.platform == "web",
+        )
+    )
+    if subscription is not None:
+        db.delete(subscription)
         db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

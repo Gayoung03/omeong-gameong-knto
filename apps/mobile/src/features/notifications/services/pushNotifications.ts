@@ -11,6 +11,61 @@ import type { NotificationType } from '../types/notification';
 type Router = ReturnType<typeof useRouter>;
 const PUSH_TOKEN_KEY = 'omeong-gameong.expo-push-token';
 
+function urlBase64ToUint8Array(value: string): Uint8Array<ArrayBuffer> {
+  const padding = '='.repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const bytes = window.atob(base64);
+  return Uint8Array.from(bytes, (character) => character.charCodeAt(0));
+}
+
+async function registerWebPush(): Promise<void> {
+  if (
+    typeof window === 'undefined' ||
+    !('serviceWorker' in navigator) ||
+    !('PushManager' in window)
+  ) {
+    return;
+  }
+
+  const permission =
+    Notification.permission === 'default'
+      ? await Notification.requestPermission()
+      : Notification.permission;
+  if (permission !== 'granted') return;
+
+  const registration = await navigator.serviceWorker.register('/push-sw.js');
+  const { data } = await apiClient.get<{ publicKey: string }>('/web-push/public-key');
+  const existing = await registration.pushManager.getSubscription();
+  const subscription =
+    existing ??
+    (await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(data.publicKey),
+    }));
+  const json = subscription.toJSON();
+  if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) return;
+
+  await apiClient.post('/web-push/subscriptions', {
+    endpoint: json.endpoint,
+    p256dh: json.keys.p256dh,
+    auth: json.keys.auth,
+  });
+}
+
+async function unregisterWebPush(): Promise<void> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+  const registration = await navigator.serviceWorker.getRegistration('/push-sw.js');
+  const subscription = await registration?.pushManager.getSubscription();
+  if (!subscription) return;
+  try {
+    await apiClient.delete('/web-push/subscriptions', {
+      data: { endpoint: subscription.endpoint },
+    });
+  } finally {
+    await subscription.unsubscribe();
+  }
+}
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldPlaySound: true,
@@ -21,7 +76,7 @@ Notifications.setNotificationHandler({
 });
 
 export async function registerPushToken(): Promise<void> {
-  if (Platform.OS === 'web') return;
+  if (Platform.OS === 'web') return registerWebPush();
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
       name: '기본 알림',
@@ -42,6 +97,7 @@ export async function registerPushToken(): Promise<void> {
 }
 
 export async function unregisterPushToken(): Promise<void> {
+  if (Platform.OS === 'web') return unregisterWebPush();
   const token = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
   if (!token) return;
   try {

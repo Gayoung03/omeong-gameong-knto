@@ -38,3 +38,17 @@ class PushTokenCreate(APISchema):
 
 class PushTokenDelete(APISchema):
     token: str = Field(min_length=10, max_length=255)
+
+
+class WebPushPublicKeyResponse(APISchema):
+    public_key: str
+
+
+class WebPushSubscriptionCreate(APISchema):
+    endpoint: str = Field(min_length=10, max_length=2048)
+    p256dh: str = Field(min_length=10, max_length=512)
+    auth: str = Field(min_length=5, max_length=512)
+
+
+class WebPushSubscriptionDelete(APISchema):
+    endpoint: str = Field(min_length=10, max_length=2048)

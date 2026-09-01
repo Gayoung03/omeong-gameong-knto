@@ -390,6 +390,9 @@ def create_message(
             content="요청하신 답변이 완성됐어요.",
         )
         db.commit()
+        # 완료 이벤트를 내보내기 전에 발송해, 클라이언트가 스트림을 닫더라도
+        # 이미 생성된 답변의 푸시가 빠지는 구간을 없앤다.
+        send_pushes(db, notification)
 
         summaries = places_of(db, [reply])
         yield _sse_event(
@@ -400,7 +403,6 @@ def create_message(
                 ),
             }
         )
-        send_pushes(db, notification)
 
     return StreamingResponse(
         event_stream(),
