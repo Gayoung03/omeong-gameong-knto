@@ -28,6 +28,7 @@ from app.db.models.enums import PetPolicyType, PlaceEnvironment
 from app.rag.vocabulary import CATEGORIES, REGIONS, TAGS
 from app.services.place_query import (
     has_tag_condition,
+    pet_friendly_condition,
     pet_policy_condition,
     policy_type_expr,
     rating_expr,
@@ -44,22 +45,6 @@ DESCRIPTION_LENGTH = 80
 #: 설명에 섞인 원본 분류 줄. 카테고리와 중복이라 토큰만 먹는다.
 #: 예) "[KCISA 원본 분류] 반려동물업 > 반려동물 서비스 > 미용"
 _TAXONOMY_LINE = re.compile(r"\[[^\]]*원본 분류\][^\n]*")
-
-#: 동반정책을 지정하지 않았을 때 기본으로 포함하는 값 — `not_allowed` 만 뺀다.
-#:
-#: GPT 가 정책을 **안 고르는 경우가 많다.** 사용자가 "애월 카페 알려줘"라고만
-#: 물으면 굳이 넣을 이유가 없기 때문이다. 그때 전부 돌려주면 `not_allowed` 인
-#: 곳(반려묘 전용 카페, KCISA 원본이 `동반 가능정보: N` 인 곳)이 추천에 섞인다.
-#: **반려동물 앱에서 이건 검색 오류가 아니라 헛걸음시키는 사고다.**
-#:
-#: `unknown` 은 뺀 것이 아니라 **넣는다.** 우리 장소 데이터는 동반 가능한 곳만
-#: 모은 것이라, `unknown` 은 "동반 가능 여부를 모름"이 아니라 **"동반은 되는데
-#: 실내/야외 세부를 모름"** 이다(docs/planning/chatbot-design-decisions.md).
-#: 빼면 절반이 사라진다.
-DEFAULT_POLICIES: tuple[PetPolicyType, ...] = tuple(
-    policy for policy in PetPolicyType if policy is not PetPolicyType.NOT_ALLOWED
-)
-
 
 #: 겸업 카테고리 — `restaurant_cafe`(식당 겸 카페)는 **식당으로도 카페로도** 찾아져야 한다.
 #:
@@ -177,9 +162,9 @@ def search_places(
     `category` 는 **겸업까지 넓혀서** 본다 — "식당"을 물으면 식당 겸 카페도
     함께 나온다(`_CATEGORY_ALIASES`).
 
-    `pet_policy` 를 지정하지 않으면 **`not_allowed` 만 빼고** 전부 본다
-    (`DEFAULT_POLICIES`). 인자를 아예 안 주면 동반 불가인 곳을 뺀 채로
-    평점 높은 순 다섯 곳이 나온다.
+    **동반 불가인 곳은 인자와 무관하게 항상 빠진다**(`pet_friendly_condition`).
+    `pet_policy=["not_allowed"]` 를 넘겨도 빈 결과다. `pet_policy` 는 남은 4종
+    안에서 좁히는 용도다 — 지정하지 않으면 넷 다 본다.
 
     `category` 를 지정하지 않으면 **`etc` 를 뺀다**(`_EXCLUDED_WITHOUT_CATEGORY`).
     여행지가 아니라 동물약국·용품점이라, 안 빼면 "갈 만한 곳"에 섞여 나온다.
@@ -196,6 +181,9 @@ def search_places(
         # 사용자가 직접 등록한 장소는 그 사람에게만 보인다. 이 한 줄이 빠지면
         # 남이 등록한 장소를 챗봇이 온 세상에 추천한다(places.py 와 같은 규칙).
         Place.created_by_user_id.is_(None),
+        # 동반 불가인 곳은 GPT 가 뭘 넘기든 후보에서 빠진다. 모듈 설명의
+        # "동반 불가인 곳을 추천하는 사고" 를 막는 마지막 방어선이다.
+        pet_friendly_condition(),
     ]
     if region is not None:
         conditions.append(Place.region == region)
@@ -206,8 +194,9 @@ def search_places(
         conditions.append(Place.category.notin_(_EXCLUDED_WITHOUT_CATEGORY))
     if environment is not None:
         conditions.append(Place.environment == environment)
-    # 지정하지 않으면 `not_allowed` 만 빼고 전부 본다. 위 DEFAULT_POLICIES 참고.
-    conditions.append(pet_policy_condition(pet_policy or DEFAULT_POLICIES))
+    # 지정했을 때만 더 좁힌다. 동반 불가는 위에서 이미 빠졌다.
+    if pet_policy:
+        conditions.append(pet_policy_condition(pet_policy))
     for tag in tags or []:
         conditions.append(has_tag_condition(tag))
 

@@ -72,7 +72,7 @@ from app.rag.retrieval.place_search import (
     UnknownVocabularyError,
     search_places,
 )
-from app.rag.vocabulary import CATEGORIES, REGIONS, TAGS
+from app.rag.vocabulary import CATEGORIES, REGIONS, SELECTABLE_PET_POLICIES, TAGS
 
 #: 도구 호출을 몇 번까지 허용할지. 설계 결정 B7 — 조건을 완화해 다시 찾는 것까지다.
 MAX_TOOL_ROUNDS = 3
@@ -100,9 +100,12 @@ SEARCH_TOOL = {
                 "category": {"type": "string", "enum": list(CATEGORIES)},
                 "pet_policy": {
                     "type": "array",
-                    "items": {"type": "string", "enum": [p.value for p in PetPolicyType]},
+                    # `not_allowed` 는 **고를 수 없는 값이다.** 우리는 동반 가능한
+                    # 장소만 다루고 검색도 그것만 돌려준다. 선택지로 보여주면
+                    # "동반 불가인 곳" 질문에 빈 결과를 받고 GPT 가 헤맨다.
+                    "items": {"type": "string", "enum": list(SELECTABLE_PET_POLICIES)},
                     "description": (
-                        "생략하면 동반 불가인 곳만 빠지고 나머지는 모두 나온다. "
+                        "생략하면 동반 가능한 장소가 모두 나온다. "
                         "'실내까지 들어갈 수 있는' 처럼 분명할 때만 지정한다."
                     ),
                 },
