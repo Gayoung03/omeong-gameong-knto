@@ -6,6 +6,7 @@ from app.api.v1.endpoints import (
     auth,
     chatbot,
     checklists,
+    guides,
     health,
     memos,
     pets,
@@ -34,3 +35,4 @@ api_router.include_router(travel_logs.router, tags=["travel-logs"])
 api_router.include_router(uploads.router, tags=["uploads"])
 api_router.include_router(weather.router, tags=["weather"])
 api_router.include_router(chatbot.router, tags=["chat"])
+api_router.include_router(guides.router, tags=["guides"])
