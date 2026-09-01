@@ -70,5 +70,24 @@ TAG_LABELS: dict[str, str] = {
     "indoor_tourism": "실내 관광",
 }
 
+#: 챗봇이 고를 수 있는 동반정책. **`not_allowed` 는 없다.**
+#:
+#: 우리는 동반 가능한 장소만 소개하고, 검색도 동반 불가인 곳을 항상 뺀다
+#: (`services/place_query.py` 의 `pet_friendly_condition`, 2026-08-31 확정).
+#: 그런데 선택지로 남겨 두면 "강아지 못 데려가는 카페도 있어?" 같은 질문에
+#: GPT 가 `not_allowed` 를 골라 빈 결과를 받고, 검색이 고장난 줄 알고 조건을
+#: 바꿔가며 몇 번씩 재시도한다. 아예 없는 값으로 두는 편이 낫다.
+#:
+#: `unknown` 은 **넣는다.** 우리 장소의 절반이 여기 속하는데, "동반 가능 여부를
+#: 모름"이 아니라 **"동반은 되는데 실내·야외 세부를 모름"** 이다.
+PET_POLICY_LABELS: dict[str, str] = {
+    "indoor_allowed": "실내까지 동반 가능",
+    "outdoor_only": "야외만 가능",
+    "partial_allowed": "일부 구역만 가능",
+    "unknown": "동반은 가능하나 실내·야외 세부가 확인되지 않음",
+}
+
 CATEGORIES: tuple[str, ...] = tuple(CATEGORY_LABELS)
 TAGS: tuple[str, ...] = tuple(TAG_LABELS)
+#: 도구 스키마의 `pet_policy` enum. 시스템 프롬프트와 **같은 목록을 본다.**
+SELECTABLE_PET_POLICIES: tuple[str, ...] = tuple(PET_POLICY_LABELS)

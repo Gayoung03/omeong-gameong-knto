@@ -53,6 +53,7 @@ from app.services.place_query import (
     distance_expr,
     has_tag_condition,
     is_favorite_expr,
+    pet_friendly_condition,
     pet_policy_condition,
     policy_type_expr,
     rating_expr,
@@ -122,6 +123,9 @@ def list_places(
         Place.is_active.is_(True),
         # 이 한 줄이 빠지면 남이 등록한 장소가 검색에 섞인다. 위 문서 주석 참고.
         Place.created_by_user_id.is_(None),
+        # 동반 불가인 곳은 어떤 검색·필터로도 나오지 않는다. `petPolicy=not_allowed`
+        # 를 명시로 보내도 마찬가지로 0건이다.
+        pet_friendly_condition(),
     ]
     if q:
         conditions.append(Place.name.ilike(f"%{q}%"))
@@ -263,8 +267,25 @@ def list_my_favorites(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> FavoritePlaceListResponse:
+    """예전에 저장해 둔 동반 불가 장소는 목록에서 빠진다.
+
+    **건수도 함께 빼야 한다.** 즐겨찾기 건수는 원래 `favorites` 만 세면 됐는데,
+    장소 쪽 조건이 생긴 지금 그대로 두면 "3곳"이라 쓰여 있는데 두 곳만 보인다.
+    그래서 건수 쿼리도 `places` 를 조인한다.
+
+    빠진 장소의 즐겨찾기 행은 지우지 않는다. 저장 해제는 계속 되게 열어 뒀다
+    (`remove_favorite` 참고).
+    """
     condition = Favorite.user_id == current_user.id
-    total = db.scalar(select(func.count()).select_from(Favorite).where(condition)) or 0
+    total = (
+        db.scalar(
+            select(func.count())
+            .select_from(Favorite)
+            .join(Place, Place.id == Favorite.place_id)
+            .where(condition, pet_friendly_condition())
+        )
+        or 0
+    )
 
     rows = db.execute(
         select(
@@ -278,7 +299,7 @@ def list_my_favorites(
             Favorite.created_at.label("favorited_at"),
         )
         .join(Favorite, Favorite.place_id == Place.id)
-        .where(condition)
+        .where(condition, pet_friendly_condition())
         .order_by(Favorite.created_at.desc())
         .limit(limit)
         .offset(offset)
@@ -361,7 +382,13 @@ def add_favorite(place_id: uuid.UUID, current_user: CurrentUser, db: DbSession) 
     summary="즐겨찾기 해제",
 )
 def remove_favorite(place_id: uuid.UUID, current_user: CurrentUser, db: DbSession) -> Response:
-    load_visible_place(db, place_id, current_user)
+    """동반 불가로 분류가 바뀐 장소도 **해제는 된다**(`pet_friendly_only=False`).
+
+    그 장소들은 이제 목록에도 상세에도 안 나오지만, 예전에 저장한 사람의 즐겨찾기
+    행은 남아 있다. 여기까지 404 로 막으면 그 행을 지울 방법이 사라진다.
+    등록(PUT)은 반대로 막아야 하므로 기본값 그대로 둔다.
+    """
+    load_visible_place(db, place_id, current_user, pet_friendly_only=False)
 
     existing = db.get(Favorite, {"user_id": current_user.id, "place_id": place_id})
     if existing is not None:
