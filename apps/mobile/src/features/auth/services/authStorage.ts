@@ -140,6 +140,9 @@ export async function clearAuthState() {
 /** 로그아웃. 서버 로그아웃은 무효화가 없어 성공 신호일 뿐이라, 실패해도 로컬은 지운다. */
 export async function signOut() {
   try {
+    const { unregisterPushToken } =
+      await import('@/src/features/notifications/services/pushNotifications');
+    await unregisterPushToken();
     await logout();
   } catch {
     // 서버 로그아웃 실패(네트워크 등)해도 기기의 토큰·세션·동의기록은 반드시 지운다.

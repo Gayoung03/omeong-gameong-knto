@@ -31,6 +31,18 @@
 | GET | `/notifications/unread-count` | 안 읽은 개수 | 필요 |
 | PATCH | `/notifications/{notificationId}/read` | 읽음 처리 | 필요 |
 | POST | `/notifications/read-all` | 전체 읽음 처리 | 필요 |
+| POST | `/push-tokens` | 현재 기기 Expo Push Token 등록 | 필요 |
+| DELETE | `/push-tokens` | 현재 기기 Expo Push Token 해제 | 필요 |
+| GET | `/web-push/public-key` | 브라우저 구독용 VAPID 공개키 | 불필요 |
+| POST | `/web-push/subscriptions` | 현재 브라우저 Web Push 구독 등록 | 필요 |
+| DELETE | `/web-push/subscriptions` | 현재 브라우저 Web Push 구독 해제 | 필요 |
+
+앱 밖 알림은 모바일에서 Expo Push Service, 웹에서 브라우저 표준 Web Push를 사용합니다.
+모바일 빌드에는 `EXPO_PUBLIC_EAS_PROJECT_ID`와 iOS/Android 푸시 인증 정보가 필요합니다.
+웹 푸시는 Railway에 `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`,
+`WEB_PUSH_VAPID_SUBJECT`를 등록해야 하며 브라우저가 HTTPS에서 알림 권한을 허용해야 합니다.
+키는 `apps/api`에서 `uv run python -m scripts.generate_vapid_keys`로 한 번 생성합니다.
+`WEB_PUSH_VAPID_SUBJECT`에는 운영 연락처를 `mailto:team@example.com` 형식으로 넣습니다.
 
 ### 1:1 문의
 
@@ -154,25 +166,27 @@ GET /api/v1/notifications?isRead=false&limit=20&offset=0
 
 | 필드 | 설명 |
 | --- | --- |
-| `type` | 알림 종류. 아래 3종 중 하나 |
+| `type` | 알림 종류. 아래 5종 중 하나 |
 | `targetId` | 이동할 대상의 ID. `type`에 따라 가리키는 것이 다름 |
 | `readAt` | `isRead`가 `true`일 때만 값이 있음 |
 
 DB CHECK 제약이 `is_read = false OR read_at IS NOT NULL`이라,
 읽음 처리하면 `readAt`이 반드시 채워집니다.
 
-### 알림 종류 **[확정]** (2026-08-18)
+### 알림 종류 **[확정]** (2026-08-31)
 
-**3종으로 시작합니다.**
+**5종으로 시작합니다.**
 
 | `type` | 언제 보내나 | `targetId` | 앱 아이콘 | 눌렀을 때 |
 | --- | --- | --- | --- | --- |
 | `travel_log_ready` | 여행기록 이미지 생성 완료 | `travel_logs.id` | `image-outline` | 여행기록 상세 |
+| `route_ready` | 추천 루트 생성 완료 | `routes.id` | `map-outline` | 여행 상세 |
+| `chat_answer_ready` | 챗봇 답변 생성 완료 | `chat_conversations.id` | `chatbubble-outline` | 챗봇 |
 | `inquiry_answered` | 내 문의에 답변 등록 | `inquiries.id` | `chatbubble-outline` | 문의 상세 |
 | `notice` | 새 공지사항 등록 | `notices.id` | `megaphone-outline` | 공지 상세 |
 
 DB의 `notifications.type`은 `String(30)` 자유 문자열이라 제약이 없습니다.
-**서버가 이 3개 값만 넣는다는 약속**이며, 늘릴 때는 이 표를 먼저 고칩니다.
+**서버가 이 5개 값만 넣는다는 약속**이며, 늘릴 때는 이 표를 먼저 고칩니다.
 
 ### 아이콘과 이동 경로는 앱이 정합니다 **[확정]** (2026-08-18)
 

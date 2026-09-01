@@ -23,6 +23,7 @@ EXPECTED_TABLES = {
     "place_tag_links",
     "place_tags",
     "places",
+    "push_tokens",
     "review_images",
     "reviews",
     "route_calculation_cache",
