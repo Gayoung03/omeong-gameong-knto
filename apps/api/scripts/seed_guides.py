@@ -321,6 +321,9 @@ TRANSPORT_RULES = [
         "carrier_type": CarrierType.FERRY,
         "route": "완도↔제주",
         "cabin_allowed": True,
+        # 무게 상한 없음(원문: "무게 제한이 명시되어 있지 않아 대형견도…") — 백필과 동일값
+        # 을 시드에도 둔다: 재시드·리허설 환경이 프로덕션과 같은 상태가 되게 (계획 리뷰).
+        "cabin_weight_unlimited": True,
         "max_pets_per_person_cabin": 1,
         "duration_minutes": 160,
         "notes": "무게 제한이 명시되어 있지 않아 대형견도 함께 갈 수 있다. "
@@ -334,6 +337,8 @@ TRANSPORT_RULES = [
         "carrier_type": CarrierType.FERRY,
         "route": "목포↔제주",
         "cabin_allowed": True,
+        # 무게는 객실 등급만 가를 뿐 탑승 상한이 아니다(설계 7.4 해석) — 백필과 동일값.
+        "cabin_weight_unlimited": True,
         "duration_minutes": 290,
         "notes": "객실 등급이 무게로 갈린다 — 펫코노미 4kg 미만, "
         "펫스탠다드룸·퀸메리 의자석 10kg 미만, "
@@ -373,6 +378,8 @@ TRANSPORT_RULES = [
         "carrier_type": CarrierType.FERRY,
         "route": "고흥(녹동)↔제주",
         "cabin_allowed": False,
+        # 원칙 불가·예외 허용의 조건부 사실 — allowed 와 항상 쌍으로 본다(설계 7.4).
+        "cabin_conditions": "원칙적으로 불가, 부득이한 경우 케이지 동반 허용",
         "duration_minutes": 220,
         "notes": "선사 안내상 애완견 동승이 원칙적으로 불가하다. 부득이한 경우에만 케이지에 넣어 "
         "예외적으로 허용되며, 객실은 이용할 수 없고 승무원이 지정한 곳에 보관해야 한다. "
@@ -382,11 +389,21 @@ TRANSPORT_RULES = [
 ]
 
 
+#: body 적재 계약 — 이보다 길면 적재를 거부한다(분할·요약 강제, ai-io-column-design 7.5).
+BODY_MAX_CHARS = 1200
+
+
 def _body(slug: str) -> str:
     path = DATA_DIR / f"{slug}.md"
     if not path.exists():
         raise FileNotFoundError(f"본문 파일이 없습니다: {path}")
-    return path.read_text(encoding="utf-8").strip()
+    text = path.read_text(encoding="utf-8").strip()
+    if len(text) > BODY_MAX_CHARS:
+        raise ValueError(
+            f"본문이 적재 계약({BODY_MAX_CHARS}자)을 넘습니다: {slug} = {len(text)}자. "
+            "문서를 분할하거나 요약하세요."
+        )
+    return text
 
 
 def seed_guides(db: Session) -> None:
