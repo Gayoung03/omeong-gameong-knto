@@ -681,5 +681,6 @@ Table transport_restricted_breeds {
   indexes {
     transport_pet_rule_id
     breed_name_ko
+    (transport_pet_rule_id, breed_name_ko, restriction_type) [unique, name: 'uq_restricted_breed_per_rule']
   }
 }

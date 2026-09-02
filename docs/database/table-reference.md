@@ -640,6 +640,11 @@ Alembic migration에서 FK별 `ON DELETE`를 명시적으로 정의합니다.
 운송사마다 목록이 다릅니다. 대한항공 8종 / 아시아나 12종 / 진에어 10종 / 제주항공 15종이고,
 **도베르만은 제주항공 목록에만** 있습니다. `transport_pet_rule_id` 로 운송사에 묶어 둡니다.
 
+`(transport_pet_rule_id, breed_name_ko, restriction_type)` UNIQUE — 적재 스크립트
+(`seed_restricted_breeds`) 멱등의 최종 방어선입니다 (2026-09-02, migration `f3a9c1d47b02`).
+`restriction_type` 이 키에 들어가는 이유: 같은 견종이 한 운송사에서 맹견·단두종 **양쪽**으로
+제한될 수 있습니다 — 아시아나 원문의 마스티프가 실례입니다.
+
 `is_example_only` — 원문이 *"아메리칸 핏불테리어, 도베르만과 **같은** 투기견종"* 처럼
 **예시만 든 경우** `true` 입니다. 티웨이(3종)·이스타(4종)가 여기 해당합니다.
 
