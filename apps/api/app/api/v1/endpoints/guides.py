@@ -9,7 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.db.models import GuideDocument, GuideDocumentSource, TransportPetRule
+from app.db.models import (
+    GuideDocument,
+    GuideDocumentSource,
+    TransportPetRule,
+    TransportRestrictedBreed,
+)
 from app.db.models.enums import CarrierType, GuideCategory
 from app.db.session import get_db
 from app.schemas.guide import (
@@ -17,6 +22,7 @@ from app.schemas.guide import (
     GuideDocumentListItem,
     GuideDocumentListResponse,
     GuideSourceResponse,
+    RestrictedBreedResponse,
     TransportRuleListResponse,
     TransportRuleResponse,
 )
@@ -67,6 +73,32 @@ def _sources_by_document(
     return result
 
 
+def _breeds_by_rule(
+    db: Session,
+    rule_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, list[RestrictedBreedResponse]]:
+    if not rule_ids:
+        return {}
+
+    breeds = db.scalars(
+        select(TransportRestrictedBreed)
+        .where(TransportRestrictedBreed.transport_pet_rule_id.in_(rule_ids))
+        .order_by(TransportRestrictedBreed.restriction_type, TransportRestrictedBreed.breed_name_ko)
+    ).all()
+
+    result: dict[uuid.UUID, list[RestrictedBreedResponse]] = defaultdict(list)
+    for breed in breeds:
+        result[breed.transport_pet_rule_id].append(
+            RestrictedBreedResponse(
+                breed_name_ko=breed.breed_name_ko,
+                restriction_type=breed.restriction_type,
+                applies_to=breed.applies_to,
+                is_example_only=breed.is_example_only,
+            )
+        )
+    return result
+
+
 def _document_list_item(
     document: GuideDocument,
     sources: list[GuideSourceResponse],
@@ -86,6 +118,7 @@ def _transport_rule_response(
     rule: TransportPetRule,
     document: GuideDocument,
     sources: list[GuideSourceResponse],
+    restricted_breeds: list[RestrictedBreedResponse],
 ) -> TransportRuleResponse:
     return TransportRuleResponse(
         id=rule.id,
@@ -98,12 +131,15 @@ def _transport_rule_response(
         route=rule.route,
         cabin_allowed=rule.cabin_allowed,
         cabin_max_weight_kg=_to_float(rule.cabin_max_weight_kg),
+        cabin_weight_unlimited=rule.cabin_weight_unlimited,
+        cabin_conditions=rule.cabin_conditions,
         cabin_fee_krw=rule.cabin_fee_krw,
         min_age_weeks_cabin=rule.min_age_weeks_cabin,
         max_pets_per_person_cabin=rule.max_pets_per_person_cabin,
         max_pets_per_trip=rule.max_pets_per_trip,
         cargo_allowed=rule.cargo_allowed,
         cargo_max_weight_kg=_to_float(rule.cargo_max_weight_kg),
+        cargo_weight_unlimited=rule.cargo_weight_unlimited,
         cargo_fee_threshold_kg=_to_float(rule.cargo_fee_threshold_kg),
         cargo_fee_light_krw=rule.cargo_fee_light_krw,
         cargo_fee_heavy_krw=rule.cargo_fee_heavy_krw,
@@ -118,6 +154,7 @@ def _transport_rule_response(
         source_url=rule.source_url,
         verified_at=rule.verified_at,
         sources=sources,
+        restricted_breeds=restricted_breeds,
     )
 
 
@@ -200,10 +237,13 @@ def list_transport_rules(
         .offset(offset)
     ).all()
     source_map = _sources_by_document(db, [row[1].id for row in rows])
+    breed_map = _breeds_by_rule(db, [row[0].id for row in rows])
 
     return TransportRuleListResponse(
         items=[
-            _transport_rule_response(rule, document, source_map.get(document.id, []))
+            _transport_rule_response(
+                rule, document, source_map.get(document.id, []), breed_map.get(rule.id, [])
+            )
             for rule, document in rows
         ],
         total=total,
@@ -232,7 +272,10 @@ def get_transport_rule(rule_id: uuid.UUID, db: DbSession) -> TransportRuleRespon
 
     rule, document = row
     source_map = _sources_by_document(db, [document.id])
-    return _transport_rule_response(rule, document, source_map.get(document.id, []))
+    breed_map = _breeds_by_rule(db, [rule.id])
+    return _transport_rule_response(
+        rule, document, source_map.get(document.id, []), breed_map.get(rule.id, [])
+    )
 
 
 @router.get(
