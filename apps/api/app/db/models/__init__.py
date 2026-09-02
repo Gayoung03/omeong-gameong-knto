@@ -42,6 +42,7 @@ from app.db.models.routes import (
     WeatherSnapshot,
 )
 from app.db.models.users import (
+    PasswordResetCode,
     Pet,
     User,
     UserConsent,
@@ -58,6 +59,7 @@ __all__ = [
     "Inquiry",
     "Notice",
     "Notification",
+    "PasswordResetCode",
     "PushToken",
     "Pet",
     "Place",
