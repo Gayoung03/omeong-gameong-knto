@@ -13,6 +13,7 @@
 | 소셜 계정에 없던 비밀번호가 생기는 것 | `local` 이 아니면 발급하지 않고 안내 메일만 |
 | 코드 재사용 | `used_at` + 새 코드 발급 시 이전 것 일괄 폐기 |
 | 동시 요청으로 한 코드가 두 번 통과 | 검증 시 행 잠금(`with_for_update`) |
+| 확인만 했는데 코드가 죽는 것 | `verify_code` 는 `used_at` 을 건드리지 않는다 |
 """
 
 import logging
@@ -129,16 +130,14 @@ def request_reset(db: Session, email: str) -> None:
     send_email(email, *_code_mail(code))
 
 
-def confirm_reset(db: Session, email: str, code: str, new_password: str) -> ConfirmResult:
-    """코드를 확인하고 맞으면 비밀번호를 바꾼다."""
-    user = _find_local_user(db, email)
-    if user is None or user.auth_provider != AuthProvider.LOCAL:
-        return ConfirmResult.INVALID
+def _live_code(db: Session, user: User, now: datetime) -> PasswordResetCode | None:
+    """아직 살아 있는 코드 행을 **잠근 채로** 가져온다.
 
-    now = datetime.now(UTC)
-    # 살아 있는 코드는 설계상 최대 하나지만, 동시에 두 요청이 같은 행을 집으면
-    # 둘 다 통과할 수 있다. 행을 잠가 한 번에 하나만 검사하게 한다.
-    entry = db.scalar(
+    살아 있는 코드는 설계상 최대 하나지만, 동시에 두 요청이 같은 행을 집으면
+    둘 다 통과하거나 시도 횟수가 한 번만 늘 수 있다. 행을 잠가 한 번에 하나씩
+    검사하게 한다.
+    """
+    return db.scalar(
         select(PasswordResetCode)
         .where(
             PasswordResetCode.user_id == user.id,
@@ -148,6 +147,52 @@ def confirm_reset(db: Session, email: str, code: str, new_password: str) -> Conf
         .order_by(PasswordResetCode.created_at.desc())
         .with_for_update()
     )
+
+
+def verify_code(db: Session, email: str, code: str) -> ConfirmResult:
+    """코드가 맞는지만 확인한다. **맞아도 쓰지 않는다.**
+
+    앱이 인증번호와 새 비밀번호를 두 화면으로 나눠 받기 때문에 필요하다. 한
+    화면에서 같이 받으면 코드가 틀렸다는 사실을 비밀번호까지 다 입력한 뒤에야
+    알게 된다.
+
+    **맞았을 때는 시도 횟수를 세지 않는다.** 여기서 한 번 세고 뒤이은
+    `confirm_reset` 에서 또 세면, 정상 사용자가 재설정 한 번에 시도 2회를 쓴다 —
+    오타를 몇 번 낸 사람이 **맞는 코드를 넣고도** 상한에 걸려 잠긴다. 틀린
+    입력은 그대로 세므로 무차별 대입 비용은 달라지지 않는다.
+    """
+    user = _find_local_user(db, email)
+    if user is None or user.auth_provider != AuthProvider.LOCAL:
+        return ConfirmResult.INVALID
+
+    now = datetime.now(UTC)
+    entry = _live_code(db, user, now)
+    if entry is None:
+        return ConfirmResult.INVALID
+
+    if entry.attempt_count >= settings.password_reset_max_attempts:
+        entry.used_at = now
+        db.commit()
+        return ConfirmResult.TOO_MANY_ATTEMPTS
+
+    if verify_password(code, entry.code_hash):
+        db.commit()  # 행 잠금만 푼다 — 코드는 그대로 살려 둔다.
+        return ConfirmResult.OK
+
+    # 틀렸을 때만 센다. 세는 즉시 커밋해서 이후 어떤 실패에도 롤백되지 않게 한다.
+    entry.attempt_count += 1
+    db.commit()
+    return ConfirmResult.INVALID
+
+
+def confirm_reset(db: Session, email: str, code: str, new_password: str) -> ConfirmResult:
+    """코드를 확인하고 맞으면 비밀번호를 바꾼다."""
+    user = _find_local_user(db, email)
+    if user is None or user.auth_provider != AuthProvider.LOCAL:
+        return ConfirmResult.INVALID
+
+    now = datetime.now(UTC)
+    entry = _live_code(db, user, now)
     if entry is None:
         return ConfirmResult.INVALID
 

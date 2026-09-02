@@ -66,6 +66,28 @@ class Settings(BaseSettings):
     route_edit_model: str = "gpt-4o-mini"
     route_edit_timeout_seconds: float = 20.0
 
+    # --- 메일 발송 (SMTP) --------------------------------------------------
+    #: host·username·password 가 모두 채워져야 실제로 보낸다. 하나라도 비면
+    #: `services/email.py` 가 로그 스텁으로 떨어진다 — 팀원 로컬과 CI 에 메일
+    #: 계정을 나눠 주지 않으므로, 설정이 없다고 기동을 막으면 메일과 무관한
+    #: 작업을 하는 사람의 서버가 안 뜬다.
+    smtp_host: str = ""
+    #: 465 = 접속부터 SSL, 587 = 접속 후 STARTTLS. 네이버는 465 다.
+    smtp_port: int = 465
+    smtp_use_ssl: bool = True
+    #: 네이버·Gmail 은 로그인 비밀번호가 아니라 **애플리케이션 비밀번호**를 받는다.
+    smtp_username: str = ""
+    smtp_password: str = ""
+    #: 실제 From 주소. 로그인 계정과 다른 주소로 보내면 대부분의 메일 서버가
+    #: 거절하므로, 비워두면 smtp_username 을 그대로 쓴다.
+    smtp_from_email: str = ""
+    #: 받는 사람 메일함에 보이는 발신자 이름.
+    smtp_from_name: str = "오멍가멍"
+    #: 메일 서버가 응답하지 않을 때 포기하는 시간. **무제한으로 두면 안 된다** —
+    #: 발송은 백그라운드 스레드에서 도는데 거기서 영영 멈추면 스레드풀이 차서
+    #: 메일과 무관한 요청까지 밀린다.
+    smtp_timeout_seconds: float = 10.0
+
     # --- 비밀번호 재설정 ---------------------------------------------------
     #: 인증 코드 유효 시간(분). 짧을수록 메일함이 나중에 털렸을 때 안전하고,
     #: 길수록 메일이 늦게 도착해도 쓸 수 있다. 10분은 그 절충이다.

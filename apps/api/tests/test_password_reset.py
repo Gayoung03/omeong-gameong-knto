@@ -18,6 +18,7 @@ from app.db.models import PasswordResetCode, User
 from app.db.models.enums import AuthProvider
 
 REQUEST_URL = "/api/v1/auth/password-reset/request"
+VERIFY_URL = "/api/v1/auth/password-reset/verify"
 CONFIRM_URL = "/api/v1/auth/password-reset/confirm"
 
 OLD_PASSWORD = "old-password-123"
@@ -302,6 +303,105 @@ def test_새_비밀번호도_가입과_같은_길이_규칙을_받는다(
     )
 
     assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# 코드 확인만 하는 단계 — 앱이 인증번호와 새 비밀번호를 나눠 받는다
+# ---------------------------------------------------------------------------
+
+
+def test_확인을_통과해도_코드는_살아_있다(
+    anon_client: TestClient, db: Session, local_user: User
+) -> None:
+    """확인이 코드를 써버리면 이어지는 비밀번호 변경이 항상 실패한다."""
+    code = _issue_code(anon_client, db, local_user)
+
+    verified = anon_client.post(VERIFY_URL, json={"email": local_user.email, "code": code})
+    changed = anon_client.post(
+        CONFIRM_URL,
+        json={"email": local_user.email, "code": code, "newPassword": NEW_PASSWORD},
+    )
+
+    assert verified.status_code == 204
+    assert changed.status_code == 204
+    db.refresh(local_user)
+    assert verify_password(NEW_PASSWORD, local_user.password_hash)
+
+
+def test_확인이_맞으면_시도_횟수를_쓰지_않는다(
+    anon_client: TestClient, db: Session, local_user: User
+) -> None:
+    """확인과 변경이 각각 한 번씩 세면, 오타를 몇 번 낸 사람이 **맞는 코드를 넣고도** 잠긴다."""
+    code = _issue_code(anon_client, db, local_user)
+
+    anon_client.post(VERIFY_URL, json={"email": local_user.email, "code": code})
+
+    row = _latest_code_row(db, local_user)
+    assert row is not None
+    db.refresh(row)
+    assert row.attempt_count == 0
+
+
+def test_확인에서_틀리면_시도_횟수를_쓴다(
+    anon_client: TestClient, db: Session, local_user: User
+) -> None:
+    """세지 않으면 이 엔드포인트가 상한 없는 무차별 대입 창구가 된다."""
+    _issue_code(anon_client, db, local_user)
+
+    response = anon_client.post(VERIFY_URL, json={"email": local_user.email, "code": "999999"})
+
+    assert response.status_code == 400
+    row = _latest_code_row(db, local_user)
+    assert row is not None
+    db.refresh(row)
+    assert row.attempt_count == 1
+
+
+def test_확인도_시도_횟수를_넘기면_코드가_죽는다(
+    anon_client: TestClient, db: Session, local_user: User
+) -> None:
+    code = _issue_code(anon_client, db, local_user)
+
+    for _ in range(settings.password_reset_max_attempts):
+        anon_client.post(VERIFY_URL, json={"email": local_user.email, "code": "999999"})
+
+    # 상한을 넘긴 뒤에는 맞는 코드를 넣어도 통하지 않고, 변경도 막힌다.
+    verified = anon_client.post(VERIFY_URL, json={"email": local_user.email, "code": code})
+    changed = anon_client.post(
+        CONFIRM_URL,
+        json={"email": local_user.email, "code": code, "newPassword": NEW_PASSWORD},
+    )
+
+    # 429 를 준 그 호출이 코드를 폐기했으므로, 다음 호출에게는 "없는 코드"(400)다.
+    # 둘 다 사용자에게는 "다시 받으세요"로 이어진다.
+    assert verified.status_code == 429
+    assert changed.status_code == 400
+    db.refresh(local_user)
+    assert verify_password(OLD_PASSWORD, local_user.password_hash)
+
+
+def test_확인_단계도_가입_여부를_알려주지_않는다(anon_client: TestClient) -> None:
+    """없는 계정에 다른 응답을 주면 이 엔드포인트로 가입자 목록을 훑을 수 있다."""
+    response = anon_client.post(
+        VERIFY_URL, json={"email": f"{uuid.uuid4().hex}@example.com", "code": "123456"}
+    )
+
+    assert response.status_code == 400
+
+
+def test_확인_단계는_비밀번호를_받지_않는다(
+    anon_client: TestClient, db: Session, local_user: User
+) -> None:
+    """확인만으로 비밀번호가 바뀌면, 확인 단계가 곧 재설정이 된다."""
+    code = _issue_code(anon_client, db, local_user)
+
+    anon_client.post(
+        VERIFY_URL,
+        json={"email": local_user.email, "code": code, "newPassword": NEW_PASSWORD},
+    )
+
+    db.refresh(local_user)
+    assert verify_password(OLD_PASSWORD, local_user.password_hash)
 
 
 # ---------------------------------------------------------------------------
