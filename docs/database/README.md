@@ -322,6 +322,10 @@ route_calculation_cache
 
 GPS를 서버로 전송해야 하는 경우 DB에 저장하지 않고 API·프록시·오류 로그에서 좌표를 마스킹합니다. 정식 출시 전 위치기반서비스 신고·약관·동의 절차를 확인합니다.
 
+**예외 — 지오코딩 좌표는 저장합니다.** 사용자가 입력한 주소·장소명에서 유도한 좌표
+(`route_requests.departure_*`, `route_request_stays`, 시드 장소)는 단말 GPS 위치가 아니라
+장소의 속성이므로 저장 금지 대상이 아닙니다 (2026-08-31 팀 결정, `docs/api/ai-io-column-design.md` 8.3-1).
+
 ## PostgreSQL/Alembic 제약조건
 
 - `reviews.rating BETWEEN 1 AND 5`
