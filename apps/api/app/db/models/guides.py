@@ -25,6 +25,7 @@ from sqlalchemy import (
     SmallInteger,
     String,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
@@ -198,6 +199,14 @@ class TransportRestrictedBreed(Base):
 
     __tablename__ = "transport_restricted_breeds"
     __table_args__ = (
+        # 적재 스크립트 멱등의 최종 방어선. restriction_type 포함 — 같은 견종이 맹견·단두종
+        # 양쪽에 오르는 원문이 실재한다(아시아나 마스티프).
+        UniqueConstraint(
+            "transport_pet_rule_id",
+            "breed_name_ko",
+            "restriction_type",
+            name="uq_restricted_breed_per_rule",
+        ),
         Index("ix_transport_restricted_breeds_rule_id", "transport_pet_rule_id"),
         Index("ix_transport_restricted_breeds_breed_name_ko", "breed_name_ko"),
     )

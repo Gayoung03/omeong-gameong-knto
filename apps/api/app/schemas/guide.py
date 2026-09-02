@@ -3,8 +3,21 @@
 import uuid
 from datetime import datetime
 
-from app.db.models.enums import CarrierType, GuideCategory
+from app.db.models.enums import (
+    BreedRestrictionScope,
+    BreedRestrictionType,
+    CarrierType,
+    GuideCategory,
+)
 from app.schemas.base import APISchema
+
+
+class RestrictedBreedResponse(APISchema):
+    breed_name_ko: str
+    restriction_type: BreedRestrictionType
+    applies_to: BreedRestrictionScope
+    # true 면 원문이 예시만 든 것 — 앱은 확정 목록으로 표시하면 안 된다 (guides.md).
+    is_example_only: bool
 
 
 class GuideSourceResponse(APISchema):
@@ -47,6 +60,9 @@ class TransportRuleResponse(APISchema):
 
     cabin_allowed: bool | None
     cabin_max_weight_kg: float | None
+    # 무게 무제한 플래그 — true=상한 없음, false=상한 있음, null=미확인 (3값 유지).
+    cabin_weight_unlimited: bool | None
+    cabin_conditions: str | None
     cabin_fee_krw: int | None
     min_age_weeks_cabin: int | None
     max_pets_per_person_cabin: int | None
@@ -54,6 +70,7 @@ class TransportRuleResponse(APISchema):
 
     cargo_allowed: bool | None
     cargo_max_weight_kg: float | None
+    cargo_weight_unlimited: bool | None
     cargo_fee_threshold_kg: float | None
     cargo_fee_light_krw: int | None
     cargo_fee_heavy_krw: int | None
@@ -70,6 +87,7 @@ class TransportRuleResponse(APISchema):
     source_url: str | None
     verified_at: datetime | None
     sources: list[GuideSourceResponse]
+    restricted_breeds: list[RestrictedBreedResponse]
 
 
 class TransportRuleListResponse(APISchema):

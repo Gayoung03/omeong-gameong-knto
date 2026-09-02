@@ -32,6 +32,35 @@ PREVIEW_LENGTH = 20
 #: 자동으로 지우지 않는 이유는 사용자가 아껴둔 대화를 예고 없이 없애기 때문이다.
 MAX_CONVERSATIONS = 100
 
+#: 서버가 만드는 대화 제목 길이 상한 (ai-io-column-design 7.6 — 첫 질문 30자 문장 경계 절단).
+TITLE_MAX_LENGTH = 30
+
+#: 질문이 공백뿐이라 제목을 만들 수 없을 때의 폴백.
+TITLE_FALLBACK = "새 대화"
+
+
+def derive_title(question: str, limit: int = TITLE_MAX_LENGTH) -> str:
+    """첫 질문에서 대화 제목을 만든다 — limit 자 이내, 문장 경계 우선 절단.
+
+    LLM 을 쓰지 않는 결정적 규칙(설계 7.6): 개행·연속 공백을 하나로 정리한 뒤
+    limit 이내면 그대로, 넘으면 앞 limit 자 안의 **마지막 문장부호(.?!…)**에서,
+    없으면 **마지막 공백**에서 자른다. 경계가 너무 앞(절반 미만)이면 제목이
+    빈약해지므로 하드 컷을 쓴다.
+    """
+    text = " ".join(question.split())
+    if not text:
+        return TITLE_FALLBACK
+    if len(text) <= limit:
+        return text
+    head = text[:limit]
+    punct = max(head.rfind(ch) for ch in ".?!…")
+    if punct >= limit // 2:
+        return head[: punct + 1]
+    space = head.rfind(" ")
+    if space >= limit // 2:
+        return head[:space]
+    return head
+
 
 def load_owned_conversation(
     db: Session, conversation_id: uuid.UUID, user: User

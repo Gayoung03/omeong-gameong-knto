@@ -191,6 +191,7 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 | `companionCount` | — | 기본 1. 1 이상 |
 | `petIds` | — | 본인 소유 반려동물 |
 | `stays[].checkOutAt` | — | `checkInAt`보다 뒤 |
+| `requestText` | — | 자유 요청문. 202 응답 후 **백그라운드 생성 단계에서** LLM 으로 선호 태그를 추출해 `preferredTags`와 **합쳐서 이번 생성에만** 사용한다(요청 행은 바꾸지 않음). 추출은 표준 태그 어휘로 제한되고, 실패하면 무시하고 원래 값으로 진행한다. `pace` 등 다른 필드는 건드리지 않는다 |
 
 숙소 좌표는 두 방식으로 결정합니다.
 
@@ -808,3 +809,4 @@ AI 추천 후보 또는 사용자가 직접 고른 DB 장소로 일정 항목을
 | 2026-08-12 | 목록에만 있고 본문이 없던 `DELETE /checklist-items/{itemId}`, `PATCH`·`DELETE /memos/{memoId}` 명세 작성 |
 | 2026-08-15 | PR #29 머지 반영 — 수동 여행 스키마(`creation_type`, nullable `route_request_id`, `route_pets`) 설명 추가, 응답에 `creationType` 추가, `regenerate`의 수동 여행 처리 명시. 수동 생성 엔드포인트는 확인 필요로 기록 |
 | 2026-08-18 | 미정 2건 확정 — 폴링 **2초 간격 / 3분 타임아웃**, `failureReason`은 컬럼 추가 없이 응답에만, 수동 여행 재생성은 **`422`**. 수동 생성 엔드포인트는 **보류 유지**하되 DB 준비 완료 사실과 유력안을 정리 |
+| 2026-09-02 | `requestText` write-only 해소 (ai-io-column-design 8.3-3) — 백그라운드 생성 단계에서 LLM 으로 태그를 추출해 `preferredTags`와 병합(이번 생성 한정, 요청 행 불변). `pace`는 스키마상 "미지정" 상태가 없어 병합 대상에서 제외. 실패 시 무시 |
