@@ -109,12 +109,27 @@ Table users {
   profile_image_url text
   inquiry_answer_notification_enabled boolean [not null, default: true]
   marketing_notification_enabled boolean [not null, default: false]
+  password_changed_at timestamptz [note: '이 시각 이전 발급 토큰은 전부 무효']
   deleted_at timestamptz
   created_at timestamptz [not null]
   updated_at timestamptz [not null]
 
   indexes {
     (auth_provider, provider_user_id) [unique]
+  }
+}
+
+Table password_reset_codes {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  code_hash varchar(255) [not null, note: 'argon2 해시 — 평문 저장 금지']
+  expires_at timestamptz [not null]
+  attempt_count integer [not null, default: 0, note: '상한 초과 시 코드 폐기']
+  used_at timestamptz [note: '사용·폐기 시각. null 이면 살아 있는 코드']
+  created_at timestamptz [not null]
+
+  indexes {
+    (user_id, created_at)
   }
 }
 

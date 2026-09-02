@@ -141,3 +141,23 @@ export async function putTravelPreference(
   );
   return data;
 }
+
+/**
+ * 비밀번호 재설정 코드 발송.
+ *
+ * **가입되지 않은 이메일이어도 202 다.** 서버가 가입 여부를 알려주지 않기로 했기
+ * 때문이다(응답이 갈리면 그것만으로 가입자 목록을 훑을 수 있다). 그래서 화면은
+ * "메일을 보냈다"가 아니라 **"가입돼 있다면 메일이 갔다"**로 안내해야 한다.
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  await apiClient.post('/auth/password-reset/request', { email });
+}
+
+/** 인증번호 확인 + 비밀번호 변경. 성공해도 토큰은 오지 않는다(204) — 로그인 화면으로 보낸다. */
+export async function confirmPasswordReset(
+  email: string,
+  code: string,
+  newPassword: string,
+): Promise<void> {
+  await apiClient.post('/auth/password-reset/confirm', { email, code, newPassword });
+}

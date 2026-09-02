@@ -66,6 +66,16 @@ class Settings(BaseSettings):
     route_edit_model: str = "gpt-4o-mini"
     route_edit_timeout_seconds: float = 20.0
 
+    # --- 비밀번호 재설정 ---------------------------------------------------
+    #: 인증 코드 유효 시간(분). 짧을수록 메일함이 나중에 털렸을 때 안전하고,
+    #: 길수록 메일이 늦게 도착해도 쓸 수 있다. 10분은 그 절충이다.
+    password_reset_code_ttl_minutes: int = 10
+    #: 코드 하나에 허용하는 입력 시도 횟수. 넘으면 그 코드를 폐기한다 —
+    #: 6자리(100만 조합)를 자동으로 찔러 맞추지 못하게 막는 유일한 방어다.
+    password_reset_max_attempts: int = 5
+    #: 한 계정에 1시간 동안 보낼 수 있는 코드 메일 수(메일함 폭탄 방지).
+    password_reset_hourly_limit: int = 5
+
     # --- 루트 요청 자유문 추출 --------------------------------------------
     # requestText → 표준 태그. 백그라운드 생성 단계라 짧게 자르고 실패는 무시한다.
     request_intent_model: str = "gpt-4o-mini"

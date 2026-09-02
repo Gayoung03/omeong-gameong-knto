@@ -127,3 +127,25 @@ class SocialCompleteRequest(APISchema):
     action: Literal["link", "separate"]
     #: `link` 일 때만 필요(기존 계정 비밀번호 확인).
     password: SecretStr | None = None
+
+
+# ---------------------------------------------------------------------------
+# 비밀번호 재설정 (docs/api/auth.md 비밀번호 재설정 절)
+# ---------------------------------------------------------------------------
+
+
+class PasswordResetRequest(APISchema):
+    """코드 발송 요청. 가입 여부와 무관하게 항상 같은 응답이 나간다."""
+
+    email: NormalizedEmail
+
+
+class PasswordResetConfirmRequest(APISchema):
+    """코드 확인 + 새 비밀번호 설정."""
+
+    email: NormalizedEmail
+    #: 6자리 숫자. 형식이 틀리면 코드 대조 없이 422 — 서버 부담을 줄이고,
+    #: 앱이 공백·하이픈을 섞어 보내는 사고를 여기서 잡는다.
+    code: Annotated[str, Field(pattern=r"^\d{6}$")]
+    #: 가입과 같은 규칙(8~128자)을 쓴다. 여기만 느슨하면 재설정이 규칙의 구멍이 된다.
+    new_password: Password
