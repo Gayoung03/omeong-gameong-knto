@@ -4,11 +4,18 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
-from app.db.models import User, UserSocialAccount
-from app.db.models.enums import AuthProvider
+from app.db.models import (
+    ChatConversation,
+    ChatMessage,
+    User,
+    UserSocialAccount,
+    UserTravelPreference,
+)
+from app.db.models.enums import AuthProvider, MessageRole, TripPace
 from app.integrations.social_auth.kakao import SocialAuthError, SocialProfile, get_kakao_client
 from app.main import app
 
@@ -189,3 +196,36 @@ def test_소셜_토큰_무효면_401(client: TestClient, db: Session, owner: Use
     assert response.status_code == 401
     db.refresh(owner)
     assert owner.deleted_at is None
+
+
+def test_탈퇴하면_챗봇_대화만_즉시_지워진다(
+    client: TestClient, db: Session, owner: User, stranger: User
+) -> None:
+    """users.md — 탈퇴 시 chat_conversations 물리 삭제. 다른 데이터·다른 사용자는 불변."""
+    owner.auth_provider = AuthProvider.LOCAL
+    owner.password_hash = hash_password("password123")
+    mine = ChatConversation(id=uuid.uuid4(), user_id=owner.id, title="내 대화")
+    yours = ChatConversation(id=uuid.uuid4(), user_id=stranger.id, title="남의 대화")
+    db.add_all([mine, yours])
+    db.flush()
+    db.add(
+        ChatMessage(
+            id=uuid.uuid4(),
+            conversation_id=mine.id,
+            role=MessageRole.USER,
+            content="우리 애 체중이 12kg인데 탈 수 있어?",
+        )
+    )
+    preference = UserTravelPreference(user_id=owner.id, default_pace=TripPace.RELAXED)
+    db.add(preference)
+    db.flush()
+
+    response = client.request("DELETE", "/api/v1/users/me", json={"password": "password123"})
+
+    assert response.status_code == 204
+    remaining = db.scalars(select(ChatConversation.id)).all()
+    assert remaining == [yours.id]  # 내 대화·메시지만 사라진다 (메시지는 FK CASCADE)
+    assert db.scalar(select(func.count(ChatMessage.id))) == 0
+    db.refresh(owner)
+    assert owner.deleted_at is not None  # soft delete 는 그대로
+    assert db.get(UserTravelPreference, owner.id) is not None  # 다른 데이터 불변
