@@ -153,6 +153,17 @@ export async function requestPasswordReset(email: string): Promise<void> {
   await apiClient.post('/auth/password-reset/request', { email });
 }
 
+/**
+ * 인증번호가 맞는지만 확인한다(204). **코드는 소모되지 않는다** — 이어서
+ * `confirmPasswordReset` 을 부를 수 있다.
+ *
+ * 화면을 둘로 나눈 것은, 한 화면에서 같이 받으면 코드가 틀렸다는 것을 새
+ * 비밀번호까지 다 입력한 뒤에야 알게 되기 때문이다.
+ */
+export async function verifyPasswordResetCode(email: string, code: string): Promise<void> {
+  await apiClient.post('/auth/password-reset/verify', { email, code });
+}
+
 /** 인증번호 확인 + 비밀번호 변경. 성공해도 토큰은 오지 않는다(204) — 로그인 화면으로 보낸다. */
 export async function confirmPasswordReset(
   email: string,

@@ -67,6 +67,21 @@ def _neutralize_image_origin(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "environment", "local")
 
 
+@pytest.fixture(autouse=True)
+def _disable_outgoing_mail(monkeypatch: pytest.MonkeyPatch) -> None:
+    """테스트가 진짜 메일 서버에 접속하지 못하게 SMTP 설정을 비운다.
+
+    개발자 로컬 `.env` 에는 실제 계정이 들어 있다. 비우지 않으면 메일을 보내는
+    코드가 지나갈 때마다 네이버에 접속을 시도해서, ① 테스트가 네트워크만큼
+    느려지고 ② 최악의 경우 테스트가 남에게 진짜 메일을 보낸다.
+
+    실제 발송 경로는 `test_email.py` 가 smtplib 을 대역으로 바꿔 직접 확인한다.
+    """
+    monkeypatch.setattr(settings, "smtp_host", "")
+    monkeypatch.setattr(settings, "smtp_username", "")
+    monkeypatch.setattr(settings, "smtp_password", "")
+
+
 @pytest.fixture(scope="session")
 def engine() -> Engine:
     url = os.environ.get("TEST_DATABASE_URL")

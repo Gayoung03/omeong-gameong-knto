@@ -28,17 +28,6 @@ import { startKakaoLogin } from '../services/kakaoLogin';
  * 각 사의 브랜드 가이드라인에 규정된 색이라 theme 토큰으로 치환하지 않는다.
  * 값은 `theme/colors.ts` 의 `brandColors` 에 모아두었다.
  */
-/**
- * 비밀번호 찾기 화면을 사용자에게 열지 여부.
- *
- * 화면(`ForgotPasswordScreen`·`ResetPasswordScreen`)과 서버 API 는 완성돼 있지만
- * **메일 발송 수단이 아직 없다** — `apps/api/app/services/email.py` 가 로그로만
- * 출력하는 스텁이다. 이대로 열면 사용자가 오지 않을 인증번호를 기다린다.
- *
- * 실제 발송(SMTP)이 붙는 PR 에서 **이 값만 true 로 바꾸면** 바로 열린다.
- */
-const PASSWORD_RESET_ENABLED = false;
-
 const socialProviders = [
   { label: '네이버', shortLabel: 'N', ...brandColors.naver },
   { label: '카카오', shortLabel: '●', ...brandColors.kakao },
@@ -147,15 +136,7 @@ export function LoginScreen() {
                   </View>
                   <Text style={styles.optionText}>로그인 상태 유지</Text>
                 </Pressable>
-                <Pressable
-                  onPress={() => {
-                    if (PASSWORD_RESET_ENABLED) {
-                      router.push('/(auth)/forgot-password');
-                      return;
-                    }
-                    setNoticeMessage('비밀번호 찾기는 준비 중이에요.');
-                  }}
-                >
+                <Pressable onPress={() => router.push('/(auth)/forgot-password')}>
                   <Text style={styles.optionText}>비밀번호 찾기</Text>
                 </Pressable>
               </View>
