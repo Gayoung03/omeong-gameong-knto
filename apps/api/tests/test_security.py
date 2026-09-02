@@ -15,6 +15,7 @@ from app.core.security import (
     create_refresh_token,
     decode_token,
     hash_password,
+    issued_before,
     verify_password,
 )
 
@@ -103,3 +104,29 @@ def test_해시_왕복과_불일치() -> None:
 def test_망가진_해시는_False() -> None:
     # DB 에 든 해시가 argon2 형식이 아닐 때(손상 등) 예외로 터지지 않고 False.
     assert verify_password("anything", "not-a-valid-argon2-hash") is False
+
+
+# --- 비밀번호 변경 시 기존 토큰 무효화 (issued_before) -------------------------
+
+
+def test_비밀번호를_바꾼_적_없으면_아무_토큰도_무효가_아니다() -> None:
+    claims = {"iat": int(datetime.now(UTC).timestamp())}
+    assert issued_before(claims, None) is False
+
+
+def test_변경_이전에_발급된_토큰은_무효다() -> None:
+    changed_at = datetime.now(UTC)
+    claims = {"iat": int((changed_at - timedelta(minutes=5)).timestamp())}
+    assert issued_before(claims, changed_at) is True
+
+
+def test_변경_이후에_발급된_토큰은_유효하다() -> None:
+    changed_at = datetime.now(UTC)
+    claims = {"iat": int((changed_at + timedelta(minutes=5)).timestamp())}
+    assert issued_before(claims, changed_at) is False
+
+
+def test_iat가_없는_토큰은_무효로_본다() -> None:
+    # 우리가 발급한 토큰에는 항상 있다 — 없다는 건 정상 경로가 아니다.
+    assert issued_before({}, datetime.now(UTC)) is True
+    assert issued_before({"iat": "언제인지몰라"}, datetime.now(UTC)) is True

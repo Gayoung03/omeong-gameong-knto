@@ -12,7 +12,7 @@ from datetime import timedelta
 from typing import Annotated
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -27,14 +27,15 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_claims,
-    decode_token,
+    decode_token_with_claims,
     encode_token,
     hash_password,
+    issued_before,
     verify_password,
 )
 from app.db.models import User
 from app.db.models.enums import AuthProvider
-from app.db.session import get_db
+from app.db.session import BackgroundSessionFactory, get_background_session, get_db
 from app.integrations.social_auth.kakao import (
     KakaoOAuthClient,
     SocialAuthError,
@@ -48,6 +49,8 @@ from app.schemas.auth import (
     LinkRequiredResponse,
     LoginRequest,
     NormalizedEmail,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
     RefreshRequest,
     RefreshTokenResponse,
     SignupRequest,
@@ -56,6 +59,7 @@ from app.schemas.auth import (
     SocialTokenResponse,
     TokenResponse,
 )
+from app.services import password_reset
 from app.services import pets as pet_service
 from app.services.social_auth import (
     consume_jti_once,
@@ -70,6 +74,8 @@ from app.services.travel_preferences import upsert_travel_preference
 
 router = APIRouter()
 DbSession = Annotated[Session, Depends(get_db)]
+#: 뒷작업용 연결 공장(routes.py·travel_logs.py 와 같은 이름·같은 이유).
+OpenSession = Annotated[BackgroundSessionFactory, Depends(get_background_session)]
 
 #: 이메일 없음·비번 불일치·탈퇴를 구분하지 않는 로그인 실패 메시지(가입 이메일
 #: 목록이 새지 않도록 같은 401 로 통일).
@@ -153,12 +159,16 @@ def login(payload: LoginRequest, db: DbSession) -> TokenResponse:
 @router.post("/auth/refresh", response_model=RefreshTokenResponse, summary="토큰 재발급")
 def refresh(payload: RefreshRequest, db: DbSession) -> RefreshTokenResponse:
     try:
-        user_id = decode_token(payload.refresh_token, "refresh")
+        user_id, claims = decode_token_with_claims(payload.refresh_token, "refresh")
     except TokenError:
         raise HTTPException(status_code=401, detail=_TOKEN_INVALID) from None
 
     user = db.get(User, user_id)
     if user is None or user.deleted_at is not None:
+        raise HTTPException(status_code=401, detail=_TOKEN_INVALID)
+    # 비밀번호 변경 이전에 발급된 refresh token 은 무효. 이 검사가 없으면 계정을
+    # 되찾아 비밀번호를 바꿔도 공격자가 최대 14일(refresh 수명) 재발급을 이어간다.
+    if issued_before(claims, user.password_changed_at):
         raise HTTPException(status_code=401, detail=_TOKEN_INVALID)
 
     return RefreshTokenResponse(
@@ -186,6 +196,67 @@ def logout(current_user: CurrentUser) -> Response:
 
     지금은 개발용 고정 사용자(스텁)를 받는다. 실제 access token 검증 전환은 Phase 4.
     """
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# 비밀번호 재설정 (docs/api/auth.md 비밀번호 재설정 절)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/auth/password-reset/request",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="비밀번호 재설정 코드 발송",
+)
+def password_reset_request(
+    payload: PasswordResetRequest,
+    db: DbSession,
+    background: BackgroundTasks,
+    session_factory: OpenSession,
+) -> Response:
+    """인증 코드를 메일로 보낸다.
+
+    **가입 여부와 무관하게 항상 202** 다. 없는 이메일에 404 를 주면 그 응답만으로
+    가입자 목록을 훑을 수 있다. 성공/실패/상한초과가 전부 같은 응답이라 호출한
+    쪽은 아무것도 알아낼 수 없다.
+
+    발급과 발송은 **뒷작업**으로 넘긴다. 메일 서버가 느릴 때 응답이 같이 늦어지면
+    그 시간 차이만으로 "가입된 이메일"이 드러나고, 앱도 그만큼 멈춘다.
+    """
+    background.add_task(_send_reset_code, session_factory, payload.email)
+    return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+def _send_reset_code(session_factory: BackgroundSessionFactory, email: str) -> None:
+    """뒷작업 본체 — 요청용 연결은 응답과 함께 닫히므로 새 연결을 연다."""
+    with session_factory() as db:
+        password_reset.request_reset(db, email)
+
+
+@router.post(
+    "/auth/password-reset/confirm",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="비밀번호 재설정 확정",
+)
+def password_reset_confirm(payload: PasswordResetConfirmRequest, db: DbSession) -> Response:
+    """코드를 확인하고 비밀번호를 바꾼다.
+
+    성공해도 토큰을 발급하지 않는다(204). 재설정 직후 이전 토큰을 전부 무효로
+    만드는 참에 새 토큰까지 여기서 내주면 경계가 헷갈린다 — 앱은 바뀐 비밀번호로
+    로그인 화면을 한 번 거친다.
+    """
+    result = password_reset.confirm_reset(
+        db, payload.email, payload.code, payload.new_password.get_secret_value()
+    )
+    if result is password_reset.ConfirmResult.TOO_MANY_ATTEMPTS:
+        # 이건 구분해서 알려준다 — 안 알려주면 사용자가 죽은 코드를 계속 입력한다.
+        raise HTTPException(
+            status_code=429, detail="입력 시도가 너무 많습니다. 코드를 다시 요청해 주세요"
+        )
+    if result is not password_reset.ConfirmResult.OK:
+        # 없음·만료·사용됨·불일치를 구분하지 않는다(유효한 코드 탐색의 힌트가 된다).
+        raise HTTPException(status_code=400, detail="인증번호가 올바르지 않거나 만료되었습니다")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

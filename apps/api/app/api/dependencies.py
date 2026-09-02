@@ -22,7 +22,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.security import TokenError, decode_token
+from app.core.security import TokenError, decode_token_with_claims, issued_before
 from app.db.models import User
 from app.db.session import get_db
 
@@ -56,7 +56,7 @@ def _warn_dev_fallback_once() -> None:
 def _authenticate(db: Session, token: str) -> User:
     """access token 을 검증하고 살아 있는 사용자를 돌려준다. 어떤 실패든 401."""
     try:
-        user_id = decode_token(token, "access")
+        user_id, claims = decode_token_with_claims(token, "access")
     except TokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=_UNAUTHENTICATED
@@ -64,6 +64,11 @@ def _authenticate(db: Session, token: str) -> User:
     user = db.get(User, user_id)
     # 탈퇴 계정은 토큰이 유효해도 401 (auth.md — 모든 인증 요청에서 deleted_at 확인).
     if user is None or user.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_UNAUTHENTICATED)
+    # 비밀번호를 바꾸기 전에 발급된 토큰도 401 — 계정을 되찾은 사람이 비밀번호를
+    # 바꿨는데 공격자의 세션이 남아 있으면 재설정 기능의 의미가 없다.
+    if issued_before(claims, user.password_changed_at):
+        logger.info("비밀번호 변경 이전 토큰 — user_id=%s", user.id)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_UNAUTHENTICATED)
     return user
 

@@ -62,6 +62,12 @@ class User(Base):
     marketing_notification_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    #: 비밀번호를 마지막으로 바꾼 시각. **이 시각 이전에 발급된 access·refresh
+    #: 토큰은 전부 무효**로 본다(app/api/dependencies.py · auth.refresh).
+    #: NULL 이면 한 번도 바꾼 적이 없다는 뜻이라 아무 토큰도 무효화하지 않는다.
+    #: 계정을 털린 사람이 비밀번호를 바꿔도 refresh token 수명(14일) 동안
+    #: 공격자가 로그인 상태를 그대로 유지하는 구멍을 막는다.
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -196,5 +202,43 @@ class UserSocialAccount(Base):
     )
     provider_user_id: Mapped[str] = mapped_column(String(255), nullable=False)
     linked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class PasswordResetCode(Base):
+    """비밀번호 재설정 인증 코드 (docs/api/auth.md 비밀번호 재설정 절).
+
+    ## 왜 테이블이 필요한가
+
+    코드를 서버가 기억하지 않으려면 그 흔적을 토큰에 실어 앱에 들려보내야 하는데,
+    JWT 페이로드는 **서명일 뿐 암호화가 아니라 누구나 열어볼 수 있다**. 6자리는
+    100만 조합뿐이라 토큰을 가로챈 쪽이 오프라인에서 즉시 맞춰볼 수 있다.
+    그래서 코드는 서버에만 두고, 앱에는 아무 단서도 주지 않는다.
+
+    ## 컬럼이 각각 막는 것
+
+    - `code_hash` — DB 가 유출돼도 코드가 평문으로 새지 않게 argon2 해시로 둔다.
+    - `expires_at` — 메일함이 나중에 털려도 지난 코드는 못 쓰게 한다.
+    - `attempt_count` — 무차별 대입 차단. 상한을 넘으면 그 코드는 죽는다.
+    - `used_at` — 한 번 쓴 코드의 재사용 차단. 새 코드를 발급할 때 이전 것들도
+      여기에 시각을 찍어 함께 폐기한다(살아 있는 코드는 항상 최대 하나).
+    """
+
+    __tablename__ = "password_reset_codes"
+    __table_args__ = (
+        # "이 사용자의 살아 있는 코드"와 "최근 1시간 발급 수"를 둘 다 이 인덱스로 찾는다.
+        Index("ix_password_reset_codes_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    code_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

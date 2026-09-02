@@ -70,11 +70,14 @@ def create_refresh_token(user_id: uuid.UUID) -> str:
     return _create_token(user_id, "refresh", REFRESH_TOKEN_TTL)
 
 
-def decode_token(token: str, expected_typ: TokenType) -> uuid.UUID:
-    """토큰을 검증하고 subject(user id)를 UUID 로 돌려준다.
+def decode_token_with_claims(token: str, expected_typ: TokenType) -> tuple[uuid.UUID, dict]:
+    """토큰을 검증하고 subject(user id)와 클레임 전체를 함께 돌려준다.
 
     서명·만료·`typ` 일치·`sub` 의 UUID 파싱까지 확인한다. 어느 하나라도 어긋나면
     전부 `TokenError` — 외부에는 같은 401 로 나가야 한다.
+
+    클레임까지 주는 이유는 `iat`(발급 시각) 때문이다. 비밀번호를 바꾸기 전에
+    발급된 토큰을 무효로 만들려면 발급 시각을 봐야 한다(`issued_before` 참고).
     """
     try:
         claims = jwt.decode(
@@ -92,10 +95,33 @@ def decode_token(token: str, expected_typ: TokenType) -> uuid.UUID:
         raise TokenError
 
     try:
-        return uuid.UUID(claims.get("sub"))
+        return uuid.UUID(claims.get("sub")), claims
     except (ValueError, TypeError) as error:
         logger.info("JWT sub 가 UUID 가 아님")
         raise TokenError from error
+
+
+def decode_token(token: str, expected_typ: TokenType) -> uuid.UUID:
+    """토큰을 검증하고 subject(user id)만 돌려준다."""
+    user_id, _ = decode_token_with_claims(token, expected_typ)
+    return user_id
+
+
+def issued_before(claims: dict, moment: datetime | None) -> bool:
+    """토큰이 `moment` 이전에 발급됐나 — 비밀번호 변경 시 강제 로그아웃 판정.
+
+    `moment` 가 없으면(비밀번호를 한 번도 바꾼 적 없음) 항상 False 다.
+    `iat` 가 없거나 숫자가 아닌 토큰은 **무효로 본다**(True) — 우리가 발급한
+    토큰에는 항상 있으므로, 없다는 건 정상 경로가 아니다.
+    """
+    if moment is None:
+        return False
+    issued_at = claims.get("iat")
+    if not isinstance(issued_at, int | float):
+        return True
+    # 발급과 변경이 같은 초에 걸리는 경계는 무효 쪽으로 민다 — 애매하면
+    # 한 번 더 로그인시키는 편이, 털린 세션을 살려두는 것보다 낫다.
+    return issued_at <= moment.timestamp()
 
 
 def encode_token(claims: dict, typ: str, ttl: timedelta) -> str:
