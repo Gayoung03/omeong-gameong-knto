@@ -4,12 +4,12 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser
 from app.core.security import verify_password
-from app.db.models import Favorite, Route, TravelLog, User, UserTravelPreference
+from app.db.models import ChatConversation, Favorite, Route, TravelLog, User, UserTravelPreference
 from app.db.models.enums import AuthProvider, RouteStatus
 from app.db.session import get_db
 from app.integrations.social_auth.kakao import (
@@ -107,6 +107,9 @@ def delete_me(
     else:
         _reauthenticate_social(db, kakao, current_user, payload.provider_access_token)
 
+    # 챗봇 대화는 탈퇴 시점에 물리 삭제한다(users.md·ai-io-column-design 8.3-2).
+    # 메시지는 FK CASCADE 로 함께 지워지고, 다른 테이블은 chat 을 참조하지 않는다.
+    db.execute(delete(ChatConversation).where(ChatConversation.user_id == current_user.id))
     current_user.deleted_at = datetime.now(UTC)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

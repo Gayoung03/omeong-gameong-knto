@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     route_edit_model: str = "gpt-4o-mini"
     route_edit_timeout_seconds: float = 20.0
 
+    # --- 루트 요청 자유문 추출 --------------------------------------------
+    # requestText → 표준 태그. 백그라운드 생성 단계라 짧게 자르고 실패는 무시한다.
+    request_intent_model: str = "gpt-4o-mini"
+    request_intent_timeout_seconds: float = 10.0
+
     model_config = SettingsConfigDict(
         env_file=(".env", "../../.env"),
         env_file_encoding="utf-8",

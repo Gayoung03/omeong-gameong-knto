@@ -22,6 +22,7 @@ from app.db.models import (
     RouteRequestStay,
 )
 from app.db.models.enums import RouteStatus, ScheduleItemType
+from app.integrations.llm.request_intent import extract_request_intent, merge_preferred_tags
 from app.integrations.llm.route_edit import RouteEditIntent
 from app.integrations.maps.kakao import GeocodedAddress, geocode_address
 from app.integrations.tour_api.kto import TourAPIError, TourPlace, get_nearby_places
@@ -92,6 +93,19 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     pets, stay_coords, start_coord = _request_inputs(db, request)
     precipitation_probability = _precipitation_probability(request, start_coord)
 
+    # request_text 자유문에서 표준 태그를 보충한다(routes.md·설계 8.3-3). **로컬 변수로만**
+    # 쓴다 — request ORM 속성을 바꾸면 아래 커밋에 딸려 영속화된다(이번 생성 한정 원칙).
+    # 실패는 TourAPI 와 같은 급으로 무시한다 — 추출이 안 돼도 생성은 계속 간다.
+    merged_tags = frozenset(request.preferred_tags or [])
+    if request.request_text:
+        try:
+            intent = extract_request_intent(request.request_text)
+        except Exception as error:
+            logger.warning("request_text 추출 예외: %s", type(error).__name__)
+            intent = None
+        if intent:
+            merged_tags = merge_preferred_tags(request.preferred_tags, intent.preferred_tags)
+
     weights = (
         Weights(**request.applied_weights)
         if request.applied_weights is not None
@@ -119,7 +133,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
             weights=weights,
             base_coord=start_coord,
             additional_base_coords=tuple(dict.fromkeys(coord for _, coord in stay_coords)),
-            preferred_tags=frozenset(request.preferred_tags or []),
+            preferred_tags=merged_tags,
             precipitation_probability=precipitation_probability,
         ),
     )
@@ -141,7 +155,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
             pace=request.pace,
             transport=request.transport,
             start_coord=start_coord,
-            restaurant_preferred="category:restaurant" in (request.preferred_tags or []),
+            restaurant_preferred="category:restaurant" in merged_tags,
             day_start_anchors=day_start_anchors,
             day_end_anchors=day_end_anchors,
         ),
@@ -161,7 +175,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
         raise RecommendationGenerationError(
             "저녁 식사가 필요한 날짜에 배치할 수 있는 반려동물 동반 식당이 부족합니다"
         )
-    if request.preferred_tags and "category:restaurant" in request.preferred_tags and any(
+    if "category:restaurant" in merged_tags and any(
         day.restaurant_required
         and not any(
             item.candidate.item_type == ScheduleItemType.RESTAURANT for item in day.items

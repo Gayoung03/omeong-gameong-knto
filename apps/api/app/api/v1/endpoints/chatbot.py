@@ -61,6 +61,7 @@ from app.services.chat_access import (
     MAX_CONVERSATIONS,
     asked_today,
     conversation_with_stats,
+    derive_title,
     load_owned_conversation,
     places_of,
     recent_history,
@@ -298,7 +299,7 @@ def create_message(
     남아야 한다(docs/api/chatbot.md). **답변은 끝까지 갔을 때만 저장한다** —
     끊기면 저장하지 않는다.
     """
-    load_owned_conversation(db, conversation_id, current_user)
+    conversation = load_owned_conversation(db, conversation_id, current_user)
 
     # 개발·시연 중에 막히면 곤란해서 local 에서는 세지 않는다(설계 결정 E3).
     if settings.environment != "local":
@@ -308,10 +309,13 @@ def create_message(
                 detail="오늘 질문 가능한 횟수를 다 쓰셨어요. 내일 다시 이용해 주세요",
             )
 
-    history = [
-        to_history(message.role, message.content)
-        for message in recent_history(db, conversation_id, HISTORY_LIMIT)
-    ]
+    past_messages = recent_history(db, conversation_id, HISTORY_LIMIT)
+    history = [to_history(message.role, message.content) for message in past_messages]
+
+    # 제목 없는 대화의 첫 질문이면 서버가 제목을 만든다(chatbot.md — "없으면 서버가
+    # 첫 질문에서 생성"). 질문과 같은 트랜잭션이라 start 시점엔 항상 함께 저장돼 있다.
+    if conversation.title is None and not past_messages:
+        conversation.title = derive_title(payload.content)
 
     # 답변보다 먼저 저장해 스트림이 끊겨도 남긴다. 시각도 여기서 직접 넣는다 —
     # 그냥 두면 컬럼 기본값 now() 가 **트랜잭션 시작 시각**이라, 나중에 답변을
