@@ -77,6 +77,22 @@ def main() -> None:
                 )
                 if res.rowcount:
                     applied += 1
+                    # 정책 테이블은 값과 함께 신뢰도·검증일도 채운다(설계 7.1 —
+                    # "verified_at·reliability_score 파싱 배치에서 채움").
+                    # 행 신뢰도는 그 행에 섞인 출처 중 **가장 낮은 쪽**이다(보수적 —
+                    # backfill_policy_reliability 의 min 원칙과 동일): 정규식(100) 뒤에
+                    # LLM(70)이 같은 행의 다른 컬럼을 채우면 100→70 으로 내려간다.
+                    if tbl == "place_pet_policies":
+                        db.execute(
+                            text(
+                                "UPDATE place_pet_policies SET "
+                                "reliability_score = "
+                                "LEAST(COALESCE(reliability_score, 100), :rel), "
+                                "verified_at = COALESCE(verified_at, now()) "
+                                "WHERE id = :pk"
+                            ),
+                            {"rel": p.get("reliability", 100), "pk": p["pk"]},
+                        )
                 else:
                     skipped_guard += 1
         if apply:
