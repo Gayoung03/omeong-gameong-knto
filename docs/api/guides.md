@@ -104,13 +104,17 @@ GET /api/v1/guides/transport-rules/{ruleId}
 | `route` | 여객선 항로. 항공사는 보통 `null` |
 | `cabinAllowed` | 기내·객실 동반 가능 여부 |
 | `cabinMaxWeightKg` | 기내·객실 무게 제한 |
+| `cabinWeightUnlimited` | 기내·객실 무게 무제한 여부. `true`=상한 없음 · `false`=상한 있음(또는 불허) · `null`=미확인. `true`면 `cabinMaxWeightKg`는 항상 `null` |
+| `cabinConditions` | 조건부 허용 문구 (예: "원칙적으로 불가, 부득이한 경우 케이지 동반 허용"). 없으면 `null` |
 | `cargoAllowed` | 위탁 운송 가능 여부 |
 | `cargoMaxWeightKg` | 위탁 무게 제한 |
+| `cargoWeightUnlimited` | 위탁 무게 무제한 여부. 의미는 `cabinWeightUnlimited`와 동일 |
 | `cabinFeeKrw` | 국내선 기내 요금 |
 | `requestDeadlineHours` | 사전 신청 마감 시간 |
 | `durationMinutes` | 여객선 소요 시간 |
 | `notes` | 주의사항과 보충 설명 |
 | `sources` | 공식 출처 목록 |
+| `restrictedBreeds` | 제한 견종 목록 `[{ breedNameKo, restrictionType, appliesTo, isExampleOnly }]`. `restrictionType`: `dangerous`(맹견) `brachycephalic`(단두종) / `appliesTo`: `cabin` `cargo` `both`. **`isExampleOnly: true` 면 원문이 예시만 든 것** — 확정 목록으로 보여주지 말고 "지정 견종은 예약 시 확인" 안내와 함께 쓴다. 빈 배열이면 견종 제한이 명시되지 않은 운송사다 |
 
 ### `GET /api/v1/guides/transport-rules/{ruleId}`
 
@@ -153,3 +157,5 @@ curl 'http://localhost:8000/api/v1/guides/transport-rules?carrierType=airline'
 | 2026-08-12 | 초안 작성. 대응 DB 테이블 부재로 설계 보류 상태 기록 |
 | 2026-08-18 | 기능 성격 확정 — 반려동물과 여행할 때 도움이 되는 정보를 모아 보는 곳 |
 | 2026-08-30 | DB 기반 가이드 문서·운송 규정 API 구현 및 모바일 여행 준비 가이드 화면 연결 |
+| 2026-09-02 | 운송 규정 응답에 `cabinWeightUnlimited`·`cargoWeightUnlimited`·`cabinConditions` 추가 — DB 백필(한일·씨월드 무제한, 아리온 조건부)을 앱까지 전달하기 위함. 세 값 의미(true/false/null) 정의 |
+| 2026-09-02 | 운송 규정 응답에 `restrictedBreeds` 추가 — `transport_restricted_breeds` 적재(7.4 백로그)와 함께. 예시 목록(`isExampleOnly`) 표시 규칙 명시 |
