@@ -51,6 +51,7 @@ from app.schemas.auth import (
     NormalizedEmail,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
+    PasswordResetVerifyRequest,
     RefreshRequest,
     RefreshTokenResponse,
     SignupRequest,
@@ -234,6 +235,39 @@ def _send_reset_code(session_factory: BackgroundSessionFactory, email: str) -> N
         password_reset.request_reset(db, email)
 
 
+def _raise_for_reset_result(result: password_reset.ConfirmResult) -> None:
+    """확인 결과를 HTTP 응답으로 옮긴다. verify·confirm 이 **같은 모양**이어야 한다.
+
+    두 엔드포인트의 응답이 갈리면 그 차이만으로 코드가 맞았는지 짐작할 수 있다.
+    """
+    if result is password_reset.ConfirmResult.TOO_MANY_ATTEMPTS:
+        # 이건 구분해서 알려준다 — 안 알려주면 사용자가 죽은 코드를 계속 입력한다.
+        raise HTTPException(
+            status_code=429, detail="입력 시도가 너무 많습니다. 코드를 다시 요청해 주세요"
+        )
+    if result is not password_reset.ConfirmResult.OK:
+        # 없음·만료·사용됨·불일치를 구분하지 않는다(유효한 코드 탐색의 힌트가 된다).
+        raise HTTPException(status_code=400, detail="인증번호가 올바르지 않거나 만료되었습니다")
+
+
+@router.post(
+    "/auth/password-reset/verify",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="비밀번호 재설정 인증번호 확인",
+)
+def password_reset_verify(payload: PasswordResetVerifyRequest, db: DbSession) -> Response:
+    """인증번호가 맞는지만 확인한다. **코드를 쓰지 않는다.**
+
+    앱이 인증번호와 새 비밀번호를 두 화면으로 나눠 받기 때문에 있다. 한 화면에서
+    같이 받으면 코드가 틀렸다는 것을 비밀번호까지 다 입력한 뒤에야 알게 된다.
+
+    맞았을 때는 시도 횟수를 세지 않는다 — 이어지는 confirm 이 한 번 세므로,
+    여기서도 세면 정상 사용자가 재설정 한 번에 시도 2회를 쓴다.
+    """
+    _raise_for_reset_result(password_reset.verify_code(db, payload.email, payload.code))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post(
     "/auth/password-reset/confirm",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -245,18 +279,15 @@ def password_reset_confirm(payload: PasswordResetConfirmRequest, db: DbSession) 
     성공해도 토큰을 발급하지 않는다(204). 재설정 직후 이전 토큰을 전부 무효로
     만드는 참에 새 토큰까지 여기서 내주면 경계가 헷갈린다 — 앱은 바뀐 비밀번호로
     로그인 화면을 한 번 거친다.
+
+    **코드를 다시 확인한다.** verify 를 통과했다는 사실을 믿지 않는다 — verify 를
+    건너뛰고 여기로 바로 올 수 있고, 그 사이 코드가 만료됐을 수도 있다.
     """
-    result = password_reset.confirm_reset(
-        db, payload.email, payload.code, payload.new_password.get_secret_value()
-    )
-    if result is password_reset.ConfirmResult.TOO_MANY_ATTEMPTS:
-        # 이건 구분해서 알려준다 — 안 알려주면 사용자가 죽은 코드를 계속 입력한다.
-        raise HTTPException(
-            status_code=429, detail="입력 시도가 너무 많습니다. 코드를 다시 요청해 주세요"
+    _raise_for_reset_result(
+        password_reset.confirm_reset(
+            db, payload.email, payload.code, payload.new_password.get_secret_value()
         )
-    if result is not password_reset.ConfirmResult.OK:
-        # 없음·만료·사용됨·불일치를 구분하지 않는다(유효한 코드 탐색의 힌트가 된다).
-        raise HTTPException(status_code=400, detail="인증번호가 올바르지 않거나 만료되었습니다")
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
