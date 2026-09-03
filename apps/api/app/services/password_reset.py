@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.security import hash_password, verify_password
-from app.db.models import PasswordResetCode, User
+from app.db.models import PasswordResetCode, PasswordResetRequest, User
 from app.db.models.enums import AuthProvider
 from app.services.email import send_email
 
@@ -67,12 +67,18 @@ def _find_local_user(db: Session, email: str, *, lock: bool = False) -> User | N
 
 
 def _recent_request_count(db: Session, user: User) -> int:
+    """최근 1시간 이 사용자에게 나간 재설정 메일 수.
+
+    **코드 행이 아니라 요청 기록(`password_reset_requests`) 행을 센다.** 소셜 계정은
+    코드를 발급하지 않아 코드 행으로 세면 상한이 아예 안 걸렸다(안내 메일 무제한).
+    발송마다 남기는 요청 기록으로 세면 로컬·소셜 모두 같은 상한에 걸린다.
+    """
     since = datetime.now(UTC) - timedelta(hours=1)
     return (
         db.scalar(
-            select(func.count(PasswordResetCode.id)).where(
-                PasswordResetCode.user_id == user.id,
-                PasswordResetCode.created_at >= since,
+            select(func.count(PasswordResetRequest.id)).where(
+                PasswordResetRequest.user_id == user.id,
+                PasswordResetRequest.created_at >= since,
             )
         )
         or 0
@@ -104,19 +110,28 @@ def request_reset(db: Session, email: str) -> None:
         logger.info("비밀번호 재설정 요청 — 해당 계정 없음(응답은 동일)")
         return
 
-    # 소셜 계정에는 코드를 주지 않는다. 비밀번호를 만들어 주면 **원래 없던
-    # 로그인 경로가 새로 생기는** 것이라, 메일함만 뚫려도 계정이 넘어간다.
-    # 대신 진짜 주인에게 도움이 되도록 안내 메일은 보낸다.
-    if user.auth_provider != AuthProvider.LOCAL or user.password_hash is None:
-        send_email(email, *_social_guide_mail(user.auth_provider))
-        return
-
+    # 발송 상한을 **로컬·소셜 공통으로 먼저** 건다. 예전엔 소셜 분기가 이 검사보다
+    # 위에 있었고, 소셜은 코드 행을 남기지 않아 셀 근거가 없어 상한이 통째로
+    # 우회됐다(안내 메일 무제한 → 발신 도메인 평판 손상). 이제 아래에서 발송마다
+    # 요청 기록 행을 남기고, 그 행 수로 이 상한을 센다.
     if _recent_request_count(db, user) >= settings.password_reset_hourly_limit:
-        # 상한을 넘겨도 사용자에게는 티 내지 않는다(위 주석과 같은 이유).
+        # 상한을 넘겨도 사용자에게는 티 내지 않는다(가입 여부가 새지 않도록).
         logger.warning("비밀번호 재설정 요청 시간당 상한 초과 — user_id=%s", user.id)
         return
 
     now = datetime.now(UTC)
+    # 발송 기록을 남긴다(상한 카운트의 근거). 코드 발급 여부와 무관하게 로컬·소셜
+    # 모두 한 통에 한 행. 아래 db.commit() 한 번에 코드 행과 함께 저장된다.
+    db.add(PasswordResetRequest(user_id=user.id))
+
+    # 소셜 계정에는 코드를 주지 않는다. 비밀번호를 만들어 주면 **원래 없던
+    # 로그인 경로가 새로 생기는** 것이라, 메일함만 뚫려도 계정이 넘어간다.
+    # 대신 진짜 주인에게 도움이 되도록 안내 메일만 보낸다(발송 기록은 위에서 남겼다).
+    if user.auth_provider != AuthProvider.LOCAL or user.password_hash is None:
+        db.commit()
+        send_email(email, *_social_guide_mail(user.auth_provider))
+        return
+
     code = _generate_code()
     _expire_outstanding(db, user, now)
     db.add(

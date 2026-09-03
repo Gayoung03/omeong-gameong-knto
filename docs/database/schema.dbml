@@ -133,6 +133,16 @@ Table password_reset_codes {
   }
 }
 
+Table password_reset_requests {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  created_at timestamptz [not null, note: '발송 시각. 시간당 발송 상한을 재는 기준(로컬·소셜 공통)']
+
+  indexes {
+    (user_id, created_at)
+  }
+}
+
 Table pets {
   id uuid [pk]
   user_id uuid [not null, ref: > users.id]

@@ -17,6 +17,7 @@ EXPECTED_TABLES = {
     "notices",
     "notifications",
     "password_reset_codes",
+    "password_reset_requests",
     "pets",
     "place_business_hours",
     "place_external_refs",

@@ -242,3 +242,33 @@ class PasswordResetCode(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class PasswordResetRequest(Base):
+    """비밀번호 재설정 **요청** 발송 기록 (docs/api/auth.md 비밀번호 재설정 절).
+
+    ## 왜 코드 테이블과 따로 있나
+
+    발송 상한("시간당 몇 통")은 코드 발급 여부와 **무관**하게 걸려야 한다. 소셜
+    계정은 코드를 발급하지 않고 안내 메일만 나가는데, 코드 행으로만 세면 소셜
+    발송은 셀 근거가 없어 상한을 통째로 우회당한다(안내 메일 무제한 = 발신 도메인
+    평판 손상). 그래서 "요청이 한 번 있었다 = 메일 한 통 나갔다"를 이 테이블에
+    로컬·소셜 공통으로 한 행씩 남기고, 시간당 발송 상한은 이 행 수로 센다.
+
+    코드 자체(해시·시도횟수·만료·사용여부)는 그대로 `password_reset_codes` 가
+    관리한다. 이 테이블은 오직 "발송 빈도"만 센다.
+    """
+
+    __tablename__ = "password_reset_requests"
+    __table_args__ = (
+        # "최근 1시간 이 사용자에게 몇 통 나갔나"를 이 인덱스로 센다.
+        Index("ix_password_reset_requests_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
