@@ -66,6 +66,7 @@ from app.services.chat_access import (
     places_of,
     recent_history,
     to_conversation_item,
+    touch_conversation,
     with_conversation_stats,
 )
 from app.services.notifications import add_notification, send_pushes
@@ -329,6 +330,9 @@ def create_message(
         created_at=asked_at,
     )
     db.add(question)
+    # 질문과 **같은 트랜잭션**에서 목록 순서를 올린다. 나눠 커밋하면 답변이 끊긴
+    # 대화가 목록 아래에 남아, 사용자가 방금 물어본 대화를 못 찾는다.
+    touch_conversation(conversation, asked_at)
     db.commit()
     db.refresh(question)
 
@@ -382,6 +386,8 @@ def create_message(
             created_at=answered_at,
         )
         db.add(reply)
+        # 답변까지 왔으면 그 시각이 "마지막으로 이야기한 때"다.
+        touch_conversation(conversation, answered_at)
         db.commit()
         db.refresh(reply)
 

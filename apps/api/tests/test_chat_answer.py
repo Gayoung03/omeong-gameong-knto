@@ -368,3 +368,72 @@ def test_질문을_보내면_대화_미리보기가_갱신된다(
 
 def test_없는_대화에_질문하면_404다(client: TestClient) -> None:
     assert _ask(client, str(uuid.uuid4())).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# updated_at — 목록 정렬의 기준
+#
+# 메시지는 `chat_messages` 에 들어가므로 대화 행은 저절로 바뀌지 않는다.
+# 손대지 않으면 목록이 "최근에 이야기한 대화"가 아니라 **첫 질문 순서**로 굳는다.
+# ---------------------------------------------------------------------------
+
+
+def test_질문을_보내면_그_대화가_목록_맨_위로_온다(
+    client: TestClient, db: Session, answering: Callable[..., list[list[dict]]]
+) -> None:
+    """오래된 대화에 말을 걸면 그 대화가 위로 올라와야 한다."""
+    answering()
+    older = _conversation(client)
+    newer = _conversation(client)
+
+    # 트랜잭션 하나로 도는 테스트에서는 now() 가 모두 같은 값이라 직접 심는다
+    # (test_chatbot.py 의 정렬 테스트와 같은 이유).
+    base = datetime(2026, 8, 27, 14, 0, tzinfo=KST)
+    for index, conversation_id in enumerate([older, newer]):
+        db.get(ChatConversation, uuid.UUID(conversation_id)).updated_at = base + timedelta(
+            minutes=index
+        )
+    db.flush()
+
+    _ask(client, older)
+
+    listed = client.get("/api/v1/chat/conversations").json()
+    assert [item["id"] for item in listed["items"]] == [older, newer]
+
+
+def test_답변까지_끝나면_답변_시각이_목록_시각이_된다(
+    client: TestClient, db: Session, answering: Callable[..., list[list[dict]]]
+) -> None:
+    """질문 시각에 멈춰 있으면 답변이 오래 걸린 대화의 순서가 뒤로 밀린다."""
+    answering()
+    conversation_id = _conversation(client)
+
+    _ask(client, conversation_id)
+
+    conversation = db.get(ChatConversation, uuid.UUID(conversation_id))
+    db.refresh(conversation)
+    reply = (
+        db.query(ChatMessage)
+        .filter_by(conversation_id=conversation.id, role=MessageRole.ASSISTANT)
+        .one()
+    )
+    assert conversation.updated_at == reply.created_at
+
+
+def test_답변이_실패해도_질문_시각까지는_올라간다(
+    client: TestClient, db: Session, answering: Callable[..., list[list[dict]]]
+) -> None:
+    """질문은 저장되므로 목록에도 보여야 한다 — 안 그러면 다시 찾을 수가 없다."""
+    answering(error=ChatGenerationError("모델 실패"))
+    conversation_id = _conversation(client)
+
+    _ask(client, conversation_id)
+
+    conversation = db.get(ChatConversation, uuid.UUID(conversation_id))
+    db.refresh(conversation)
+    question = (
+        db.query(ChatMessage)
+        .filter_by(conversation_id=conversation.id, role=MessageRole.USER)
+        .one()
+    )
+    assert conversation.updated_at == question.created_at
