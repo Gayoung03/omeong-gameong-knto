@@ -63,8 +63,10 @@ from app.services.chat_access import (
     conversation_with_stats,
     derive_title,
     load_owned_conversation,
+    owned_conversations,
     places_of,
     recent_history,
+    set_deleted,
     to_conversation_item,
     touch_conversation,
     with_conversation_stats,
@@ -106,20 +108,30 @@ def list_conversations(
     db: DbSession,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    deleted: Annotated[bool, Query()] = False,
 ) -> ConversationListResponse:
     """최근에 이야기한 대화부터 준다.
 
-    `chat_conversations` 에 `(user_id, updated_at)` 인덱스가 있어 이 정렬이 싸다.
+    `chat_conversations` 에 `(user_id, updated_at) WHERE deleted_at IS NULL` 부분
+    인덱스가 있어 이 정렬이 싸다.
+
+    `deleted=true` 면 **휴지통**이다. 지운 대화를 지운 순서로 준다 — 방금 잘못 지운
+    것이 맨 위에 있어야 되돌리기 쉽다. 같은 스키마를 쓰므로 앱은 목록 화면 코드를
+    그대로 재사용할 수 있다.
     """
-    condition = ChatConversation.user_id == current_user.id
+    condition = owned_conversations(current_user, deleted=deleted)
     total = db.scalar(select(func.count(ChatConversation.id)).where(condition)) or 0
+
+    # id 는 동점 처리용이다. 같은 순간에 갱신된 대화가 둘이면 정렬 순서가
+    # 매번 달라지고, 그러면 페이지를 넘길 때 어떤 대화는 두 번 나오고
+    # 어떤 대화는 아예 안 나온다.
+    newest_first = (
+        ChatConversation.deleted_at.desc() if deleted else ChatConversation.updated_at.desc()
+    )
 
     rows = db.execute(
         with_conversation_stats(select(ChatConversation).where(condition))
-        # id 는 동점 처리용이다. 같은 순간에 갱신된 대화가 둘이면 정렬 순서가
-        # 매번 달라지고, 그러면 페이지를 넘길 때 어떤 대화는 두 번 나오고
-        # 어떤 대화는 아예 안 나온다.
-        .order_by(ChatConversation.updated_at.desc(), ChatConversation.id.desc())
+        .order_by(newest_first, ChatConversation.id.desc())
         .limit(limit)
         .offset(offset)
     ).all()
@@ -158,10 +170,10 @@ def create_conversation(
     if payload.route_id is not None:
         load_owned_route(db, payload.route_id, current_user)
 
+    # **살아 있는 대화만** 센다. 지운 것까지 세면 "안 쓰는 대화를 지워주세요"라고
+    # 안내해 놓고 지워도 자리가 안 나는 상태가 된다.
     owned = db.scalar(
-        select(func.count(ChatConversation.id)).where(
-            ChatConversation.user_id == current_user.id
-        )
+        select(func.count(ChatConversation.id)).where(owned_conversations(current_user))
     )
     if (owned or 0) >= MAX_CONVERSATIONS:
         raise HTTPException(
@@ -227,11 +239,55 @@ def delete_conversation(
     current_user: CurrentUser,
     db: DbSession,
 ) -> Response:
-    """물리 삭제다. `chat_messages` 도 `ON DELETE CASCADE` 로 함께 지워진다."""
+    """**목록에서만 사라진다.** `chat_messages` 는 한 행도 지우지 않는다.
+
+    사용자가 대화를 지우는 것은 "안 보이게 해달라"는 뜻이지 "기록을 없애달라"는
+    뜻이 아니다. 그래서 `deleted_at` 만 채우고, 휴지통에서 되살릴 수 있게 둔다.
+
+    이미 지운 대화를 또 지우면 404 다 — `load_owned_conversation` 이 걸러낸다.
+    """
     conversation = load_owned_conversation(db, conversation_id, current_user)
-    db.delete(conversation)
+    set_deleted(conversation, datetime.now(KST))
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/chat/conversations/{conversation_id}/restore",
+    response_model=ConversationItem,
+    summary="대화 복구",
+)
+def restore_conversation(
+    conversation_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+) -> ConversationItem:
+    """휴지통에서 되살린다.
+
+    **`updated_at` 은 건드리지 않는다.** 갱신하면 복구한 대화가 목록 맨 위로 튀어
+    오르는데, 되살렸을 때 기대하는 것은 "원래 있던 자리로 돌아오는 것"이다.
+
+    지운 사이에 대화를 100개까지 새로 만들었다면 되살릴 자리가 없다. 조용히 상한을
+    넘기지 않고 409 로 알린다 — 생성 거부와 같은 규칙이다.
+    """
+    conversation = load_owned_conversation(
+        db, conversation_id, current_user, include_deleted=True
+    )
+    if conversation.deleted_at is None:
+        raise HTTPException(status_code=404, detail="휴지통에 없는 대화입니다")
+
+    alive = db.scalar(
+        select(func.count(ChatConversation.id)).where(owned_conversations(current_user))
+    )
+    if (alive or 0) >= MAX_CONVERSATIONS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"대화는 {MAX_CONVERSATIONS}개까지 가질 수 있어요. 안 쓰는 대화를 지워주세요",
+        )
+
+    set_deleted(conversation, None)
+    db.commit()
+    return conversation_with_stats(db, conversation_id)
 
 
 @router.get(
