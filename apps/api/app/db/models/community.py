@@ -275,7 +275,16 @@ class PushToken(Base):
 
 class ChatConversation(Base):
     __tablename__ = "chat_conversations"
-    __table_args__ = (Index("ix_chat_conversations_user_updated", "user_id", "updated_at"),)
+    __table_args__ = (
+        # 목록 조회는 **언제나** 살아 있는 대화만 본다. 조건을 인덱스에 함께 넣으면
+        # 지운 대화가 인덱스 자리를 차지하지 않는다(pets 의 ix_pets_user_active 와 같은 방식).
+        Index(
+            "ix_chat_conversations_user_updated",
+            "user_id",
+            "updated_at",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -285,6 +294,10 @@ class ChatConversation(Base):
         UUID(as_uuid=True), ForeignKey("routes.id", ondelete="SET NULL")
     )
     title: Mapped[str | None] = mapped_column(String(150))
+    #: 지운 시각. 목록에서만 빼고 `chat_messages` 는 그대로 둔다 — 사용자가 지운 것은
+    #: "안 보이게 해달라"는 뜻이지 "기록을 없애달라"는 뜻이 아니다. 되살릴 수도 있다.
+    #: users·pets 의 deleted_at 과 같은 모양이다.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
