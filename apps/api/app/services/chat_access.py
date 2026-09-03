@@ -62,6 +62,29 @@ def derive_title(question: str, limit: int = TITLE_MAX_LENGTH) -> str:
     return head
 
 
+def touch_conversation(conversation: ChatConversation, when: datetime) -> None:
+    """대화 목록의 정렬 기준을 방금 이야기한 시각으로 옮긴다.
+
+    ## 왜 직접 넣나
+
+    `updated_at` 에 `onupdate=func.now()` 가 붙어 있지만, 그건 **대화 행 자체를
+    UPDATE 할 때만** 동작한다. 메시지는 `chat_messages` 에 들어가므로 대화 행은
+    건드려지지 않고, 그러면 목록 정렬(`updated_at desc`)이 "최근에 이야기한 대화"가
+    아니라 사실상 **첫 질문 순서**로 굳는다(제목을 지을 때 딱 한 번만 대화 행이
+    바뀌기 때문이다).
+
+    ## 왜 시각을 인자로 받나
+
+    메시지에 넣은 시각과 **같은 값**을 써야 하기 때문이다. `func.now()` 는
+    트랜잭션 시작 시각이라, 질문과 답변을 서로 다른 트랜잭션에 저장하는 지금
+    구조에서는 목록의 시각이 메시지의 시각과 어긋날 수 있다(create_message 주석 참고).
+
+    호출한 쪽이 커밋한다 — 질문·답변 저장과 같은 트랜잭션에 묶여야
+    "메시지는 남았는데 목록은 안 올라온" 상태가 생기지 않는다.
+    """
+    conversation.updated_at = when
+
+
 def load_owned_conversation(
     db: Session, conversation_id: uuid.UUID, user: User
 ) -> ChatConversation:
