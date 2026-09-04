@@ -21,8 +21,13 @@ import { AnswerMarkdown } from '../components/AnswerMarkdown';
 import { ChatMapResponse } from '../components/ChatMapResponse';
 import { chatbotAssets } from '../config/chatbotAssets';
 import { chatbotSuggestions } from '../constants/chatbotSuggestions';
-import { entryKey, useChatbot } from '../hooks/useChatbot';
+import {
+  useActiveEntries,
+  useChatSessionsStore,
+  useIsAnswering,
+} from '../stores/useChatSessionsStore';
 import type { ChatEntry } from '../types/chatbot';
+import { entryKey } from '../utils/chatEntry';
 
 /** 커서가 보였다 숨는 주기. */
 const CARET_BLINK_MS = 500;
@@ -50,7 +55,16 @@ function TypingCaret() {
 export function ChatbotScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [input, setInput] = useState('');
-  const { entries, isAnswering, ask, retry, stop, skip } = useChatbot();
+  // 대화는 화면보다 오래 산다. 상태·스트림의 주인은 모듈 스코프 스토어이고
+  // 화면은 **지금 보고 있는 창만** 구독한다. 그래서 탭을 옮겨 이 화면이
+  // 사라져도 만들던 답변은 계속 쌓인다.
+  const activeKey = useChatSessionsStore((state) => state.activeKey);
+  const entries = useActiveEntries();
+  const isAnswering = useIsAnswering(activeKey);
+  const ask = useChatSessionsStore((state) => state.ask);
+  const retry = useChatSessionsStore((state) => state.retry);
+  const stop = useChatSessionsStore((state) => state.stop);
+  const skip = useChatSessionsStore((state) => state.skip);
   const hasMessages = entries.length > 0;
   const canSend = Boolean(input.trim()) && !isAnswering;
 
@@ -59,7 +73,7 @@ export function ChatbotScreen() {
     if (!normalizedText || isAnswering) return;
 
     setInput('');
-    void ask(normalizedText);
+    void ask(activeKey, normalizedText);
   };
 
   const renderComposer = (showContext: boolean) => (
@@ -87,7 +101,7 @@ export function ChatbotScreen() {
             accessibilityHint="만들고 있던 답변을 버립니다"
             accessibilityLabel="답변 생성 중지"
             accessibilityRole="button"
-            onPress={stop}
+            onPress={() => stop(activeKey)}
             style={({ pressed }) => [styles.sendButton, pressed && styles.pressed]}
           >
             <Ionicons color={colors.surface} name="stop" size={18} />
@@ -153,10 +167,9 @@ export function ChatbotScreen() {
     if (entry.kind === 'streaming') {
       // 질문 말풍선은 `start` 때 확정 메시지로 자리를 잡았다. 여기는 답변만이다.
       //
-      // `content` 가 비어 있는 구간이 **짧은 답변에서는 끝까지 유지된다** —
-      // 훅이 임계 시간 안에 끝난 답변은 흘리지 않고 모아두기 때문이다
-      // (useChatbot.ts 의 STREAM_BUFFER_MS). 그동안은 대기 말풍선과 똑같이
-      // 보여야 단계가 바뀐 것처럼 깜빡이지 않는다.
+      // `content` 가 비어 있는 구간이 있다 — 서버가 `start` 만 보내고 아직
+      // 첫 조각을 안 준 사이다. 그동안은 대기 말풍선과 똑같이 보여야 단계가
+      // 바뀐 것처럼 깜빡이지 않는다.
       return (
         <View style={styles.messageGroup}>
           {renderHondi(
@@ -193,7 +206,7 @@ export function ChatbotScreen() {
                 <Text style={styles.failedText}>{entry.description}</Text>
                 <Pressable
                   accessibilityRole="button"
-                  onPress={() => retry(entry.localId)}
+                  onPress={() => retry(activeKey, entry.localId)}
                   style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
                 >
                   <Ionicons color={colors.primary} name="refresh" size={14} />
@@ -285,7 +298,7 @@ export function ChatbotScreen() {
                   accessibilityLabel="타이핑 건너뛰기"
                   accessibilityRole="button"
                   disabled={!isAnswering}
-                  onPress={skip}
+                  onPress={() => skip(activeKey)}
                 >
                   <View style={styles.content}>{renderMessages()}</View>
                 </Pressable>
