@@ -95,3 +95,24 @@ export type ChatEntry =
   | PendingMessage
   | StreamingMessage
   | FailedMessage;
+
+/**
+ * 대화창 하나.
+ *
+ * **`sessionKey` 와 `conversationId` 는 다른 것이다.** `sessionKey` 는 창의
+ * 영구 키이고, `conversationId` 는 서버 대화 id 다. 대화는 첫 질문을 보낼 때
+ * 만들어지므로(설계 결정 D2) 그전에는 서버 id 가 없다 — 그 사이에도 창은
+ * 이미 존재하고 사용자가 글을 적고 있다. 창의 정체성을 서버 id 로 삼으면
+ * 요청 도중에 키가 바뀌어야 하고, 이미 날아간 콜백들이 옛 키를 들고 남는다.
+ */
+export type ChatSession = {
+  /** 창의 영구 키. 창이 사라질 때까지 안 바뀐다. */
+  sessionKey: string;
+  /** 서버 대화 id. 첫 질문 전에는 `null`. */
+  conversationId: string | null;
+  /** 사이드바에 그릴 제목. 첫 질문에서 서버가 지어 준다. */
+  title: string | null;
+  entries: ChatEntry[];
+  /** 서버에서 지난 메시지를 불러왔는지. 새 창은 불러올 것이 없다. */
+  hydrated: boolean;
+};
