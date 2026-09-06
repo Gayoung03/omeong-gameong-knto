@@ -1,6 +1,7 @@
 import type Ionicons from '@expo/vector-icons/Ionicons';
 
 import { apiClient } from '@/src/services/apiClient';
+import { relativeTime } from '@/src/utils/relativeTime';
 
 import type { AppNotification, NotificationType } from '../types/notification';
 
@@ -22,14 +23,6 @@ const ICONS: Record<NotificationType, keyof typeof Ionicons.glyphMap> = {
   notice: 'megaphone-outline',
   travel_log_ready: 'image-outline',
 };
-
-function relativeTime(value: string): string {
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
-  if (seconds < 60) return '방금 전';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}분 전`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}시간 전`;
-  return `${Math.floor(seconds / 86400)}일 전`;
-}
 
 export async function fetchNotifications(): Promise<AppNotification[]> {
   const { data } = await apiClient.get<{ items: NotificationResponse[] }>('/notifications');
