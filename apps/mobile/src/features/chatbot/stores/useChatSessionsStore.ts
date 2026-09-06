@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 
-import { startConversation } from '../api/chatbotApi';
+import { queryClient } from '@/src/services/queryClient';
+
+import { fetchMessages, startConversation } from '../api/chatbotApi';
 import { ChatStreamError, streamAnswer } from '../api/chatbotStream';
+import { conversationsQueryPrefix } from '../hooks/conversationKeys';
 import type { ChatEntry, ChatMessage, ChatSession } from '../types/chatbot';
 
 const STOPPED_DESCRIPTION = '답변을 중지했어요.';
@@ -43,8 +46,18 @@ const createSession = (): ChatSession => ({
   conversationId: null,
   title: null,
   entries: [],
-  hydrated: false,
+  hydration: 'none',
 });
+
+/**
+ * 사이드바 목록을 다시 불러오게 한다.
+ *
+ * 질문 하나로 그 대화의 **제목·미리보기·정렬 위치**가 한꺼번에 바뀐다. 스트림이
+ * 끝나는 시점에는 화면이 사라져 있을 수도 있어(탭을 옮겼을 때) 화면이 아니라
+ * 스토어가 부른다.
+ */
+const refreshConversations = () =>
+  void queryClient.invalidateQueries({ queryKey: conversationsQueryPrefix });
 
 /** 창 하나에 딸린 손잡이를 전부 버린다. 창을 닫거나 로그아웃할 때. */
 const forgetHandles = (sessionKey: string) => {
@@ -67,8 +80,12 @@ type ChatSessionsState = {
   sendingKeys: string[];
 
   openNew: () => string;
+  openExisting: (conversationId: string, title: string | null) => string;
+  retryHydrate: (sessionKey: string) => void;
+  renameSession: (conversationId: string, title: string) => void;
   setActive: (sessionKey: string) => void;
   closeSession: (sessionKey: string) => void;
+  closeByConversationId: (conversationId: string) => void;
   ask: (sessionKey: string, question: string) => Promise<void>;
   stop: (sessionKey: string) => void;
   skip: (sessionKey: string) => void;
@@ -142,6 +159,31 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
       };
     });
 
+  /**
+   * 서버에 저장된 지난 메시지로 창을 채운다.
+   *
+   * **가져온 기록을 앞에 붙인다.** 불러오는 동안 사용자가 그 창에서 벌써 질문을
+   * 시작했을 수 있는데(pending 말풍선이 이미 있다), 통째로 갈아끼우면 그 질문이
+   * 사라진다. 기록은 언제나 지금 하는 말보다 앞이므로 앞에 붙이면 순서도 맞다.
+   *
+   * 지도 카드는 따로 저장하지 않아도 된다 — 서버가 메시지마다
+   * `referencedPlaces` 를 다시 펼쳐서 준다.
+   */
+  const hydrate = async (sessionKey: string, conversationId: string) => {
+    patchSession(sessionKey, { hydration: 'loading' });
+    try {
+      const messages = await fetchMessages(conversationId);
+      patchEntries(sessionKey, (entries) => [
+        ...messages.map((message): ChatEntry => ({ kind: 'message', message })),
+        ...entries,
+      ]);
+      patchSession(sessionKey, { hydration: 'loaded' });
+    } catch {
+      // 빈 대화로 그리면 사용자는 기록이 사라진 줄 안다. 실패는 실패로 보여준다.
+      patchSession(sessionKey, { hydration: 'failed' });
+    }
+  };
+
   const markSending = (sessionKey: string, sending: boolean) =>
     set((state) => ({
       sendingKeys: sending
@@ -158,6 +200,20 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
     sendingKeys: [],
 
     openNew: () => {
+      // 이미 아무것도 안 한 빈 창에 있으면 또 만들지 않는다. 서버 id 가 없는 창은
+      // 사이드바(서버 대화 목록)에 안 나오므로, 쌓이면 돌아갈 방법이 없다.
+      const state = get();
+      const active = state.sessions[state.activeKey];
+      if (
+        active !== undefined &&
+        active.conversationId === null &&
+        active.entries.length === 0 &&
+        !state.sendingKeys.includes(active.sessionKey)
+      ) {
+        set({ activeKey: active.sessionKey });
+        return active.sessionKey;
+      }
+
       const session = createSession();
       set((state) => ({
         sessions: { ...state.sessions, [session.sessionKey]: session },
@@ -165,6 +221,71 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
         activeKey: session.sessionKey,
       }));
       return session.sessionKey;
+    },
+
+    /**
+     * 사이드바에서 고른 대화를 연다.
+     *
+     * **이미 열려 있으면 다시 불러오지 않는다.** 답변을 만드는 중인 창을
+     * 재조회하면, 아직 저장되지 않은 진행 중 말풍선이 서버 기록으로 덮어써진다.
+     */
+    openExisting: (conversationId, title) => {
+      const state = get();
+
+      const opened = state.order.find(
+        (key) => state.sessions[key]?.conversationId === conversationId,
+      );
+      if (opened !== undefined) {
+        set({ activeKey: opened });
+        return opened;
+      }
+
+      // 지금 창이 아직 아무것도 안 한 빈 창이면 **그 자리를 쓴다.** 새로 만들면
+      // 서버 id 가 없는 빈 창이 목록에 남는데, 사이드바는 서버에 저장된 대화만
+      // 그리므로 사용자가 그 창으로 돌아갈 방법이 없다.
+      const active = state.sessions[state.activeKey];
+      const reusable =
+        active !== undefined &&
+        active.conversationId === null &&
+        active.entries.length === 0 &&
+        !state.sendingKeys.includes(active.sessionKey);
+
+      if (reusable) {
+        patchSession(active.sessionKey, { conversationId, title });
+        void hydrate(active.sessionKey, conversationId);
+        return active.sessionKey;
+      }
+
+      const session: ChatSession = { ...createSession(), conversationId, title };
+      set((current) => ({
+        sessions: { ...current.sessions, [session.sessionKey]: session },
+        order: [...current.order, session.sessionKey],
+        activeKey: session.sessionKey,
+      }));
+      void hydrate(session.sessionKey, conversationId);
+      return session.sessionKey;
+    },
+
+    /** 기록 불러오기에 실패한 창에서 "다시 시도"를 눌렀을 때. */
+    retryHydrate: (sessionKey) => {
+      const session = get().sessions[sessionKey];
+      if (!session?.conversationId || session.hydration === 'loading') return;
+      void hydrate(sessionKey, session.conversationId);
+    },
+
+    /**
+     * 이름을 바꾼 대화가 **열려 있으면** 그 창의 제목도 맞춘다.
+     *
+     * 사이드바는 서버 목록을 보지만 열린 창은 제 제목을 들고 있어서, 여기서
+     * 맞춰주지 않으면 상단 바에 옛 제목이 남는다.
+     */
+    renameSession: (conversationId, title) => {
+      const state = get();
+      const key = state.order.find(
+        (sessionKey) => state.sessions[sessionKey]?.conversationId === conversationId,
+      );
+      if (key === undefined) return;
+      patchSession(key, { title });
     },
 
     setActive: (sessionKey) => {
@@ -208,6 +329,21 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
           sendingKeys,
         };
       });
+    },
+
+    /**
+     * 지운 대화가 **열려 있으면** 그 창도 닫는다.
+     *
+     * 남겨두면 사이드바에서 사라진 대화를 화면에서는 계속 보게 되고, 거기에
+     * 질문을 보내면 서버가 404 로 거절한다.
+     */
+    closeByConversationId: (conversationId) => {
+      const state = get();
+      const key = state.order.find(
+        (sessionKey) => state.sessions[sessionKey]?.conversationId === conversationId,
+      );
+      if (key === undefined) return;
+      get().closeSession(key);
     },
 
     /**
@@ -352,6 +488,9 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
           signal: abort.signal,
           onStart: (saved) => {
             questionSaved = true;
+            // 질문이 저장되면 그 대화의 **제목이 생기고**(첫 질문이면) 미리보기와
+            // 정렬 위치가 바뀐다. 사이드바가 옛 상태를 들고 있지 않게 한다.
+            refreshConversations();
             // 화면을 누르면 건너뛸 수 있게 여기서부터 열어 둔다.
             skipTyping.set(sessionKey, skip);
             replaceTemporary([
@@ -370,6 +509,8 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
             if (!isTyping()) typeOne();
           },
           onDone: (answer) => {
+            // 답변이 저장됐으므로 미리보기가 또 바뀐다.
+            refreshConversations();
             // 확정값을 기준으로 삼는다. 명세상 델타 누적과 같지만, 어긋나면
             // 마지막에 화면이 튄다.
             target = answer.content;
@@ -478,3 +619,12 @@ export const useActiveEntries = () =>
 /** 그 창이 답변을 만드는 중인지. **다른 창의 상태에 영향받지 않는다.** */
 export const useIsAnswering = (sessionKey: string) =>
   useChatSessionsStore((state) => state.sendingKeys.includes(sessionKey));
+
+/**
+ * 지금 보고 있는 창 자체.
+ *
+ * 상단 바가 제목·기록 불러오기 상태를 그리는 데 쓴다. 세션 객체는 값이 바뀔 때만
+ * 새로 만들어지므로 참조 비교로 리렌더가 걸러진다.
+ */
+export const useActiveSession = () =>
+  useChatSessionsStore((state) => state.sessions[state.activeKey]);
