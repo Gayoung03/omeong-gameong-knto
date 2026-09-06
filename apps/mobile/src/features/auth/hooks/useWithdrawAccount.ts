@@ -3,6 +3,8 @@ import { isAxiosError } from 'axios';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 
+import { useChatSessionsStore } from '@/src/features/chatbot/stores/useChatSessionsStore';
+
 import {
   clearLocalUserData,
   shouldClearAppCacheOnWithdraw,
@@ -31,6 +33,8 @@ export function useWithdrawAccount() {
       // 성공 시 토큰·세션·동의기록·캐시를 **무조건** 지운다(세션 잔류로 자동 재로그인 방지).
       await clearLocalUserData();
       if (shouldClearAppCacheOnWithdraw()) queryClient.clear();
+      // 대화창은 쿼리 캐시 밖(모듈 스코프 스토어)에 있어 따로 비운다.
+      useChatSessionsStore.getState().reset();
 
       // 뒤로가기로 탈퇴 전 화면에 돌아가지 못하도록 쌓인 화면을 모두 정리한다.
       if (router.canDismiss()) router.dismissAll();

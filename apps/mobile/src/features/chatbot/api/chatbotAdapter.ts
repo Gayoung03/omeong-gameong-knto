@@ -2,8 +2,12 @@
 
 import { toPetPolicy } from '@/src/types/place';
 
-import type { ChatMessage, ChatPlace } from '../types/chatbot';
-import type { ChatMessageResponse, ChatPlaceResponse } from '../types/chatbotApi';
+import type { ChatMessage, ChatPlace, ConversationSummary } from '../types/chatbot';
+import type {
+  ChatMessageResponse,
+  ChatPlaceResponse,
+  ConversationResponse,
+} from '../types/chatbotApi';
 
 function toChatPlace(response: ChatPlaceResponse): ChatPlace {
   return {
@@ -37,4 +41,22 @@ export function toChatMessage(response: ChatMessageResponse): ChatMessage {
  */
 export function toChatMessages(responses: ChatMessageResponse[]): ChatMessage[] {
   return responses.filter((item) => item.role !== 'system').map(toChatMessage);
+}
+
+/**
+ * 사이드바 한 줄로.
+ *
+ * **`routeId`·`createdAt` 은 옮기지 않는다.** 목록 줄이 그리지 않는 값이고,
+ * 화면이 쓰지 않는 필드를 들고 있으면 "이건 어디서 쓰지"를 매번 확인하게 된다.
+ * 필요해지면 그때 넣는다.
+ */
+export function toConversationSummary(response: ConversationResponse): ConversationSummary {
+  return {
+    id: response.id,
+    title: response.title,
+    preview: response.lastMessagePreview,
+    messageCount: response.messageCount,
+    updatedAt: response.updatedAt,
+    deletedAt: response.deletedAt,
+  };
 }

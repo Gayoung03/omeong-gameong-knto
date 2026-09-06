@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,11 +19,21 @@ import { AppHeader } from '@/src/components/layout/AppHeader';
 import { colors, spacing } from '@/src/theme';
 
 import { AnswerMarkdown } from '../components/AnswerMarkdown';
+import { ChatbotTopBar } from '../components/ChatbotTopBar';
 import { ChatMapResponse } from '../components/ChatMapResponse';
+import { UNTITLED_CONVERSATION } from '../components/ConversationRow';
+import { ConversationSidebar } from '../components/ConversationSidebar';
+import { RenameConversationModal } from '../components/RenameConversationModal';
 import { chatbotAssets } from '../config/chatbotAssets';
 import { chatbotSuggestions } from '../constants/chatbotSuggestions';
-import { entryKey, useChatbot } from '../hooks/useChatbot';
-import type { ChatEntry } from '../types/chatbot';
+import {
+  useActiveEntries,
+  useActiveSession,
+  useChatSessionsStore,
+  useIsAnswering,
+} from '../stores/useChatSessionsStore';
+import type { ChatEntry, ConversationSummary } from '../types/chatbot';
+import { entryKey } from '../utils/chatEntry';
 
 /** 커서가 보였다 숨는 주기. */
 const CARET_BLINK_MS = 500;
@@ -48,10 +59,54 @@ function TypingCaret() {
 }
 
 export function ChatbotScreen() {
+  const router = useRouter();
+  // 알림에서 바로 들어오면 대화 id 가 주소에 실려 온다 (설계 결정 H-2).
+  const { conversationId: linkedConversationId } = useLocalSearchParams<{
+    conversationId?: string;
+  }>();
   const scrollRef = useRef<ScrollView>(null);
   const [input, setInput] = useState('');
-  const { entries, isAnswering, ask, retry, stop, skip } = useChatbot();
+  // 대화는 화면보다 오래 산다. 상태·스트림의 주인은 모듈 스코프 스토어이고
+  // 화면은 **지금 보고 있는 창만** 구독한다. 그래서 탭을 옮겨 이 화면이
+  // 사라져도 만들던 답변은 계속 쌓인다.
+  const activeKey = useChatSessionsStore((state) => state.activeKey);
+  const session = useActiveSession();
+  const entries = useActiveEntries();
+  const isAnswering = useIsAnswering(activeKey);
+  const ask = useChatSessionsStore((state) => state.ask);
+  const retry = useChatSessionsStore((state) => state.retry);
+  const stop = useChatSessionsStore((state) => state.stop);
+  const skip = useChatSessionsStore((state) => state.skip);
+  const openNew = useChatSessionsStore((state) => state.openNew);
+  const retryHydrate = useChatSessionsStore((state) => state.retryHydrate);
+
+  const [isSidebarOpen, setSidebarOpen] = useState(false);
+  // 이름 바꾸기 창은 사이드바와 **형제로** 띄운다 — Modal 안에 Modal 을 겹치면
+  // 플랫폼마다 층 순서가 달라진다.
+  const [renameTarget, setRenameTarget] = useState<ConversationSummary | null>(null);
+
+  const openExisting = useChatSessionsStore((state) => state.openExisting);
+
+  /**
+   * 알림이 가리킨 대화를 연다.
+   *
+   * 제목은 넘기지 않는다 — 알림에는 대화 id 밖에 없다. 스토어가 기록을 불러오면서
+   * 제목도 함께 채운다.
+   *
+   * **열고 나면 주소에서 지운다.** 남겨두면 나중에 사이드바로 다른 대화를 열어 둔
+   * 상태에서 이 화면이 다시 마운트될 때, 알림이 가리키던 옛 대화로 끌려간다.
+   */
+  useEffect(() => {
+    if (!linkedConversationId) return;
+    openExisting(linkedConversationId, null);
+    router.setParams({ conversationId: '' });
+  }, [linkedConversationId, openExisting, router]);
+
+  const hydration = session?.hydration ?? 'none';
   const hasMessages = entries.length > 0;
+  // 기록을 불러오는 중이거나 실패했을 때도 대화 화면을 보여준다. 첫 화면(히어로)을
+  // 그리면 "대화가 없다"는 뜻이 되어, 기록이 사라진 것처럼 보인다.
+  const showConversation = hasMessages || hydration === 'loading' || hydration === 'failed';
   const canSend = Boolean(input.trim()) && !isAnswering;
 
   const sendMessage = (text: string) => {
@@ -59,7 +114,7 @@ export function ChatbotScreen() {
     if (!normalizedText || isAnswering) return;
 
     setInput('');
-    void ask(normalizedText);
+    void ask(activeKey, normalizedText);
   };
 
   const renderComposer = (showContext: boolean) => (
@@ -87,7 +142,7 @@ export function ChatbotScreen() {
             accessibilityHint="만들고 있던 답변을 버립니다"
             accessibilityLabel="답변 생성 중지"
             accessibilityRole="button"
-            onPress={stop}
+            onPress={() => stop(activeKey)}
             style={({ pressed }) => [styles.sendButton, pressed && styles.pressed]}
           >
             <Ionicons color={colors.surface} name="stop" size={18} />
@@ -153,10 +208,9 @@ export function ChatbotScreen() {
     if (entry.kind === 'streaming') {
       // 질문 말풍선은 `start` 때 확정 메시지로 자리를 잡았다. 여기는 답변만이다.
       //
-      // `content` 가 비어 있는 구간이 **짧은 답변에서는 끝까지 유지된다** —
-      // 훅이 임계 시간 안에 끝난 답변은 흘리지 않고 모아두기 때문이다
-      // (useChatbot.ts 의 STREAM_BUFFER_MS). 그동안은 대기 말풍선과 똑같이
-      // 보여야 단계가 바뀐 것처럼 깜빡이지 않는다.
+      // `content` 가 비어 있는 구간이 있다 — 서버가 `start` 만 보내고 아직
+      // 첫 조각을 안 준 사이다. 그동안은 대기 말풍선과 똑같이 보여야 단계가
+      // 바뀐 것처럼 깜빡이지 않는다.
       return (
         <View style={styles.messageGroup}>
           {renderHondi(
@@ -193,7 +247,7 @@ export function ChatbotScreen() {
                 <Text style={styles.failedText}>{entry.description}</Text>
                 <Pressable
                   accessibilityRole="button"
-                  onPress={() => retry(entry.localId)}
+                  onPress={() => retry(activeKey, entry.localId)}
                   style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
                 >
                   <Ionicons color={colors.primary} name="refresh" size={14} />
@@ -240,6 +294,41 @@ export function ChatbotScreen() {
     );
   };
 
+  /**
+   * 지난 대화를 불러오는 중이거나 실패했을 때 목록 맨 위에 놓는 줄.
+   *
+   * 실패를 **빈 대화**로 그리면 사용자는 기록이 사라진 줄 안다. 그래서 실패는
+   * 실패로 보여주고 다시 시도할 길을 준다.
+   */
+  const renderHydrationNotice = () => {
+    if (hydration === 'loading') {
+      return (
+        <View style={styles.hydrationRow}>
+          <ActivityIndicator color={colors.primary} size="small" />
+          <Text style={styles.hydrationText}>지난 대화를 불러오는 중이에요…</Text>
+        </View>
+      );
+    }
+
+    if (hydration === 'failed') {
+      return (
+        <View style={styles.hydrationRow}>
+          <Text style={styles.hydrationText}>지난 대화를 불러오지 못했어요.</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => retryHydrate(activeKey)}
+            style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+          >
+            <Ionicons color={colors.primary} name="refresh" size={14} />
+            <Text style={styles.retryText}>다시 시도</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    return null;
+  };
+
   const renderMessages = () => (
     <View accessibilityLiveRegion="polite" style={styles.messageList}>
       {entries.map((entry) => (
@@ -256,8 +345,13 @@ export function ChatbotScreen() {
       >
         <View style={styles.screen}>
           <AppHeader notifications="popup" />
+          <ChatbotTopBar
+            onNewChat={() => openNew()}
+            onOpenSidebar={() => setSidebarOpen(true)}
+            title={session?.title ?? UNTITLED_CONVERSATION}
+          />
 
-          {hasMessages ? (
+          {showConversation ? (
             <>
               <ScrollView
                 contentContainerStyle={styles.activeChatScrollContent}
@@ -285,9 +379,12 @@ export function ChatbotScreen() {
                   accessibilityLabel="타이핑 건너뛰기"
                   accessibilityRole="button"
                   disabled={!isAnswering}
-                  onPress={skip}
+                  onPress={() => skip(activeKey)}
                 >
-                  <View style={styles.content}>{renderMessages()}</View>
+                  <View style={styles.content}>
+                    {renderHydrationNotice()}
+                    {renderMessages()}
+                  </View>
                 </Pressable>
               </ScrollView>
               <View style={styles.activeComposerBar}>
@@ -355,6 +452,13 @@ export function ChatbotScreen() {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      <ConversationSidebar
+        onClose={() => setSidebarOpen(false)}
+        onRequestRename={setRenameTarget}
+        visible={isSidebarOpen}
+      />
+      <RenameConversationModal conversation={renameTarget} onClose={() => setRenameTarget(null)} />
     </SafeAreaView>
   );
 }
@@ -380,6 +484,17 @@ const styles = StyleSheet.create({
   },
   caretHidden: {
     color: 'transparent',
+  },
+  hydrationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: spacing.sm,
+    marginTop: 12,
+  },
+  hydrationText: {
+    color: colors.textSecondary,
+    fontSize: 13,
   },
   failedBubble: {
     backgroundColor: colors.errorBg,
