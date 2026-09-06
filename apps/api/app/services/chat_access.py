@@ -13,8 +13,9 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, and_, func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.models import ChatConversation, ChatMessage, Place, User
@@ -62,14 +63,90 @@ def derive_title(question: str, limit: int = TITLE_MAX_LENGTH) -> str:
     return head
 
 
+def touch_conversation(conversation: ChatConversation, when: datetime) -> None:
+    """대화 목록의 정렬 기준을 방금 이야기한 시각으로 옮긴다.
+
+    ## 왜 직접 넣나
+
+    `updated_at` 에 `onupdate=func.now()` 가 붙어 있지만, 그건 **대화 행 자체를
+    UPDATE 할 때만** 동작한다. 메시지는 `chat_messages` 에 들어가므로 대화 행은
+    건드려지지 않고, 그러면 목록 정렬(`updated_at desc`)이 "최근에 이야기한 대화"가
+    아니라 사실상 **첫 질문 순서**로 굳는다(제목을 지을 때 딱 한 번만 대화 행이
+    바뀌기 때문이다).
+
+    ## 왜 시각을 인자로 받나
+
+    메시지에 넣은 시각과 **같은 값**을 써야 하기 때문이다. `func.now()` 는
+    트랜잭션 시작 시각이라, 질문과 답변을 서로 다른 트랜잭션에 저장하는 지금
+    구조에서는 목록의 시각이 메시지의 시각과 어긋날 수 있다(create_message 주석 참고).
+
+    호출한 쪽이 커밋한다 — 질문·답변 저장과 같은 트랜잭션에 묶여야
+    "메시지는 남았는데 목록은 안 올라온" 상태가 생기지 않는다.
+    """
+    conversation.updated_at = when
+
+
+def set_deleted(conversation: ChatConversation, when: datetime | None) -> None:
+    """지우거나(`when`) 되살린다(`None`). **`updated_at` 은 그대로 둔다.**
+
+    ## 가만두면 목록 맨 위로 튄다
+
+    `updated_at` 에는 `onupdate=func.now()` 가 걸려 있어, 대화 행을 UPDATE 하면
+    우리가 손대지 않아도 지금 시각으로 바뀐다. 그러면 **지웠다 되살리기만 해도**
+    그 대화가 목록 맨 위로 올라온다. `updated_at` 은 "마지막으로 이야기한 때"인데
+    (touch_conversation 참고) 삭제·복구는 이야기한 것이 아니다.
+
+    ## 막는 방법
+
+    `onupdate` 는 **그 열이 UPDATE 문의 SET 절에 없을 때만** 끼어든다. 그래서 지금
+    값을 그대로 다시 실어 보낸다. 같은 값을 대입하는 것만으로는 SQLAlchemy 가 변경으로
+    보지 않을 수 있어 `flag_modified` 로 못박는다. 먼저 읽어두는 것은, 앞선 커밋으로
+    속성이 만료돼 있으면 여기서 다시 읽히게 하기 위해서다.
+    """
+    kept = conversation.updated_at
+    conversation.deleted_at = when
+    conversation.updated_at = kept
+    flag_modified(conversation, "updated_at")
+
+
+def owned_conversations(user: User, *, deleted: bool = False) -> ColumnElement[bool]:
+    """목록·개수가 함께 보는 조건. `deleted=True` 면 휴지통이다.
+
+    **한 곳에 둔 이유가 있다.** 목록과 개수 상한이 서로 다른 조건을 보면
+    "목록에는 안 보이는데 상한에는 잡히는" 대화가 생긴다. 그러면 사용자는
+    지울 것이 없는데 "안 쓰는 대화를 지워주세요"라는 말을 듣게 된다.
+    """
+    state = (
+        ChatConversation.deleted_at.is_not(None)
+        if deleted
+        else ChatConversation.deleted_at.is_(None)
+    )
+    return and_(ChatConversation.user_id == user.id, state)
+
+
 def load_owned_conversation(
-    db: Session, conversation_id: uuid.UUID, user: User
+    db: Session,
+    conversation_id: uuid.UUID,
+    user: User,
+    *,
+    include_deleted: bool = False,
 ) -> ChatConversation:
+    """가져오면서 소유권까지 확인한다.
+
+    **지운 대화는 없는 것으로 다룬다**(404). 목록에서 사라졌는데 id 로는 열리면
+    "지운 것 같은데 왜 열리지"가 된다. 휴지통을 들여다보는 복구 엔드포인트만
+    `include_deleted=True` 로 부른다.
+
+    지운 여부보다 **소유권을 먼저** 본다. 남의 대화는 살아 있든 지워졌든 똑같이
+    403 이어야, 남의 id 를 찍어보며 상태를 알아낼 수 없다.
+    """
     conversation = db.get(ChatConversation, conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="대화를 찾을 수 없습니다")
     if conversation.user_id != user.id:
         raise HTTPException(status_code=403, detail="다른 사용자의 대화입니다")
+    if conversation.deleted_at is not None and not include_deleted:
+        raise HTTPException(status_code=404, detail="대화를 찾을 수 없습니다")
     return conversation
 
 
