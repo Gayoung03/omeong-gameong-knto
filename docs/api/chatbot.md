@@ -69,7 +69,8 @@
       "lastMessagePreview": "함덕 근처 카페 세 곳을 추천드릴게요.",
       "messageCount": 8,
       "createdAt": "2026-08-10T14:00:00+09:00",
-      "updatedAt": "2026-08-10T14:12:00+09:00"
+      "updatedAt": "2026-08-10T14:12:00+09:00",
+      "deletedAt": null
     }
   ],
   "total": 3,
@@ -79,6 +80,10 @@
 ```
 
 기본 정렬은 `updatedAt` 최신순입니다. DB에 `(user_id, updated_at)` 인덱스가 있습니다.
+
+`deletedAt`은 **`deleted=true`(휴지통)에서만 값이 있습니다.** 일반 목록은 살아 있는
+대화만 주므로 항상 `null`입니다. 휴지통은 지운 순서로 정렬되는데, 시각이 함께 가지
+않으면 앱이 "언제 지웠는지"를 화면에 그릴 수 없습니다.
 
 `lastMessagePreview`와 `messageCount`는 계산값입니다.
 
@@ -180,8 +185,27 @@
 ### 요청
 
 ```text
-GET /api/v1/chat/conversations/{conversationId}/messages?limit=50&offset=0
+GET /api/v1/chat/conversations/{conversationId}/messages?limit=50&offset=0&order=desc
 ```
+
+| 쿼리 | 타입 | 기본값 | 설명 |
+| --- | --- | --- | --- |
+| `limit` | int (1~100) | 50 | |
+| `offset` | int (0~) | 0 | |
+| `order` | `asc` \| `desc` | `asc` | 대화의 **어느 쪽 끝에서** 자를지 |
+
+**응답은 `order`와 무관하게 항상 오래된 순입니다.** 채팅 화면이 위에서 아래로
+읽히기 때문에, 어느 쪽을 골랐든 앱이 그대로 이어 붙일 수 있어야 합니다.
+
+- `asc` — 대화의 **처음부터** `limit`개
+- `desc` — 대화의 **끝에서** `limit`개를 고른 뒤 뒤집어서 응답
+
+앱이 대화를 다시 열 때는 `order=desc`를 씁니다. 사용자가 보고 싶은 것은 첫 메시지가
+아니라 마지막에 나눈 이야기이기 때문입니다. `asc`뿐이면 메시지가 51개인 대화를 열었을 때
+가장 오래된 50개가 뜨고 최근 대화가 안 보입니다.
+
+`total`은 자른 것과 무관하게 대화 전체 메시지 수입니다.
+모르는 값을 주면 `422`입니다.
 
 ### 응답 `200`
 
@@ -417,4 +441,5 @@ data: {"event":"error","code":"llm_failed","detail":"답변 생성에 실패했�
 | 2026-08-12 | 목록에만 있고 본문이 없던 `GET /chat/conversations/{conversationId}` 명세 작성 |
 | 2026-09-03 | 삭제를 **물리 → 소프트**로 변경(`deleted_at`). `POST .../restore` 추가, `GET /chat/conversations`에 `deleted` 쿼리 추가, 개수 상한은 살아 있는 대화만 계산 |
 | 2026-08-27 | 대화 CRUD 6개 구현하며 보완 — `POST /chat/conversations`에 에러 표 신설(`409` 대화 개수 상한), `firstMessage` 미구현 명시 |
+| 2026-09-06 | `GET .../messages`에 `order` 쿼리 추가(`asc`\|`desc`, 기본 `asc`) — 응답은 언제나 오래된 순이고 **자르는 쪽 끝만** 바뀝니다. `ConversationItem`에 `deletedAt` 추가(휴지통에서만 값이 있음). 앱의 대화 복원·휴지통 화면이 쓰기 시작하면서 넣었습니다 |
 | 2026-08-30 | **SSE 스트리밍 구현 완료.** 임시로 JSON을 돌려주던 `POST .../messages`가 명세대로 `start`→`delta`→`done`/`error`를 흘려보냅니다(응답 `200`, `text/event-stream`). **중지 버튼을 범위에 넣고 8/18 보류 조항을 해제**했습니다 — 앱은 연결만 끊고, 서버는 사용자 중지와 네트워크 끊김을 구분하지 않습니다("중간에 끊기면 저장 안 함"을 그대로 재사용). 새 엔드포인트 없음. **질문은 `start` 시점에 커밋**되므로 실패·중지해도 남습니다(JSON 시절의 "실패하면 질문도 저장 안 함"과 달라진 점) |
