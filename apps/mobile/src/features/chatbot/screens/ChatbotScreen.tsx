@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -58,6 +59,11 @@ function TypingCaret() {
 }
 
 export function ChatbotScreen() {
+  const router = useRouter();
+  // 알림에서 바로 들어오면 대화 id 가 주소에 실려 온다 (설계 결정 H-2).
+  const { conversationId: linkedConversationId } = useLocalSearchParams<{
+    conversationId?: string;
+  }>();
   const scrollRef = useRef<ScrollView>(null);
   const [input, setInput] = useState('');
   // 대화는 화면보다 오래 산다. 상태·스트림의 주인은 모듈 스코프 스토어이고
@@ -78,6 +84,23 @@ export function ChatbotScreen() {
   // 이름 바꾸기 창은 사이드바와 **형제로** 띄운다 — Modal 안에 Modal 을 겹치면
   // 플랫폼마다 층 순서가 달라진다.
   const [renameTarget, setRenameTarget] = useState<ConversationSummary | null>(null);
+
+  const openExisting = useChatSessionsStore((state) => state.openExisting);
+
+  /**
+   * 알림이 가리킨 대화를 연다.
+   *
+   * 제목은 넘기지 않는다 — 알림에는 대화 id 밖에 없다. 스토어가 기록을 불러오면서
+   * 제목도 함께 채운다.
+   *
+   * **열고 나면 주소에서 지운다.** 남겨두면 나중에 사이드바로 다른 대화를 열어 둔
+   * 상태에서 이 화면이 다시 마운트될 때, 알림이 가리키던 옛 대화로 끌려간다.
+   */
+  useEffect(() => {
+    if (!linkedConversationId) return;
+    openExisting(linkedConversationId, null);
+    router.setParams({ conversationId: '' });
+  }, [linkedConversationId, openExisting, router]);
 
   const hydration = session?.hydration ?? 'none';
   const hasMessages = entries.length > 0;
