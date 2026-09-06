@@ -6,38 +6,77 @@ import { SectionHeader } from '@/src/components/ui/SectionHeader';
 
 import { colors, overlayColors, radius, spacing } from '@/src/theme';
 
+const PREPARATION_IMAGE = require('@/assets/images/travel-preparation-card.png');
+
 type ContentRecommendationProps = {
   stories: EditorialStory[];
+  showPreparation: boolean;
+  onPressPreparation: () => void;
   onPressStory: (story: EditorialStory) => void;
 };
 
-export function ContentRecommendation({ stories, onPressStory }: ContentRecommendationProps) {
+export function ContentRecommendation({
+  stories,
+  showPreparation,
+  onPressPreparation,
+  onPressStory,
+}: ContentRecommendationProps) {
+  const visibleStories = stories.slice(0, showPreparation ? 3 : 4);
+
   return (
     <View>
       <SectionHeader title="제주 여행 이야기" style={styles.sectionHeader} />
-      <View style={styles.grid}>
-        {stories.map((story) => (
-          <Pressable
-            accessibilityRole="button"
-            key={story.id}
-            onPress={() => onPressStory(story)}
-            style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-          >
-            <ImageBackground
-              imageStyle={styles.image}
-              resizeMode="cover"
-              source={{ uri: story.heroImageUrl }}
-              style={styles.background}
+      {!showPreparation && visibleStories.length === 0 ? (
+        <View style={styles.emptyCard}>
+          <Ionicons color={colors.primary} name="paw-outline" size={20} />
+          <Text style={styles.emptyText}>새로운 제주 이야기를 준비하고 있다멍.</Text>
+        </View>
+      ) : (
+        <View style={styles.grid}>
+          {showPreparation ? (
+            <Pressable
+              accessibilityLabel="출발 전 체크리스트 열기"
+              accessibilityRole="button"
+              onPress={onPressPreparation}
+              style={({ pressed }) => [styles.card, pressed && styles.pressed]}
             >
-              <View style={styles.scrim} />
-              <Text style={styles.title}>{story.cardTitle}</Text>
-              <View style={styles.arrowCircle}>
-                <Ionicons color={colors.textPrimary} name="chevron-forward" size={16} />
-              </View>
-            </ImageBackground>
-          </Pressable>
-        ))}
-      </View>
+              <ImageBackground
+                imageStyle={styles.image}
+                resizeMode="cover"
+                source={PREPARATION_IMAGE}
+                style={styles.background}
+              >
+                <View style={styles.scrim} />
+                <Text style={styles.title}>출발 전 체크리스트{`\n`}미리 챙겼개?</Text>
+                <View style={styles.arrowCircle}>
+                  <Ionicons color={colors.textPrimary} name="chevron-forward" size={16} />
+                </View>
+              </ImageBackground>
+            </Pressable>
+          ) : null}
+          {visibleStories.map((story) => (
+            <Pressable
+              accessibilityRole="button"
+              key={story.id}
+              onPress={() => onPressStory(story)}
+              style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+            >
+              <ImageBackground
+                imageStyle={styles.image}
+                resizeMode="cover"
+                source={{ uri: story.heroImageUrl }}
+                style={styles.background}
+              >
+                <View style={styles.scrim} />
+                <Text style={styles.title}>{story.cardTitle}</Text>
+                <View style={styles.arrowCircle}>
+                  <Ionicons color={colors.textPrimary} name="chevron-forward" size={16} />
+                </View>
+              </ImageBackground>
+            </Pressable>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -58,6 +97,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     backgroundColor: colors.divider,
   },
+  emptyCard: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.lg,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  emptyText: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },
   pressed: {
     opacity: 0.7,
   },

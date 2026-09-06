@@ -43,9 +43,10 @@ export type EditorialStorySection = {
   imageCaption?: string;
 };
 
-/** 추후 관리자 작성 API 응답으로 교체할 제주 여행 이야기 모델. */
 export type EditorialStory = {
   id: string;
+  slug: string;
+  kind: 'event' | 'weather' | 'story' | 'guide';
   category: string;
   cardTitle: string;
   title: string;
@@ -57,4 +58,10 @@ export type EditorialStory = {
   sections: EditorialStorySection[];
   tips: string[];
   tags: string[];
+  sources: {
+    sourceName: string;
+    sourceTitle: string;
+    sourceUrl: string;
+    sourcePublishedAt: string | null;
+  }[];
 };

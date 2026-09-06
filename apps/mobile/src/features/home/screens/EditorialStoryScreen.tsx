@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/src/components/feedback/EmptyState';
@@ -7,7 +8,7 @@ import { RemoteImage } from '@/src/components/ui/RemoteImage';
 import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
-import { mockEditorialStories } from '../mocks/home.mock';
+import { fetchEditorialStory } from '../api/editorialApi';
 import type { EditorialStory } from '../types/home';
 
 type EditorialStoryScreenProps = {
@@ -15,12 +16,20 @@ type EditorialStoryScreenProps = {
 };
 
 export function EditorialStoryScreen({ storyId }: EditorialStoryScreenProps) {
-  const story = mockEditorialStories.find((item) => item.id === storyId);
+  const { data: story, isPending } = useQuery({
+    queryKey: ['editorial-story', storyId],
+    queryFn: () => fetchEditorialStory(storyId),
+    enabled: Boolean(storyId),
+  });
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScreenHeader title="제주 여행 이야기" />
-      {story ? (
+      {isPending ? (
+        <View style={styles.centered}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : story ? (
         <StoryArticle story={story} />
       ) : (
         <EmptyState
@@ -45,7 +54,7 @@ function StoryArticle({ story }: { story: EditorialStory }) {
         <View style={styles.metaRow}>
           <Text style={styles.metaText}>{story.author}</Text>
           <View style={styles.metaDot} />
-          <Text style={styles.metaText}>{story.publishedAt}</Text>
+          <Text style={styles.metaText}>{formatPublishedAt(story.publishedAt)}</Text>
           <View style={styles.metaDot} />
           <Text style={styles.metaText}>{story.readingMinutes}분 읽기</Text>
         </View>
@@ -104,8 +113,14 @@ function StoryArticle({ story }: { story: EditorialStory }) {
   );
 }
 
+function formatPublishedAt(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('ko-KR');
+}
+
 const styles = StyleSheet.create({
   articleBody: { gap: spacing.xl },
+  centered: { alignItems: 'center', flex: 1, justifyContent: 'center' },
   categoryBadge: {
     alignSelf: 'flex-start',
     backgroundColor: colors.primarySoft,
