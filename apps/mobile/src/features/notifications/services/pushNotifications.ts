@@ -113,7 +113,10 @@ export function openNotification(
   targetId?: string | null,
 ) {
   const paths: Partial<Record<NotificationType, Href>> = {
-    chat_answer_ready: '/chatbot',
+    // 답변이 도착했다는 알림은 **그 대화로** 들어가야 뜻이 산다. 챗봇 탭만 열면
+    // 마지막으로 보던 창이 나와, 사용자가 사이드바에서 다시 찾아야 한다.
+    // 서버는 이미 `add_notification(target_id=conversation_id)` 로 대화 id 를 싣고 있다.
+    chat_answer_ready: targetId ? (`/chatbot?conversationId=${targetId}` as Href) : '/chatbot',
     inquiry_answered: targetId ? (`/inquiries/${targetId}` as Href) : '/inquiries',
     notice: '/notices',
     route_ready: targetId ? (`/trips/${targetId}` as Href) : '/trips',
