@@ -1,14 +1,25 @@
+import { AppState } from 'react-native';
 import { create } from 'zustand';
 
 import { queryClient } from '@/src/services/queryClient';
 
-import { fetchMessages, startConversation } from '../api/chatbotApi';
+import { fetchConversation, fetchMessages, startConversation } from '../api/chatbotApi';
 import { ChatStreamError, streamAnswer } from '../api/chatbotStream';
 import { conversationsQueryPrefix } from '../hooks/conversationKeys';
 import type { ChatEntry, ChatMessage, ChatSession } from '../types/chatbot';
 
 const STOPPED_DESCRIPTION = '답변을 중지했어요.';
 const FALLBACK_DESCRIPTION = '답변을 받지 못했어요. 잠시 후 다시 시도해 주세요.';
+const INTERRUPTED_DESCRIPTION = '앱을 잠시 떠난 사이 답변이 끊겼어요.';
+
+/**
+ * 앱이 앞으로 돌아온 뒤 판단하기까지 기다리는 시간.
+ *
+ * **바로 판단하면 안 된다.** 백그라운드에서 끊긴 fetch 는 JS 가 다시 돌기 시작해야
+ * 실패가 전해지고, 그때 `ask` 가 스스로 마무리한다. 그 전에 끼어들면 두 곳이 같은
+ * 창을 동시에 고치게 된다.
+ */
+const RECOVERY_GRACE_MS = 2000;
 
 /** 글자 하나마다 쉬는 시간. 매번 이 범위에서 새로 뽑아 기계적인 느낌을 없앤다. */
 const TYPING_CHAR_MIN_MS = 20;
@@ -37,6 +48,39 @@ const finishNow = new Map<string, () => void>();
 const skipTyping = new Map<string, () => void>();
 /** 다음 글자를 찍을 예약. 있으면 = 타이핑 중. */
 const typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/**
+ * 그 창에서 서버 이벤트를 마지막으로 받은 시각.
+ *
+ * 백그라운드에서 돌아왔을 때 **스트림이 아직 살아 있는지**를 이걸로 가린다. 짧게
+ * 다녀오면 연결이 그대로 살아 조각이 계속 오는데, 그것까지 끊으면 멀쩡한 답변을
+ * 우리 손으로 버리는 셈이 된다.
+ */
+const lastActivityAt = new Map<string, number>();
+/**
+ * 창마다 지금 유효한 요청 번호.
+ *
+ * 복구가 끼어들면 번호를 올린다. 그러면 **먼저 날아간 `ask` 의 콜백들**이 뒤늦게
+ * 도착해도 자기 번호가 아닌 것을 보고 화면을 건드리지 않는다. 이게 없으면
+ * 복구가 서버 기록으로 채운 창을 죽은 스트림의 실패 말풍선이 덮어쓴다.
+ */
+const askGeneration = new Map<string, number>();
+
+const bumpGeneration = (sessionKey: string) => {
+  const next = (askGeneration.get(sessionKey) ?? 0) + 1;
+  askGeneration.set(sessionKey, next);
+  return next;
+};
+
+let nextRecoveryId = 1;
+
+/** 복구가 만들어 넣는 "다시 시도" 말풍선. */
+const recoveryFailure = (question: string, questionSaved: boolean): ChatEntry => ({
+  kind: 'failed',
+  localId: `recovered-${nextRecoveryId++}`,
+  question,
+  description: INTERRUPTED_DESCRIPTION,
+  questionSaved,
+});
 
 let nextSessionKey = 1;
 let nextLocalId = 1;
@@ -67,6 +111,7 @@ const forgetHandles = (sessionKey: string) => {
   controllers.delete(sessionKey);
   finishNow.delete(sessionKey);
   skipTyping.delete(sessionKey);
+  lastActivityAt.delete(sessionKey);
 };
 
 type ChatSessionsState = {
@@ -90,6 +135,7 @@ type ChatSessionsState = {
   stop: (sessionKey: string) => void;
   skip: (sessionKey: string) => void;
   retry: (sessionKey: string, localId: string) => void;
+  recoverFromBackground: () => void;
   reset: () => void;
 };
 
@@ -171,6 +217,16 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
    */
   const hydrate = async (sessionKey: string, conversationId: string) => {
     patchSession(sessionKey, { hydration: 'loading' });
+
+    // 제목을 모르고 들어왔으면(알림 딥링크) 따로 물어본다. **기다리지 않는다** —
+    // 제목 하나 때문에 대화 복원이 늦어지거나, 제목 조회가 실패했다고 메시지까지
+    // 못 보는 일이 없어야 한다.
+    if (get().sessions[sessionKey]?.title == null) {
+      void fetchConversation(conversationId)
+        .then((conversation) => patchSession(sessionKey, { title: conversation.title }))
+        .catch(() => undefined);
+    }
+
     try {
       const messages = await fetchMessages(conversationId);
       patchEntries(sessionKey, (entries) => [
@@ -181,6 +237,64 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
     } catch {
       // 빈 대화로 그리면 사용자는 기록이 사라진 줄 안다. 실패는 실패로 보여준다.
       patchSession(sessionKey, { hydration: 'failed' });
+    }
+  };
+
+  /**
+   * 백그라운드에서 돌아온 창을 **서버 기록에 맞춘다** (설계 결정 F-3b).
+   *
+   * ## 왜 서버에 물어보나
+   *
+   * 앱이 백그라운드로 가면 iOS 가 짧은 유예 뒤 JS 와 네트워크를 멈춘다. 서버 입장에서는
+   * 연결이 끊긴 것이고, 확정 규칙대로 **그때까지 만든 답변을 저장하지 않는다.** 그런데
+   * 유예 안에 끝난 짧은 답변은 **저장되기도 한다.** 화면만 보고는 둘을 구분할 수 없어,
+   * 유일하게 사실을 아는 곳(서버)에 물어보고 그대로 맞춘다.
+   *
+   * - 마지막이 **답변**이면 → 살아남았다. 서버 기록으로 채운다
+   * - 마지막이 **질문**이면 → 유실됐다. 질문은 남기고 "다시 시도"를 붙인다
+   *
+   * 유실 자체를 막지는 못한다. 다만 "돌아왔더니 답변이 사라져 있다"를
+   * **"돌아왔더니 다시 시도 버튼이 있다"**로 바꿔, 사용자가 뭘 해야 할지 알게 한다.
+   */
+  const reconcile = async (sessionKey: string) => {
+    // 번호부터 올린다. 죽은 스트림의 뒤늦은 콜백이 아래 결과를 덮으면 안 된다.
+    bumpGeneration(sessionKey);
+    controllers.get(sessionKey)?.abort();
+    forgetHandles(sessionKey);
+    markSending(sessionKey, false);
+
+    const session = get().sessions[sessionKey];
+    if (!session) return;
+
+    // 서버에 대화조차 없으면 질문도 저장되지 않았다. 화면의 임시 말풍선만 정리한다.
+    if (session.conversationId === null) {
+      patchEntries(sessionKey, (entries) => {
+        const asked = entries.find(
+          (entry): entry is Extract<ChatEntry, { kind: 'pending' }> => entry.kind === 'pending',
+        );
+        const kept = entries.filter(
+          (entry) => entry.kind !== 'pending' && entry.kind !== 'streaming',
+        );
+        return asked === undefined ? kept : [...kept, recoveryFailure(asked.content, false)];
+      });
+      return;
+    }
+
+    try {
+      // 서버가 사실이므로 말풍선을 통째로 갈아끼운다. 메시지가 50개를 넘는 대화는
+      // 최근 50개만 남는데, 대화를 다시 열었을 때와 같은 창이라 새로운 손해는 없다.
+      const messages = await fetchMessages(session.conversationId);
+      const restored = messages.map((message): ChatEntry => ({ kind: 'message', message }));
+      const last = messages[messages.length - 1];
+      patchSession(sessionKey, {
+        entries:
+          last !== undefined && last.role === 'user'
+            ? [...restored, recoveryFailure(last.content, true)]
+            : restored,
+        hydration: 'loaded',
+      });
+    } catch {
+      // 재조회까지 실패하면 화면은 그대로 두고 잠긴 입력만 풀어 둔다(위에서 이미 풀었다).
     }
   };
 
@@ -363,6 +477,13 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
       const localId = `local-${nextLocalId++}`;
       const abort = new AbortController();
       controllers.set(sessionKey, abort);
+
+      // 이 요청의 번호. 아래 콜백들은 전부 자기 번호가 아직 유효할 때만 화면을
+      // 건드린다 — 백그라운드 복구가 끼어들면 번호가 올라가고, 죽은 스트림의
+      // 뒤늦은 실패가 복구해 둔 대화를 덮어쓰지 못한다.
+      const generation = bumpGeneration(sessionKey);
+      const isCurrent = () => askGeneration.get(sessionKey) === generation;
+      const touch = () => lastActivityAt.set(sessionKey, Date.now());
       patchEntries(sessionKey, (entries) => [
         ...entries,
         { kind: 'pending', localId, content: question },
@@ -374,7 +495,8 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
       let questionSaved = false;
 
       /** 임시 말풍선(`pending`·`streaming`)을 다른 것으로 바꾼다. */
-      const replaceTemporary = (next: ChatEntry[]) =>
+      const replaceTemporary = (next: ChatEntry[]) => {
+        if (!isCurrent()) return;
         patchEntries(sessionKey, (entries) => [
           ...entries.filter(
             (entry) =>
@@ -382,6 +504,7 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
           ),
           ...next,
         ]);
+      };
 
       /** 서버에서 받은 누적 텍스트. 화면은 이걸 제 속도로 따라간다. */
       let target = '';
@@ -402,6 +525,7 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
 
       const showUpTo = (count: number) => {
         shown = count;
+        if (!isCurrent()) return;
         const content = target.slice(0, shown);
         patchEntries(sessionKey, (entries) =>
           entries.map((entry) =>
@@ -421,6 +545,8 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
       const settle = (entry: ChatEntry) => {
         settled = true;
         stopTyping();
+        // 복구가 이미 이 창을 서버 기록으로 맞춰 놨으면 되돌리지 않는다.
+        if (!isCurrent()) return;
         replaceTemporary([entry]);
         controllers.delete(sessionKey);
         finishNow.delete(sessionKey);
@@ -440,6 +566,7 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
       /** 글자 하나를 그리고 다음 호출을 예약한다. */
       const typeOne = () => {
         typingTimers.delete(sessionKey);
+        if (!isCurrent()) return;
 
         if (shown >= target.length) {
           // 서버가 더 보낼 게 있으면 onDelta 가 깨운다. 여기서 멈춰 둔다.
@@ -488,6 +615,7 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
           signal: abort.signal,
           onStart: (saved) => {
             questionSaved = true;
+            touch();
             // 질문이 저장되면 그 대화의 **제목이 생기고**(첫 질문이면) 미리보기와
             // 정렬 위치가 바뀐다. 사이드바가 옛 상태를 들고 있지 않게 한다.
             refreshConversations();
@@ -499,6 +627,7 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
             ]);
           },
           onDelta: (text) => {
+            touch();
             target += text;
             // 이미 건너뛴 뒤라면 기다리지 않는다.
             if (skipped) {
@@ -509,6 +638,7 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
             if (!isTyping()) typeOne();
           },
           onDone: (answer) => {
+            touch();
             // 답변이 저장됐으므로 미리보기가 또 바뀐다.
             refreshConversations();
             // 확정값을 기준으로 삼는다. 명세상 델타 누적과 같지만, 어긋나면
@@ -588,6 +718,51 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
     },
 
     /**
+     * 앱이 앞으로 돌아왔을 때, 답변을 만들던 창들을 정리한다 (설계 결정 F-3b).
+     *
+     * **바로 판단하지 않고 잠깐 기다린다.** 끊긴 fetch 는 JS 가 다시 돌아야 실패가
+     * 전해지고, 그때 `ask` 가 스스로 마무리한다. 먼저 끼어들면 두 곳이 같은 창을
+     * 동시에 고친다.
+     *
+     * 기다린 뒤 창마다 셋 중 하나다.
+     *
+     * | 상태 | 어떻게 아나 | 처리 |
+     * | --- | --- | --- |
+     * | 살아 있다 | 아직 전송 중이고 **복귀 후에 조각이 왔다** | 그냥 둔다 |
+     * | 이미 끝났다 | 마지막 말풍선이 확정된 답변이다 | 그냥 둔다 |
+     * | 끊겼다 | 그 밖에 (실패했거나 응답 없이 멈췄다) | 서버 기록에 맞춘다 |
+     *
+     * 첫 줄이 중요하다. 짧게 다녀오면 연결이 살아 조각이 계속 오는데, 그것까지
+     * 끊으면 **멀쩡히 오고 있던 답변을 우리 손으로 버리는 셈**이 된다.
+     */
+    recoverFromBackground: () => {
+      const pending = get().sendingKeys;
+      if (pending.length === 0) return;
+
+      const returnedAt = Date.now();
+      setTimeout(() => {
+        for (const sessionKey of pending) {
+          const state = get();
+          const session = state.sessions[sessionKey];
+          if (!session) continue;
+
+          const alive =
+            state.sendingKeys.includes(sessionKey) &&
+            (lastActivityAt.get(sessionKey) ?? 0) >= returnedAt;
+          if (alive) continue;
+
+          const last = session.entries[session.entries.length - 1];
+          // 이미 답변까지 받아 끝났으면 맞출 것이 없다.
+          if (last?.kind === 'message' && last.message.role === 'assistant') continue;
+          // 사용자가 직접 멈춘 것이면 그대로 둔다 — 끊긴 것이 아니라 그만둔 것이다.
+          if (last?.kind === 'failed' && last.description === STOPPED_DESCRIPTION) continue;
+
+          void reconcile(sessionKey);
+        }
+      }, RECOVERY_GRACE_MS);
+    },
+
+    /**
      * 창·스트림·손잡이를 전부 버리고 빈 창 하나로 되돌린다.
      *
      * **로그아웃에 연결할 자리다**(5단계). 정리하지 않으면 다음 계정 화면에
@@ -607,6 +782,22 @@ export const useChatSessionsStore = create<ChatSessionsState>((set, get) => {
       });
     },
   };
+});
+
+/**
+ * 앱이 앞으로 돌아올 때마다 유실 정리를 부른다 (설계 결정 F-3b).
+ *
+ * **화면이 아니라 이 모듈이 듣는다.** 화면에 `useEffect` 로 달면 챗봇 탭을 떠나 있는
+ * 사이에 백그라운드로 갔다 온 경우를 놓치는데, 답변이 유실되는 상황이 바로 그때다.
+ *
+ * 구독은 앱이 사는 동안 유지한다. 로그아웃해도 떼지 않는다 — `reset()` 이 창을 비워
+ * 두므로 부를 것이 없고, 떼면 다음 로그인에 다시 달아야 한다.
+ *
+ * 웹(RN Web)에서는 브라우저 탭을 옮기는 것이 `background` → `active` 로 들어와,
+ * 시뮬레이터 없이도 그대로 확인할 수 있다.
+ */
+AppState.addEventListener('change', (status) => {
+  if (status === 'active') useChatSessionsStore.getState().recoverFromBackground();
 });
 
 /** 창이 비어 있을 때 매번 새 배열을 만들면 그때마다 리렌더된다. */

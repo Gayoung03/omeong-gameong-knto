@@ -66,6 +66,22 @@ export async function fetchMessages(conversationId: string): Promise<ChatMessage
 }
 
 /**
+ * 대화 하나. **제목을 알아내려고 부른다.**
+ *
+ * 사이드바에서 들어올 때는 목록이 이미 제목을 들고 있어 부를 일이 없다. 알림에서
+ * 바로 들어오면(딥링크) 대화 id 하나뿐이라, 이걸 부르지 않으면 상단 바가 실제
+ * 대화를 열어 놓고도 "새 대화"라고 적혀 있게 된다.
+ *
+ * 메시지는 오지 않는다 — 개수가 많을 수 있어 페이지네이션이 필요해서 나뉘어 있다.
+ */
+export async function fetchConversation(conversationId: string): Promise<ConversationSummary> {
+  const { data } = await apiClient.get<ConversationResponse>(
+    `/chat/conversations/${conversationId}`,
+  );
+  return toConversationSummary(data);
+}
+
+/**
  * 대화를 지운다. **목록에서만 사라진다** — 메시지는 한 줄도 지워지지 않고
  * 휴지통에서 되살릴 수 있다.
  */
