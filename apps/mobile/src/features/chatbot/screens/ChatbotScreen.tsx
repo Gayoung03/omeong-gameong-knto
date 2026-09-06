@@ -18,15 +18,20 @@ import { AppHeader } from '@/src/components/layout/AppHeader';
 import { colors, spacing } from '@/src/theme';
 
 import { AnswerMarkdown } from '../components/AnswerMarkdown';
+import { ChatbotTopBar } from '../components/ChatbotTopBar';
 import { ChatMapResponse } from '../components/ChatMapResponse';
+import { UNTITLED_CONVERSATION } from '../components/ConversationRow';
+import { ConversationSidebar } from '../components/ConversationSidebar';
+import { RenameConversationModal } from '../components/RenameConversationModal';
 import { chatbotAssets } from '../config/chatbotAssets';
 import { chatbotSuggestions } from '../constants/chatbotSuggestions';
 import {
   useActiveEntries,
+  useActiveSession,
   useChatSessionsStore,
   useIsAnswering,
 } from '../stores/useChatSessionsStore';
-import type { ChatEntry } from '../types/chatbot';
+import type { ChatEntry, ConversationSummary } from '../types/chatbot';
 import { entryKey } from '../utils/chatEntry';
 
 /** 커서가 보였다 숨는 주기. */
@@ -59,13 +64,26 @@ export function ChatbotScreen() {
   // 화면은 **지금 보고 있는 창만** 구독한다. 그래서 탭을 옮겨 이 화면이
   // 사라져도 만들던 답변은 계속 쌓인다.
   const activeKey = useChatSessionsStore((state) => state.activeKey);
+  const session = useActiveSession();
   const entries = useActiveEntries();
   const isAnswering = useIsAnswering(activeKey);
   const ask = useChatSessionsStore((state) => state.ask);
   const retry = useChatSessionsStore((state) => state.retry);
   const stop = useChatSessionsStore((state) => state.stop);
   const skip = useChatSessionsStore((state) => state.skip);
+  const openNew = useChatSessionsStore((state) => state.openNew);
+  const retryHydrate = useChatSessionsStore((state) => state.retryHydrate);
+
+  const [isSidebarOpen, setSidebarOpen] = useState(false);
+  // 이름 바꾸기 창은 사이드바와 **형제로** 띄운다 — Modal 안에 Modal 을 겹치면
+  // 플랫폼마다 층 순서가 달라진다.
+  const [renameTarget, setRenameTarget] = useState<ConversationSummary | null>(null);
+
+  const hydration = session?.hydration ?? 'none';
   const hasMessages = entries.length > 0;
+  // 기록을 불러오는 중이거나 실패했을 때도 대화 화면을 보여준다. 첫 화면(히어로)을
+  // 그리면 "대화가 없다"는 뜻이 되어, 기록이 사라진 것처럼 보인다.
+  const showConversation = hasMessages || hydration === 'loading' || hydration === 'failed';
   const canSend = Boolean(input.trim()) && !isAnswering;
 
   const sendMessage = (text: string) => {
@@ -253,6 +271,41 @@ export function ChatbotScreen() {
     );
   };
 
+  /**
+   * 지난 대화를 불러오는 중이거나 실패했을 때 목록 맨 위에 놓는 줄.
+   *
+   * 실패를 **빈 대화**로 그리면 사용자는 기록이 사라진 줄 안다. 그래서 실패는
+   * 실패로 보여주고 다시 시도할 길을 준다.
+   */
+  const renderHydrationNotice = () => {
+    if (hydration === 'loading') {
+      return (
+        <View style={styles.hydrationRow}>
+          <ActivityIndicator color={colors.primary} size="small" />
+          <Text style={styles.hydrationText}>지난 대화를 불러오는 중이에요…</Text>
+        </View>
+      );
+    }
+
+    if (hydration === 'failed') {
+      return (
+        <View style={styles.hydrationRow}>
+          <Text style={styles.hydrationText}>지난 대화를 불러오지 못했어요.</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => retryHydrate(activeKey)}
+            style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+          >
+            <Ionicons color={colors.primary} name="refresh" size={14} />
+            <Text style={styles.retryText}>다시 시도</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    return null;
+  };
+
   const renderMessages = () => (
     <View accessibilityLiveRegion="polite" style={styles.messageList}>
       {entries.map((entry) => (
@@ -269,8 +322,13 @@ export function ChatbotScreen() {
       >
         <View style={styles.screen}>
           <AppHeader notifications="popup" />
+          <ChatbotTopBar
+            onNewChat={() => openNew()}
+            onOpenSidebar={() => setSidebarOpen(true)}
+            title={session?.title ?? UNTITLED_CONVERSATION}
+          />
 
-          {hasMessages ? (
+          {showConversation ? (
             <>
               <ScrollView
                 contentContainerStyle={styles.activeChatScrollContent}
@@ -300,7 +358,10 @@ export function ChatbotScreen() {
                   disabled={!isAnswering}
                   onPress={() => skip(activeKey)}
                 >
-                  <View style={styles.content}>{renderMessages()}</View>
+                  <View style={styles.content}>
+                    {renderHydrationNotice()}
+                    {renderMessages()}
+                  </View>
                 </Pressable>
               </ScrollView>
               <View style={styles.activeComposerBar}>
@@ -368,6 +429,13 @@ export function ChatbotScreen() {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      <ConversationSidebar
+        onClose={() => setSidebarOpen(false)}
+        onRequestRename={setRenameTarget}
+        visible={isSidebarOpen}
+      />
+      <RenameConversationModal conversation={renameTarget} onClose={() => setRenameTarget(null)} />
     </SafeAreaView>
   );
 }
@@ -393,6 +461,17 @@ const styles = StyleSheet.create({
   },
   caretHidden: {
     color: 'transparent',
+  },
+  hydrationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: spacing.sm,
+    marginTop: 12,
+  },
+  hydrationText: {
+    color: colors.textSecondary,
+    fontSize: 13,
   },
   failedBubble: {
     backgroundColor: colors.errorBg,

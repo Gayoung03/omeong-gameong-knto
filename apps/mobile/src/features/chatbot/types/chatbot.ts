@@ -97,6 +97,26 @@ export type ChatEntry =
   | FailedMessage;
 
 /**
+ * 사이드바 한 줄. **열려 있는 창이 아니라 서버에 저장된 대화다.**
+ *
+ * `ChatSession`(열린 창)과 헷갈리기 쉬운데, 둘은 사는 곳이 다르다. 이쪽은
+ * TanStack Query 가 서버에서 받아 캐시하고, 저쪽은 Zustand 가 메모리에 들고
+ * 스트림을 굴린다. 사이드바에서 한 줄을 누르면 이 요약을 단서로 창을 연다.
+ */
+export type ConversationSummary = {
+  id: string;
+  /** 서버가 첫 질문에서 지어 준다. 질문 전에 만들어진 대화는 `null`. */
+  title: string | null;
+  /** 마지막 메시지 앞 스무 자. 메시지가 없으면 `null`. */
+  preview: string | null;
+  messageCount: number;
+  /** 마지막으로 이야기한 때. 목록 정렬 기준이다. */
+  updatedAt: string;
+  /** 지운 때. **휴지통에서만 값이 있다.** */
+  deletedAt: string | null;
+};
+
+/**
  * 대화창 하나.
  *
  * **`sessionKey` 와 `conversationId` 는 다른 것이다.** `sessionKey` 는 창의
@@ -113,6 +133,18 @@ export type ChatSession = {
   /** 사이드바에 그릴 제목. 첫 질문에서 서버가 지어 준다. */
   title: string | null;
   entries: ChatEntry[];
-  /** 서버에서 지난 메시지를 불러왔는지. 새 창은 불러올 것이 없다. */
-  hydrated: boolean;
+  /**
+   * 서버에서 지난 메시지를 불러왔는지.
+   *
+   * **설계안의 `hydrated: boolean` 을 4상태로 넓혔다.** 불러오는 데 시간이
+   * 걸리고 실패할 수도 있는데, boolean 하나로는 "아직 안 불러옴"과 "불러오다
+   * 실패함"이 같은 값이 된다. 그러면 화면이 실패를 **빈 대화**로 그리게 되고,
+   * 사용자는 기록이 사라진 줄 안다.
+   *
+   * - `none` — 새 창. 불러올 것이 없다
+   * - `loading` — 불러오는 중
+   * - `loaded` — 다 불러왔다
+   * - `failed` — 실패. 화면이 "다시 시도"를 그린다
+   */
+  hydration: 'none' | 'loading' | 'loaded' | 'failed';
 };
