@@ -169,20 +169,114 @@ def test_사라진_장소는_referenced_places_에서_빠진다(
     assert [ref["id"] for ref in body["items"][0]["referencedPlaces"]] == [str(place.id)]
 
 
-def test_대화를_지우면_메시지도_함께_지워진다(client: TestClient, db: Session) -> None:
+def test_대화를_지우면_목록에서만_사라지고_메시지는_남는다(
+    client: TestClient, db: Session
+) -> None:
+    """사용자가 지운 것은 "안 보이게 해달라"이지 "기록을 없애달라"가 아니다."""
     conversation = _create(client)
     conversation_id = uuid.UUID(conversation["id"])
-    _add_message(db, conversation_id, "지워질 말")
+    _add_message(db, conversation_id, "남아 있어야 할 말")
 
     assert client.delete(f"/api/v1/chat/conversations/{conversation_id}").status_code == 204
-    assert client.get(f"/api/v1/chat/conversations/{conversation_id}").status_code == 404
-    assert db.get(ChatMessage, _any_message_id(db, conversation_id)) is None
+
+    assert client.get("/api/v1/chat/conversations").json()["total"] == 0
+    assert db.query(ChatMessage).filter_by(conversation_id=conversation_id).count() == 1
 
 
-def _any_message_id(db: Session, conversation_id: uuid.UUID) -> uuid.UUID:
-    """CASCADE 확인용. 지워졌다면 조회 결과가 없으니 임의의 id 를 돌려준다."""
-    message = db.query(ChatMessage).filter_by(conversation_id=conversation_id).first()
-    return message.id if message else uuid.uuid4()
+def test_지운_대화는_열리지도_고쳐지지도_않는다(client: TestClient) -> None:
+    """목록에서 사라졌는데 id 로는 열리면 "지운 것 같은데 왜 열리지"가 된다."""
+    conversation = _create(client)
+    path = f"/api/v1/chat/conversations/{conversation['id']}"
+    assert client.delete(path).status_code == 204
+
+    assert client.get(path).status_code == 404
+    assert client.patch(path, json={"title": "새 제목"}).status_code == 404
+    assert client.delete(path).status_code == 404
+    assert client.get(f"{path}/messages").status_code == 404
+
+
+def test_지운_대화는_휴지통에서_볼_수_있다(client: TestClient) -> None:
+    kept = _create(client, title="남길 대화")
+    trashed = _create(client, title="지울 대화")
+    client.delete(f"/api/v1/chat/conversations/{trashed['id']}")
+
+    listed = client.get("/api/v1/chat/conversations").json()
+    assert [item["id"] for item in listed["items"]] == [kept["id"]]
+
+    trash = client.get("/api/v1/chat/conversations", params={"deleted": True}).json()
+    assert trash["total"] == 1
+    assert trash["items"][0]["id"] == trashed["id"]
+    assert trash["items"][0]["title"] == "지울 대화"
+
+
+def test_복구하면_목록의_원래_자리로_돌아온다(client: TestClient, db: Session) -> None:
+    """`updated_at` 을 건드리지 않으므로 맨 위로 튀어 오르지 않는다."""
+    older = _create(client, title="예전 대화")
+    newer = _create(client, title="최근 대화")
+
+    base = datetime(2026, 8, 27, 14, 0, tzinfo=KST)
+    for index, created in enumerate([older, newer]):
+        conversation = db.get(ChatConversation, uuid.UUID(created["id"]))
+        conversation.updated_at = base + timedelta(minutes=index)
+    db.flush()
+
+    client.delete(f"/api/v1/chat/conversations/{older['id']}")
+
+    # 지우는 것만으로 시각이 튀어도 안 된다 — updated_at 은 "마지막으로 이야기한 때"라서
+    # 삭제·복구가 건드릴 값이 아니다(onupdate=now() 가 몰래 올리는 것을 막고 있다).
+    trashed = db.get(ChatConversation, uuid.UUID(older["id"]))
+    db.refresh(trashed)
+    assert trashed.updated_at == base
+
+    restored = client.post(f"/api/v1/chat/conversations/{older['id']}/restore")
+
+    assert restored.status_code == 200
+    assert restored.json()["id"] == older["id"]
+
+    body = client.get("/api/v1/chat/conversations").json()
+    assert [item["id"] for item in body["items"]] == [newer["id"], older["id"]]
+
+
+def test_지우지_않은_대화는_복구할_수_없다(client: TestClient) -> None:
+    conversation = _create(client)
+
+    response = client.post(f"/api/v1/chat/conversations/{conversation['id']}/restore")
+
+    assert response.status_code == 404
+
+
+def test_지운_대화는_개수_상한에_잡히지_않는다(
+    client: TestClient, db: Session, owner: User
+) -> None:
+    """"안 쓰는 대화를 지워주세요"라고 안내하므로, 지우면 실제로 자리가 나야 한다."""
+    db.add_all(
+        ChatConversation(id=uuid.uuid4(), user_id=owner.id, title=f"대화 {index}")
+        for index in range(MAX_CONVERSATIONS)
+    )
+    db.flush()
+    assert client.post("/api/v1/chat/conversations", json={}).status_code == 409
+
+    victim = db.query(ChatConversation).filter_by(user_id=owner.id).first()
+    assert client.delete(f"/api/v1/chat/conversations/{victim.id}").status_code == 204
+
+    assert client.post("/api/v1/chat/conversations", json={}).status_code == 201
+
+
+def test_자리가_없으면_복구를_거부한다(client: TestClient, db: Session, owner: User) -> None:
+    """지운 사이에 대화를 상한까지 새로 만들었으면 되살릴 자리가 없다."""
+    trashed = _create(client)
+    assert client.delete(f"/api/v1/chat/conversations/{trashed['id']}").status_code == 204
+
+    db.add_all(
+        ChatConversation(id=uuid.uuid4(), user_id=owner.id, title=f"대화 {index}")
+        for index in range(MAX_CONVERSATIONS)
+    )
+    db.flush()
+
+    response = client.post(f"/api/v1/chat/conversations/{trashed['id']}/restore")
+
+    assert response.status_code == 409
+    assert str(MAX_CONVERSATIONS) in response.json()["detail"]
 
 
 def test_다른_사용자의_대화는_열지도_고치지도_지우지도_못한다(
@@ -197,6 +291,8 @@ def test_다른_사용자의_대화는_열지도_고치지도_지우지도_못�
     assert client.patch(path, json={"title": "훔친 제목"}).status_code == 403
     assert client.delete(path).status_code == 403
     assert client.get(f"{path}/messages").status_code == 403
+    # 남의 대화는 살아 있든 지워졌든 똑같이 403 이어야 상태를 캘 수 없다.
+    assert client.post(f"{path}/restore").status_code == 403
 
 
 def test_없는_대화는_404다(client: TestClient) -> None:
@@ -204,6 +300,7 @@ def test_없는_대화는_404다(client: TestClient) -> None:
     assert client.get(path).status_code == 404
     assert client.patch(path, json={"title": "제목"}).status_code == 404
     assert client.delete(path).status_code == 404
+    assert client.post(f"{path}/restore").status_code == 404
 
 
 def test_목록에는_내_대화만_나온다(client: TestClient, db: Session, stranger: User) -> None:

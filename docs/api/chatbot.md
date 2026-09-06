@@ -36,7 +36,8 @@
 | POST | `/chat/conversations` | 대화 시작 | 필요 |
 | GET | `/chat/conversations/{conversationId}` | 대화 상세 | 필요 |
 | PATCH | `/chat/conversations/{conversationId}` | 제목 수정 | 필요 |
-| DELETE | `/chat/conversations/{conversationId}` | 대화 삭제 | 필요 |
+| DELETE | `/chat/conversations/{conversationId}` | 대화 삭제(소프트) | 필요 |
+| POST | `/chat/conversations/{conversationId}/restore` | 대화 복구 | 필요 |
 | GET | `/chat/conversations/{conversationId}/messages` | 메시지 목록 | 필요 |
 | POST | `/chat/conversations/{conversationId}/messages` | 질문 전송 **(SSE 스트림)** | 필요 |
 
@@ -45,6 +46,16 @@
 ---
 
 ## GET /chat/conversations
+
+### 요청
+
+| 쿼리 | 타입 | 기본값 | 설명 |
+| --- | --- | --- | --- |
+| `limit` | int (1~100) | 20 | |
+| `offset` | int (0~) | 0 | |
+| `deleted` | bool | `false` | `true`면 **휴지통**(지운 대화)을 지운 순서로 |
+
+`deleted=true`도 응답 스키마가 같습니다. 앱은 목록 화면 코드를 그대로 재사용합니다.
 
 ### 응답 `200`
 
@@ -360,9 +371,40 @@ data: {"event":"error","code":"llm_failed","detail":"답변 생성에 실패했�
 
 ## DELETE /chat/conversations/{conversationId}
 
-물리 삭제입니다. `chat_messages`도 `ON DELETE CASCADE`로 함께 지워집니다.
+**소프트 삭제입니다** (2026-09-03 변경). `chat_conversations.deleted_at`만 채우고
+`chat_messages`는 **한 행도 지우지 않습니다.**
+
+사용자가 대화를 지우는 것은 "안 보이게 해달라"는 뜻이지 "기록을 없애달라"는 뜻이
+아니라고 보았습니다. 그래서 목록에서만 빼고, 휴지통에서 되살릴 수 있게 남깁니다.
+
+지운 뒤에는 그 대화가 **없는 것처럼** 동작합니다 — 상세·제목 수정·재삭제·메시지 목록·
+질문 전송이 모두 `404`입니다. 목록에서 사라졌는데 id로는 열리면 사용자가 혼란스럽습니다.
+
+지운 대화는 **대화 개수 상한(100개)에 잡히지 않습니다.** "안 쓰는 대화를 지워주세요"라고
+안내하므로, 지우면 실제로 자리가 나야 합니다.
 
 ### 응답 `204`
+
+---
+
+## POST /chat/conversations/{conversationId}/restore
+
+휴지통에서 되살립니다.
+
+`updated_at`은 **건드리지 않습니다.** 갱신하면 복구한 대화가 목록 맨 위로 튀어 오르는데,
+되살렸을 때 기대하는 것은 "원래 있던 자리로 돌아오는 것"입니다.
+
+### 응답 `200`
+
+`GET /chat/conversations`의 항목 하나와 같은 구조(`ConversationItem`)입니다.
+
+### 에러
+
+| 코드 | 상황 |
+| --- | --- |
+| `404` | 없는 대화이거나, **휴지통에 없는 대화**(지우지 않은 대화를 복구하려 함) |
+| `403` | 다른 사용자의 대화 (살아 있든 지워졌든 같은 응답) |
+| `409` | 살아 있는 대화가 이미 100개라 되살릴 자리가 없음 |
 
 ---
 
@@ -373,5 +415,6 @@ data: {"event":"error","code":"llm_failed","detail":"답변 생성에 실패했�
 | 2026-08-12 | 초안 작성. 확정 #6(`id`를 UUID 문자열로)과 앱 타입 정리 반영 |
 | 2026-08-18 | 답변을 **SSE 스트리밍**으로 확정. `POST /chat/conversations/{id}/messages` 전면 재작성 — `start`·`delta`·`done`·`error` 이벤트 정의, 중단 시 부분 답변 미저장, 중지 버튼은 범위 밖. 나머지 6개 엔드포인트는 변경 없음 |
 | 2026-08-12 | 목록에만 있고 본문이 없던 `GET /chat/conversations/{conversationId}` 명세 작성 |
+| 2026-09-03 | 삭제를 **물리 → 소프트**로 변경(`deleted_at`). `POST .../restore` 추가, `GET /chat/conversations`에 `deleted` 쿼리 추가, 개수 상한은 살아 있는 대화만 계산 |
 | 2026-08-27 | 대화 CRUD 6개 구현하며 보완 — `POST /chat/conversations`에 에러 표 신설(`409` 대화 개수 상한), `firstMessage` 미구현 명시 |
 | 2026-08-30 | **SSE 스트리밍 구현 완료.** 임시로 JSON을 돌려주던 `POST .../messages`가 명세대로 `start`→`delta`→`done`/`error`를 흘려보냅니다(응답 `200`, `text/event-stream`). **중지 버튼을 범위에 넣고 8/18 보류 조항을 해제**했습니다 — 앱은 연결만 끊고, 서버는 사용자 중지와 네트워크 끊김을 구분하지 않습니다("중간에 끊기면 저장 안 함"을 그대로 재사용). 새 엔드포인트 없음. **질문은 `start` 시점에 커밋**되므로 실패·중지해도 남습니다(JSON 시절의 "실패하면 질문도 저장 안 함"과 달라진 점) |
