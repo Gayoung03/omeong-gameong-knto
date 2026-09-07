@@ -11,6 +11,7 @@ from app.recommend.tmap import RouteLeg, TMapError
 from app.recommend.travel_estimate import SUPPORTED_TRANSPORTS, estimate_leg
 
 from .fit import fit_visit
+from .plan import plan_day
 from .select import (
     SlotSearchContext,
     best_candidate_with_diversity,
@@ -100,20 +101,34 @@ def build(
                 route_calls += 1
             return leg
 
+        # plan_day 가 그날의 슬롯 구성(활동/식사 개수·환경 선호)을 정한다. build 는 이를
+        # 그리디로 채우며, 식사는 시각 트리거로, 활동은 슬롯 순서대로 환경 속성을 쓴다.
+        day_slots = plan_day(
+            day_start,
+            day_end,
+            rule,
+            request.day_forecasts.get(route_date),
+            restaurant_preferred=request.restaurant_preferred,
+            indoor_bias=request.indoor_bias,
+        )
+        places_per_day = len(day_slots)
+        activity_envs = [
+            (slot.env_preference, slot.avoid_outdoor_midday)
+            for slot in day_slots
+            if slot.kind == "activity"
+        ]
+        meal_plan = next((slot for slot in day_slots if slot.kind in ("dinner", "lunch")), None)
+        dinner_required = meal_plan is not None and meal_plan.kind == "dinner"
+        lunch_required = meal_plan is not None and meal_plan.kind == "lunch"
+
         start_anchor = request.day_start_anchors.get(route_date)
         end_anchor = request.day_end_anchors.get(route_date)
         end_coord = end_anchor.coord if end_anchor else None
         current_coord = start_anchor.coord if start_anchor else request.start_coord
         current_time = day_start
-        dinner_required = day_end.time() >= DINNER_START
         lunch_start = datetime.combine(route_date, LUNCH_START, KST)
         lunch_start_by = datetime.combine(route_date, LUNCH_START_BY, KST)
-        lunch_required = (
-            request.restaurant_preferred
-            and not dinner_required
-            and day_start <= lunch_start_by
-            and day_end >= lunch_start
-        )
+        activities_placed = 0
         restaurant_scheduled = False
         # 필요한 식사를 빈 슬롯으로 처리했으면 True. 이후엔 식사 슬롯을 다시 시도하지 않고
         # 남은 시간에 관광 후보를 계속 배치한다(빈 슬롯이 슬롯 개수를 하나 차지한다).
@@ -121,13 +136,13 @@ def build(
 
         while (
             remaining
-            and len(items) + len(unfilled) < rule["places_per_day"]
+            and len(items) + len(unfilled) < places_per_day
             and current_time < day_end
         ):
             dinner_start = datetime.combine(route_date, DINNER_START, KST)
             dinner_start_by = datetime.combine(route_date, DINNER_START_BY, KST)
             # 마지막 남은 한 슬롯은 식사용으로 남긴다(개수 기반 트리거).
-            last_slot = len(items) + len(unfilled) == rule["places_per_day"] - 1
+            last_slot = len(items) + len(unfilled) == places_per_day - 1
             dinner_slot = (
                 dinner_required
                 and not meal_unfilled
@@ -157,6 +172,11 @@ def build(
             elif lunch_required and reserve_meal:
                 visit_deadline = min(visit_deadline, lunch_start)
             rest_min = rule["rest_min"] if items else 0
+            # 활동 슬롯이면 plan_day 가 정한 환경 선호(비)·더위 회피를 순서대로 적용한다.
+            env_preference = None
+            avoid_outdoor_midday = False
+            if not meal_slot and activities_placed < len(activity_envs):
+                env_preference, avoid_outdoor_midday = activity_envs[activities_placed]
             ctx = SlotSearchContext(
                 current_coord=current_coord,
                 current_time=current_time,
@@ -169,6 +189,8 @@ def build(
                 required_type=ScheduleItemType.RESTAURANT if meal_slot else None,
                 blocked_types=frozenset(blocked_types),
                 max_travel_min=rule["max_travel_min"],
+                env_preference=env_preference,
+                avoid_outdoor_midday=avoid_outdoor_midday,
             )
             choice = best_candidate_with_diversity(
                 remaining, rejected_today, ctx, items, enforce_diversity=not meal_slot
@@ -234,6 +256,8 @@ def build(
             items.append(ScheduledItem(candidate=choice, starts_at=starts_at, ends_at=ends_at))
             current_coord = (choice.lat, choice.lng)
             current_time = ends_at
+            if not meal_slot:
+                activities_placed += 1
             restaurant_scheduled = restaurant_scheduled or (
                 choice.item_type == ScheduleItemType.RESTAURANT
             )

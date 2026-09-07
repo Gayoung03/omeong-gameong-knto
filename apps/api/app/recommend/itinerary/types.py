@@ -12,6 +12,7 @@ from datetime import date, datetime, time
 from zoneinfo import ZoneInfo
 
 from app.db.models.enums import ScheduleItemType, TransportType, TripPace
+from app.integrations.weather.kma import DayForecast
 from app.recommend.config.pace import PaceRule
 from app.recommend.schemas import ScoredCandidate
 from app.recommend.tmap import RouteLeg
@@ -49,6 +50,10 @@ class BuildRequest:
     day_end_anchors: dict[date, "RouteAnchor"] = field(default_factory=dict)
     # 반려동물 특성 반영 하루 구성 규칙. None 이면 PACE 표를 쓴다.
     pace_rule: PaceRule | None = None
+    # 날짜별 날씨 예보(하루 구성 규칙). 없는 날짜는 규칙 미적용.
+    day_forecasts: dict[date, DayForecast] = field(default_factory=dict)
+    # healing 프리셋·weather 기준 신호. True 면 예보와 무관하게 실내 우선(강한 비 규칙).
+    indoor_bias: bool = False
 
 
 @dataclass(frozen=True)

@@ -4,6 +4,7 @@ from datetime import date, datetime, time
 from zoneinfo import ZoneInfo
 
 from app.db.models.enums import ScheduleItemType, TransportType, TripPace
+from app.integrations.weather.kma import DayForecast
 from app.recommend.config.pace import PaceRule, effective_rule
 from app.recommend.itinerary import (
     DINNER_START,
@@ -32,6 +33,7 @@ def _candidate(
     source_category: str | None = None,
     tags: list[str] | None = None,
     tier: CandidateTier = CandidateTier.VERIFIED,
+    environment: str = "outdoor",
 ) -> ScoredCandidate:
     return ScoredCandidate(
         place_id=uuid.uuid4(),
@@ -39,7 +41,7 @@ def _candidate(
         lng=lng,
         item_type=item_type,
         source_category=source_category,
-        environment="outdoor",
+        environment=environment,
         average_stay_minutes=stay_minutes,
         business_hours=business_hours or [],
         tags=tags or [],
@@ -713,3 +715,108 @@ def test_travel_limit_applies_to_return_leg_to_stay() -> None:
     result = build([near, far_from_stay], request, _fast_route)
 
     assert result.days[0].items[0].candidate.place_id == near.place_id
+
+
+def _weather_request(
+    *, start_hour: int, end_hour: int, forecast: DayForecast | None, indoor_bias: bool = False
+) -> BuildRequest:
+    day_forecasts = {date(2026, 8, 31): forecast} if forecast is not None else {}
+    return BuildRequest(
+        start_at=datetime(2026, 8, 31, start_hour, tzinfo=KST),
+        end_at=datetime(2026, 8, 31, end_hour, tzinfo=KST),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        start_coord=(33.5, 126.53),
+        day_forecasts=day_forecasts,
+        indoor_bias=indoor_bias,
+    )
+
+
+def test_rain_over_sixty_prefers_indoor_for_front_half_of_activities() -> None:
+    # 강수확률 70% → 활동 과반(앞쪽)은 실내 선호. 첫 활동은 점수 높은 실외 대신 실내를 고른다.
+    outdoor = _candidate(0.9, lat=33.5, environment="outdoor")
+    indoor = _candidate(0.5, lat=33.5, environment="indoor")
+    forecast = DayForecast(pop_max=70, tmax=25.0, tmin=20.0, hourly_tmp={})
+
+    result = build(
+        [outdoor, indoor],
+        _weather_request(start_hour=9, end_hour=15, forecast=forecast),
+        _fast_route,
+    )
+
+    assert result.days[0].items[0].candidate.place_id == indoor.place_id
+
+
+def test_no_rain_keeps_highest_scored_outdoor_first() -> None:
+    # 강수확률 30% → 실내 선호 없음. 예보가 있어도 규칙 미적용이라 점수순.
+    outdoor = _candidate(0.9, lat=33.5, environment="outdoor")
+    indoor = _candidate(0.5, lat=33.5, environment="indoor")
+    forecast = DayForecast(pop_max=30, tmax=25.0, tmin=20.0, hourly_tmp={})
+
+    result = build(
+        [outdoor, indoor],
+        _weather_request(start_hour=9, end_hour=15, forecast=forecast),
+        _fast_route,
+    )
+
+    assert result.days[0].items[0].candidate.place_id == outdoor.place_id
+
+
+def test_heavy_rain_prefers_indoor_for_all_activities() -> None:
+    # 강수확률 85% → 활동 전부 실내 선호. 실내 2곳이 실외보다 먼저 배치된다.
+    outdoor = _candidate(0.95, lat=33.5, environment="outdoor")
+    indoor_a = _candidate(0.5, lat=33.51, environment="indoor")
+    indoor_b = _candidate(0.4, lat=33.52, environment="indoor")
+    forecast = DayForecast(pop_max=85, tmax=25.0, tmin=20.0, hourly_tmp={})
+
+    result = build(
+        [outdoor, indoor_a, indoor_b],
+        _weather_request(start_hour=9, end_hour=15, forecast=forecast),
+        _fast_route,
+    )
+
+    placed = [item.candidate.place_id for item in result.days[0].items]
+    assert placed[:2] == [indoor_a.place_id, indoor_b.place_id]
+
+
+def test_indoor_bias_applies_indoor_rule_without_forecast() -> None:
+    # healing 신호(indoor_bias)면 예보가 없어도 실내 우선(강한 비 규칙).
+    outdoor = _candidate(0.9, lat=33.5, environment="outdoor")
+    indoor = _candidate(0.5, lat=33.5, environment="indoor")
+
+    result = build(
+        [outdoor, indoor],
+        _weather_request(start_hour=9, end_hour=15, forecast=None, indoor_bias=True),
+        _fast_route,
+    )
+
+    assert result.days[0].items[0].candidate.place_id == indoor.place_id
+
+
+def test_heat_avoids_outdoor_during_midday() -> None:
+    # 최고기온 31℃, 정오 출발 → 첫 방문이 12~15시에 걸치므로 실외 대신 실내.
+    outdoor = _candidate(0.9, lat=33.5, environment="outdoor")
+    indoor = _candidate(0.5, lat=33.5, environment="indoor")
+    forecast = DayForecast(pop_max=10, tmax=31.0, tmin=24.0, hourly_tmp={13: 31.0})
+
+    result = build(
+        [outdoor, indoor],
+        _weather_request(start_hour=12, end_hour=16, forecast=forecast),
+        _fast_route,
+    )
+
+    assert result.days[0].items[0].candidate.place_id == indoor.place_id
+
+
+def test_heat_relaxes_when_only_outdoor_candidates_at_midday() -> None:
+    # 실외 후보뿐이면 더위 회피가 완화 사다리에서 풀려 그래도 배치한다.
+    outdoor = _candidate(0.9, lat=33.5, environment="outdoor")
+    forecast = DayForecast(pop_max=10, tmax=31.0, tmin=24.0, hourly_tmp={13: 31.0})
+
+    result = build(
+        [outdoor],
+        _weather_request(start_hour=12, end_hour=16, forecast=forecast),
+        _fast_route,
+    )
+
+    assert [item.candidate.place_id for item in result.days[0].items] == [outdoor.place_id]
