@@ -48,3 +48,23 @@ def resolve_weights(
 
     total = sum(resolved.values())
     return Weights(**{criterion: value / total for criterion, value in resolved.items()})
+
+
+def backfill_weather_signal(
+    applied_weights: dict[str, float], priority_preset: str | None
+) -> dict[str, float]:
+    """Phase 5 이전 applied_weights 스냅샷의 weather 를 새 신호 의미로 바꾼다.
+
+    이전 행은 프리셋과 무관하게 weather 가 양수(옛 기본값)라, `weights.weather > 0`
+    를 실내 우선 신호로 읽는 Phase 5 생성기(재조정 포함)에서 전부 실내 우선이 켜진다.
+    healing 이면 신호값(WEATHER_SIGNAL_WEIGHT), 아니면 0 으로 두고 6키 합이 1이 되게
+    재정규화한다(`Weights` 검증기가 합 1 을 요구). resolve_weights 와 같은 규칙이다.
+    """
+    resolved = dict(applied_weights)
+    resolved["weather"] = (
+        WEATHER_SIGNAL_WEIGHT if priority_preset in WEATHER_SIGNAL_PRESETS else 0.0
+    )
+    total = sum(resolved.values())
+    if total <= 0:
+        return resolved
+    return {key: value / total for key, value in resolved.items()}

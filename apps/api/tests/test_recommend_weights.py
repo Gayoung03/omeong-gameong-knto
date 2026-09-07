@@ -8,9 +8,9 @@ from app.recommend.config.weights import (
     PRESET_MULTIPLIERS,
     USER_CRITERIA_BOOST,
 )
-from app.recommend.schemas import Candidate, PetPolicy
+from app.recommend.schemas import Candidate, PetPolicy, Weights
 from app.recommend.scoring import ScoringContext, score_candidates
-from app.recommend.weights import resolve_weights
+from app.recommend.weights import backfill_weather_signal, resolve_weights
 
 
 def test_initial_weights_sum_to_one() -> None:
@@ -149,3 +149,41 @@ def test_taste_preset_does_not_lower_total_than_balanced_for_matching_candidate(
     )[0]
 
     assert taste.total_score >= balanced.total_score
+
+
+def test_backfill_zeroes_weather_for_non_healing_snapshot() -> None:
+    # 옛 balanced 스냅샷(weather 0.15 등 양수) → weather 0, 합 1 유지.
+    old = {
+        "preference": 0.20,
+        "pet": 0.45,
+        "proximity": 0.25,
+        "rating": 0.0,
+        "weather": 0.10,
+        "popularity": 0.0,
+    }
+
+    result = backfill_weather_signal(old, "balanced")
+
+    assert result["weather"] == 0.0
+    assert sum(result.values()) == pytest.approx(1.0)
+    # Weights 검증기(합 1·6키)를 통과해야 편집 API 가 500 이 안 난다.
+    assert Weights(**result)
+
+
+def test_backfill_keeps_weather_signal_for_healing_snapshot() -> None:
+    old = {
+        "preference": 0.18,
+        "pet": 0.41,
+        "proximity": 0.23,
+        "rating": 0.0,
+        "weather": 0.18,
+        "popularity": 0.0,
+    }
+
+    result = backfill_weather_signal(old, "healing")
+
+    assert result["weather"] > 0
+    assert sum(result.values()) == pytest.approx(1.0)
+    assert Weights(**result)
+    # 다른 축의 상대 비율은 보존된다(weather 만 신호로 교체 후 재정규화).
+    assert result["pet"] / result["preference"] == pytest.approx(0.41 / 0.18)
