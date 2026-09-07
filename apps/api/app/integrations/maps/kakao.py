@@ -22,6 +22,57 @@ class GeocodedAddress:
     address_name: str
 
 
+@dataclass(frozen=True)
+class KakaoPlace:
+    name: str
+    latitude: float
+    longitude: float
+    category_name: str
+
+
+def search_places(
+    query: str,
+    *,
+    size: int = 5,
+    client: httpx.Client | None = None,
+) -> list[KakaoPlace]:
+    """장소명·주소로 키워드 검색해 이름·좌표·분류(category_name)를 돌려준다.
+
+    category_name 은 "음식점 > 한식 > 해물,생선" 형식이라 세부 음식 종류를 유도할 수 있다.
+    """
+
+    text = query.strip()
+    if not text:
+        return []
+    if not settings.kakao_rest_api_key:
+        raise KakaoGeocodingError("KAKAO_REST_API_KEY가 설정되지 않았습니다")
+
+    headers = {"Authorization": f"KakaoAK {settings.kakao_rest_api_key}"}
+    try:
+        if client is None:
+            with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as owned_client:
+                documents = _search_documents(owned_client, KAKAO_KEYWORD_URL, text, headers, size)
+        else:
+            documents = _search_documents(client, KAKAO_KEYWORD_URL, text, headers, size)
+    except (httpx.HTTPError, ValueError) as error:
+        raise KakaoGeocodingError("카카오 장소 검색에 실패했습니다") from error
+
+    places: list[KakaoPlace] = []
+    for document in documents:
+        try:
+            places.append(
+                KakaoPlace(
+                    name=str(document.get("place_name") or ""),
+                    latitude=float(document["y"]),
+                    longitude=float(document["x"]),
+                    category_name=str(document.get("category_name") or ""),
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    return places
+
+
 def geocode_address(
     address: str,
     *,
@@ -77,11 +128,12 @@ def _search_documents(
     url: str,
     query: str,
     headers: dict[str, str],
+    size: int = 1,
 ) -> list[dict]:
     response = client.get(
         url,
         headers=headers,
-        params={"query": query, "size": 1},
+        params={"query": query, "size": size},
     )
     response.raise_for_status()
     body = response.json()
