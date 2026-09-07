@@ -6,6 +6,7 @@ from app.api.v1.endpoints import (
     auth,
     chatbot,
     checklists,
+    editorial,
     guides,
     health,
     memos,
@@ -31,6 +32,7 @@ api_router.include_router(checklists.router, tags=["routes"])
 api_router.include_router(memos.router, tags=["routes"])
 api_router.include_router(notifications.router, tags=["notifications"])
 api_router.include_router(notices.router, tags=["notices"])
+api_router.include_router(editorial.router, tags=["editorial-stories"])
 api_router.include_router(places.router, tags=["places"])
 api_router.include_router(reviews.router, tags=["reviews"])
 api_router.include_router(users.router, tags=["users"])

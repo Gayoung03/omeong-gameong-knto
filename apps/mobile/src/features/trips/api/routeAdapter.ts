@@ -226,6 +226,7 @@ export function toTripListItem(route: RouteListItemResponse): TripListItem {
   return {
     id: route.id,
     title: route.title,
+    startAt: route.startAt,
     startDate: toKstDate(route.startAt),
     endDate: toKstDate(route.endAt),
     nights: route.nights,

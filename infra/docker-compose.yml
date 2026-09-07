@@ -31,6 +31,8 @@ services:
       # 챗봇. 키가 없으면 답변 생성만 502 로 실패하고 나머지 API 는 정상 동작한다.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      EDITORIAL_OPENAI_MODEL: ${EDITORIAL_OPENAI_MODEL:-}
+      VISITJEJU_API_KEY: ${VISITJEJU_API_KEY:-}
       TMAP_API: ${TMAP_API:-}
       KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
       # 소셜 로그인(Phase 5) — SECRET_KEY 때와 같은 이유로 compose 가 넘겨줘야 한다.

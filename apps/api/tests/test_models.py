@@ -10,6 +10,8 @@ from app.db.models.enums import RouteCreationType
 EXPECTED_TABLES = {
     "chat_conversations",
     "chat_messages",
+    "editorial_stories",
+    "editorial_story_sources",
     "favorites",
     "guide_document_sources",
     "guide_documents",
