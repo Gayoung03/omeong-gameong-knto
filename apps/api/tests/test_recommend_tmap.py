@@ -232,7 +232,8 @@ def test_근접_좌표는_같은_캐시에_적중한다(db: Session, monkeypatch
         TransportType.RENTAL_CAR, now=now,
     )
 
-    assert leg == expected
+    # 캐시에서 읽은 레그는 source="cache" 다. 나머지 값은 저장한 그대로.
+    assert leg == RouteLeg(distance_m=5210, duration_min=19, polyline="[]", source="cache")
 
 
 def test_만료된_캐시행은_새_저장시_정리된다(
