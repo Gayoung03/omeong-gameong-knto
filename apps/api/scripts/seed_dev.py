@@ -230,6 +230,9 @@ def seed_user(db: Session) -> User:
         _warn_if_changed("user", "nickname", user.nickname, "율무")
         _warn_if_changed("user", "email", user.email, SEED_USER_EMAIL)
         _apply_dev_password(user)
+        # 로컬 관리자 웹 확인용 계정. 운영 권한은 manage_admin으로만
+        # 부여하고, seed_dev 자체는 운영 환경에서 실행되지 않는다.
+        user.is_admin = True
         print(f"  사용자   건너뜀 ({user.nickname})")
         return user
 
@@ -237,6 +240,7 @@ def seed_user(db: Session) -> User:
         id=SEED_USER_ID,
         email=SEED_USER_EMAIL,
         nickname="율무",
+        is_admin=True,
     )
     _apply_dev_password(user)
     db.add(user)

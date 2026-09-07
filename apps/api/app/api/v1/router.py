@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
+    admin,
     auth,
     chatbot,
     checklists,
@@ -24,6 +25,7 @@ from app.api.v1.endpoints import (
 )
 
 api_router = APIRouter()
+api_router.include_router(admin.router, tags=["admin"])
 api_router.include_router(health.router, tags=["system"])
 api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(routes.router, tags=["routes"])

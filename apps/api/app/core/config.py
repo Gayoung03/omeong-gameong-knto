@@ -24,7 +24,11 @@ class Settings(BaseSettings):
     #: 짧은 값을 넣으면 기동에서 즉시 실패한다(아래 get_settings 의 안내 메시지 참고).
     secret_key: str = Field(min_length=_SECRET_KEY_MIN_LENGTH)
     database_url: str = "postgresql+psycopg://omeong:omeong@localhost:5432/omeong"
-    cors_origins: list[str] = ["http://localhost:8081", "http://localhost:19006"]
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:8081",
+        "http://localhost:19006",
+    ]
     aws_region: str = "ap-northeast-2"
     s3_bucket_name: str = ""
     s3_public_base_url: str = ""

@@ -13,7 +13,7 @@ from app.db.models.community import (
     TravelLog,
     TravelLogPet,
 )
-from app.db.models.editorial import EditorialStory, EditorialStorySource
+from app.db.models.editorial import AdminEditorialAuditLog, EditorialStory, EditorialStorySource
 from app.db.models.guides import (
     GuideDocument,
     GuideDocumentSource,
@@ -55,6 +55,7 @@ from app.db.models.users import (
 __all__ = [
     "ChatConversation",
     "ChatMessage",
+    "AdminEditorialAuditLog",
     "Favorite",
     "EditorialStory",
     "EditorialStorySource",
