@@ -18,12 +18,14 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
-from app.recommend.weights import backfill_weather_signal
-
 revision: str = "a1f5c9d3e7b2"
 down_revision: str | Sequence[str] | None = "e3c4d5f6a7b8"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+# healing 프리셋이 남기는 weather 신호값. app.recommend.config.weights.WEATHER_SIGNAL_WEIGHT
+# 과 동일하지만, 마이그레이션 자족성(미래 앱 코드 변경과 무관한 재현)을 위해 복사한다.
+_WEATHER_SIGNAL_WEIGHT = 0.10
 
 
 route_requests = sa.table(
@@ -32,6 +34,21 @@ route_requests = sa.table(
     sa.column("priority_preset", sa.String()),
     sa.column("applied_weights", JSONB()),
 )
+
+
+def _backfill_weather_signal(
+    applied_weights: dict[str, float], priority_preset: str | None
+) -> dict[str, float]:
+    """app.recommend.weights.backfill_weather_signal 과 동일 — 마이그레이션 자족성을 위해 복사.
+
+    healing 이면 weather 를 신호값으로, 아니면 0 으로 두고 6키 합이 1이 되게 재정규화한다.
+    """
+    resolved = dict(applied_weights)
+    resolved["weather"] = _WEATHER_SIGNAL_WEIGHT if priority_preset == "healing" else 0.0
+    total = sum(resolved.values())
+    if total <= 0:
+        return resolved
+    return {key: value / total for key, value in resolved.items()}
 
 
 def upgrade() -> None:
@@ -44,7 +61,7 @@ def upgrade() -> None:
         ).where(route_requests.c.applied_weights.isnot(None))
     ).all()
     for row in rows:
-        new_weights = backfill_weather_signal(row.applied_weights, row.priority_preset)
+        new_weights = _backfill_weather_signal(row.applied_weights, row.priority_preset)
         bind.execute(
             sa.update(route_requests)
             .where(route_requests.c.id == row.id)
