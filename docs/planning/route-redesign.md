@@ -146,7 +146,7 @@ DB 리뷰안대로 **`route_request_pets`(반려동물별)**로 간다. 여러 �
 | 태그 코드 통일 | DB 무변경. `recommend/config/tags.py`에 코드↔라벨 매핑 |
 | 체류시간 기본값 | DB 무변경. 카테고리별 상수(`recommend/config/`). `average_stay_minutes`가 있으면 우선 |
 | 환경(`environment`) 추정 | 기존 컬럼 백필 배치. 스키마 무변경 |
-| `applied_weights` | 6키 유지. `rating`·`popularity` 0, `weather`는 Phase 5 전까지 **0.10** (Phase 1 검수에서 결정 — 0이면 `healing` 프리셋과 `userCriteria: weather`가 조용히 무효화됨) |
+| `applied_weights` | 6키 유지. `rating`·`popularity`·`weather` 0 (Phase 5). `healing`·`userCriteria: weather`는 `weather`에 0.10 고정 신호를 남기고 생성기가 `indoor_bias`로 해석 |
 | `route_days.weather_snapshot_id` | 이미 있으나 **미사용**. D6 구현 시 채운다 (`weather_snapshots` UNIQUE(region, forecast_at)의 region 정의는 구현 시 결정) |
 | 명소 큐레이션 행 | `places` + `place_pet_policies(source='internal', source_url)` 기존 구조. `created_by_user_id`는 NULL 유지 |
 
@@ -272,6 +272,7 @@ weather_api, internal`. 후보: `jeju_open_data`. **출처 목록 확정 후 추
 - 마이그레이션은 **하나로 묶지 않는다.** ① `route_items.slot_status` + `route_item_candidates`
   ② `pets` + `route_request_pets` ③ `places.cuisine` 세 개로 나눠 각 Phase에 맞춘다.
 - 실서비스 DB(Railway)와 팀 RDS 양쪽 적용은 기존 배치 관례를 따른다.
+- **적용 시 백필**: Phase 5 이전에 만든 `route_requests.applied_weights`는 `weather`가 0.15(옛 기본값)라 재생성 시 `indoor_bias`가 잘못 켜진다. 마이그레이션 적용 때 기존 행의 `weather`를 0으로 백필한다(팀 RDS 2건).
 
 ---
 
@@ -324,7 +325,7 @@ weather_api, internal`. 후보: `jeju_open_data`. **출처 목록 확정 후 추
 | 2 | 데이터 보강 (병렬): 명소 큐레이션, 카테고리별 체류시간, 환경 백필, 카테고리 오염 정리, 카카오 음식 종류 — **구현 완료 2026-09-08** (#268, 명소 28곳·정책 갱신 3곳, DB 적용은 보류) | ③ `cuisine` |
 | 3 | 부분 성공 + tier: 후보 3값(`VERIFIED/NEEDS_CHECK/BLOCKED`), 하드 실패 제거, 빈 슬롯 행, 후보 저장, 완성도 응답 — **구현 완료 2026-09-08** (#269, Phase 2 위 스택 브랜치. 식사 슬롯 미충족은 어떤 경로든 빈 슬롯 기록, 후보 응답 `phone`) | ① `slot_status` + `route_item_candidates` |
 | 4 | 반려동물 중심 개인화: `applied_weights` 하위호환, pets 컬럼, `pet_score(candidate, pets, condition)`, 속도 규칙 보정, 이동시간 상한 완화 단계 — **구현 완료 2026-09-08** (#270, 스택. 컨디션이 활동량을 덮어씀, 차멀미 상한은 숙소 복귀 구간 포함, 사회성은 저장만) | ② `pets` + `route_request_pets` |
-| 5 | 하루 구성 규칙: 기상청 날짜별 예보(기온 포함), 슬롯 계획(`plan_day`) 도입, `build` 분해, `weather_snapshot_id` 채움 | — |
+| 5 | 하루 구성 규칙: 기상청 날짜별 예보(기온 포함), 슬롯 계획(`plan_day`) 도입, `build` 분해, `weather_snapshot_id` 채움 — **구현 완료 2026-09-08** (#271, 스택. 임계값 60/80%·30℃, `itinerary` 패키지 분해, `SlotSearchContext`·`Rung`) | — |
 | 6 | 근거 문장 템플릿 + 출처 노출, LLM 여행 설명 1회, 동물병원 안전망 모듈 | — |
 | 7 | 여유 시: `regenerate` 엔드포인트(명세만 있고 미구현), `route_recommendation.py` 분해 | — |
 
@@ -337,8 +338,8 @@ weather_api, internal`. 후보: `jeju_open_data`. **출처 목록 확정 후 추
 1. `POST /route-requests`의 반려동물별 컨디션 입력 형태 (앱 팀).
 2. `data_provider`에 추가할 출처 값 (공공데이터포털 사용 확정 시).
 3. 24시 동물병원 판정을 `place_business_hours`로 할 수 있는지 실데이터 확인. 안 되면 이름·설명 문자열.
-4. `weather_snapshots` UNIQUE(region, forecast_at)에서 좌표 기반 저장 시 `region` 정의.
+4. `weather_snapshots` UNIQUE(region, forecast_at)에서 좌표 기반 저장 시 `region` 정의. → **확정(Phase 5)**: 기상청 5km 격자 키 `kma:{nx},{ny}`, `forecast_at`은 그날 00:00 KST.
 5. 명소 큐레이션 목록 초안 검토자.
-6. Phase 5에서 `weather` 축을 빼면서 `healing` 프리셋과 `userCriteria: weather`를 하루 구성 규칙(실내 비중 상향)으로 어떻게 재정의할지. 앱의 선택지 문구도 함께 조정.
+6. Phase 5에서 `weather` 축을 빼면서 `healing` 프리셋과 `userCriteria: weather`를 하루 구성 규칙(실내 비중 상향)으로 어떻게 재정의할지. 앱의 선택지 문구도 함께 조정. → **확정(Phase 5)**: `applied_weights.weather` 0.10 고정 신호 → `indoor_bias` → 80% 비 규칙 강제. 앱 문구는 앱 팀.
 7. 가입 화면 취향 선택지(`vibeOptions`)와 `place_tags.code` 7종의 어휘 통일 (앱 팀, 우선순위 낮음).
 8. Phase 3 슬롯 계획에 날짜별 **권역**(제주시/서귀포/동부/서부) 배정을 넣을지. 산 횡단을 구조적으로 줄이는 유일한 방법.
