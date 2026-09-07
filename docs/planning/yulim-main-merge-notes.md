@@ -355,49 +355,100 @@ git add package-lock.json
 
 > **이 블록은 "아직 main 에 안 올라간 것"만 담는다.** main PR 을 낼 때마다 비우고 다시 쓴다.
 > 직전 내용(챗봇 이전 대화 목록 프론트 4~7단계, PR #246·#251·#252)은 **이미 main 에 반영되었다**(PR #254).
-> 2026-09-07 에 `git rev-list --left-right --count origin/main...dev/yulim-main` 이 `6 0` 인 것을
-> 확인하고 비웠다 — `dev/yulim-main` 에만 있는 커밋이 하나도 없다는 뜻이다.
 >
-> **골격은 `.github/pull_request_template.md` 를 그대로 따른다.** 이전에는 `## 신규 설치 라이브러리`
-> 처럼 임의로 잡은 절을 썼는데, 그대로 붙여넣으면 팀 컨벤션에서 벗어난다. 새 작업을 시작하면
-> 아래 빈 칸을 채워 나가고, main PR 본문에는 이 블록을 통째로 붙여넣는다.
+> **골격은 `.github/pull_request_template.md` 를 그대로 따른다.** 팀원 안내(신규 라이브러리·
+> 마이그레이션·`.env` 추가)는 절을 새로 만들지 말고 `## 공통 파일 변경` 아래에 적는다.
 >
-> **현재 대상: 없음.**
+> 현재 대상: **무게 추정 차단과 여객선 조건부 무게 안내 + 문서 정리**
+> 2026-09-07 기준 `origin/main` 보다 5커밋 앞서 있다.
+> **신규 라이브러리 없음. 마이그레이션 없음. 공통 파일 변경 없음.**
+> 다만 **백필 스크립트가 있다** — 아래 `## 공통 파일 변경` 참고.
 
 ````markdown
 ## 작업 내용
 
--
+- 챗봇이 사용자가 말하지 않은 반려동물 무게를 **지어내서** 도구에 넣고 있었습니다.
+  판정 로직은 정확해도 입력이 가짜면 결과가 전부 틀립니다.
+- 여객선 무게 데이터에 구멍이 둘 있었습니다 — 진도는 "무게 제한 없음"인데 컬럼이 비어
+  "확인 안 됨"으로 나갔고, 목포는 객실 등급별 조건이 어디에도 실리지 않아
+  "무게 제한 없음"으로 읽혔습니다.
+- 함께 `yulim-main-merge-notes.md` 5번을 비우고 PR 템플릿 골격으로 다시 잡았습니다.
+  이미 main 에 올라간 안내가 남아 있어 팀원에게 중복으로 전달될 상태였습니다.
 
 ## 변경 사항
 
--
+- `chat.py` — `search_transport_rules` 도구 설명에 **"사용자가 말했을 때만 넣는다,
+  모르면 비우고 그대로 조회한다"** 를 명시. 기존 설명은 "무게를 알면 넣는다"로 **허용만**
+  해서, 모를 때 무엇을 할지를 모델이 골랐습니다.
+- `system.py` — 규칙 3건
+  - `cabin_allowed` 가 거짓인 회사는 "안 되는 곳"으로 따로 떼어 말할 것
+  - `cabin_conditions` 가 있으면 결론과 반드시 함께 말할 것
+  - 무게를 모르면 제도 유무부터 답하고, 견종만 알고 무게를 모르면 회사를 추천하지 말 것
+- `backfill_transport_rules.py` — 진도 `cabin_weight_unlimited`, 목포 `cabin_conditions`
+  추가. 기존과 같이 **멱등**이며 `--apply` 없이는 dry-run 입니다.
+- `docs/planning/yulim-main-merge-notes.md` — 5번 초기화, 3번 표의 `pushNotifications.ts`
+  상태를 `#252` 로 갱신
 
 ## 확인 사항
 
-- [ ] base 브랜치가 올바릅니다. (작업 브랜치 → `dev/<이름>-main`, 개인 통합 → `main`)
-- [ ] 커밋 메시지가 `<type>: <내용>` 형식이고, 커밋당 목적이 하나입니다.
-- [ ] `npm run lint` / `npm run typecheck` 를 통과했습니다. (백엔드는 `ruff check` / `pytest`)
-- [ ] 화면 또는 API 동작을 직접 확인했습니다.
-- [ ] 충돌이 없습니다.
+- [x] base 브랜치가 올바릅니다. (작업 브랜치 → `dev/<이름>-main`, 개인 통합 → `main`)
+- [x] 커밋 메시지가 `<type>: <내용>` 형식이고, 커밋당 목적이 하나입니다.
+- [x] `npm run lint` / `npm run typecheck` 를 통과했습니다.
+      백엔드만 변경 — `ruff check` 통과, `pytest` **272 passed / 0 failed**
+- [x] 화면 또는 API 동작을 직접 확인했습니다. (`make chat-check MODELS=gpt-4o`, 아래 표)
+- [x] 충돌이 없습니다.
 
 ## 공통 파일 변경
 
-아래를 건드렸다면 체크하고, 무엇을 어떻게 바꿨는지 적어주세요.
+- [x] 해당 없음
 
-- [ ] `src/theme/`, `src/components/`
-- [ ] `app/_layout.tsx`, `app/(tabs)/_layout.tsx`
-- [ ] `app.config.ts`, `package.json`, `package-lock.json`
-- [ ] `.gitignore`, `.env.example`
-- [ ] 새 라이브러리 설치 / 환경변수 추가 / 네이티브 권한 추가
-- [ ] 해당 없음
+`.env`·`.env.example`·`package.json`·마이그레이션 변경이 없습니다.
+**공용 DB(RDS)에는 이미 반영해 두었으니 따로 하실 일은 없습니다.**
 
-<!-- 체크한 항목이 있으면 팀원이 해야 할 일(npm ci, .env 추가 등)을 적어주세요 -->
+`make dev-local` 이나 `make chat-check` 로 **로컬 도커 DB** 를 쓰시는 분만, `main` 을
+받으신 뒤 한 번 돌려주세요. `적용: 2건` 이 나오면 정상이고, 이미 됐으면 그냥 종료됩니다.
+
+    docker compose --env-file .env \
+      -f infra/docker-compose.yml -f infra/docker-compose.local.yml \
+      run --build --rm -T api .venv/bin/python -m scripts.backfill_transport_rules --apply
+
+> 프로덕션은 배포 시점에 `railway ssh` 로 같은 스크립트를 한 번 돌려야 합니다.
+
+## 측정 결과 (gpt-4o, 6문항 · `make chat-check`)
+
+| # | 결과 | 비고 |
+| --- | --- | --- |
+| 1 | ○ | 위탁 4곳·불가 3곳 정확 |
+| 2 | ○ | "위탁 없음"을 "탑승 불가"로 뒤집지 않음 |
+| 3 | ✗ | **남은 건** — 견종을 "단두종"으로 단정. 아래 참고 |
+| 4 | ○ | 가드레일 오작동 없음 |
+| 5 | △ | 목포 등급 조건이 답변에 실림. 결론까지는 못 감 |
+| 6 | ✗ | 4항로 중 3개만. 재현성 확인 필요 |
+
+무게 창작은 **2회 연속 재현되지 않았습니다** (`{"carrier_type":"airline"}` 로만 조회).
+
+**남은 3번은 프롬프트로 못 고칩니다.** 두 번 강화해서 두 번 다 실패했습니다.
+이 프로젝트에서 고쳐진 것들은 전부 **도구가 결론을 완성해서 건넨** 경우였습니다.
+견종도 `transport_restricted_breeds` 조회가 비면 도구가 "이 견종은 우리 데이터에 없음"을
+결론 문장으로 내보내야 닫힙니다 — **견종 목록 수집 안건과 같은 뿌리**라 별건으로 뺐습니다.
+
+**pytest 한계** — 프롬프트를 타는 `test_chat_answer.py` 20개는 DB가 없어 skip 됩니다.
+프롬프트 변경의 실제 검증은 `chat-check` 가 했습니다.
 
 ## 관련 이슈
 
-close #
+close #<이슈번호>
 ````
+
+> **채울 때 메모**
+>
+> - `## 작업 내용` 은 "무엇을 왜", `## 변경 사항` 은 "어디를 어떻게" 다.
+> - 팀원이 받아야 할 안내(신규 라이브러리 설치, 마이그레이션, `.env` 추가)는 **절을 새로 만들지 말고
+>   `## 공통 파일 변경` 아래에** 적는다. 체크박스를 체크하고 그 밑에 풀어 쓰는 자리가 이미 있다.
+> - **데이터 보정과 코드 변경은 성격이 다르다.** 공용 DB 는 한 번 돌리면 전원이 해결되지만,
+>   프롬프트·코드는 각자 `main` 을 받아야 적용된다. 안내에서 둘을 섞지 말 것.
+> - 이슈·PR 초안은 **템플릿을 먼저 열어 보고** 쓴다
+>   (`.github/ISSUE_TEMPLATE/1-feature.md` — 제목 `feat: `, 라벨 `feat`).
 
 > **채울 때 메모**
 >
@@ -464,3 +515,4 @@ close #
 | 2026-09-01 | **최신 main 을 받아와 합치고 5번 항목을 다시 썼다.** 여행가이드 작업(PR #212)이 `dev/yulim-main` 에 머지된 뒤, 가영님 웹 푸시 알림 PR #211 이 들어간 main 을 합쳤다. **충돌은 없었고** `router.py` 만 3-way 병합됐다. **합친 뒤에 설치·마이그레이션이 필요했다** — `expo-notifications`(프론트), `pywebpush`(백엔드), Alembic revision 2개. 이건 main 에서 온 것이라 **이번 main PR 의 안내에는 넣지 않았다**(팀원은 main 에서 이미 받는다). 합친 결과로 검사를 다시 돌렸다 — lint·typecheck·ruff 통과, pytest 456개 통과. **`npm ci` 직후 lint 가 옛 오류를 그대로 재생했다** — `expo lint` 가 `.expo/cache/eslint` 에 결과를 저장하고 파일 내용이 그대로면 다시 검사하지 않는다. 오늘 이걸로 두 번 헤맸고 협의 사항에 올렸다. **pytest 1건이 개발 DB 에서만 깨졌다** — 씨앗 사용자 ID 가 `DEV_USER_ID` 와 같은 값이라 `test_auth_guard` 의 폴백 테스트가 `duplicate key` 를 만든다. 테스트 전용 DB(`omeong_test`)를 만들어 돌리니 전부 통과했고, 이것도 협의 사항에 올렸다. 5번 직전 내용(PR #125·#126)은 이미 main 에 반영돼 비우고 다시 썼다 |
 | 2026-09-06 | **챗봇 이전 대화 목록 완성(4~7단계).** 대화 상태를 화면 훅에서 모듈 스코프 스토어로 옮기고(#246), 사이드바·복원·휴지통·이름변경을 얹었으며(#251), 백그라운드 복귀 정리와 알림 딥링크로 마감했다. **공통 파일은 `pushNotifications.ts` 한 줄** — `chat_answer_ready` 가 챗봇 탭이 아니라 그 대화로 간다. 알림 목록 화면과 푸시 진입이 같은 함수를 쓰므로 한 줄로 두 경로가 해결된다. `src/utils/relativeTime.ts` 를 신설해 알림이 들고 있던 사본을 걷어냈다(동작 동일). **신규 라이브러리·마이그레이션 없음.** 설계안과 다르게 간 곳 넷 — 휴지통을 바텀시트가 아니라 서랍 안 화면으로(사이드바가 RN `Modal` 이라 `@gorhom/bottom-sheet` 가 그 아래 깔린다), `hydrated: boolean` 을 4상태로(실패를 빈 대화로 그리면 기록이 사라진 줄 안다), 열기·새 대화 버튼을 `AppHeader` 가 아니라 챗봇 전용 줄에(탭 5개 공통 파일을 흔들지 않으려고), 삭제 확인 창 없음(되돌릴 수 있는 동작이다). **`react-hooks/refs` 에 걸렸다** — `useRef(...).current` 를 렌더 중에 읽으면 `Animated.Value` 처럼 안전한 경우에도 에러다. `useState(() => new Animated.Value(0))` 로 바꿨다. 5번 항목 직전 내용(PR #241·#242)은 이미 main 에 반영돼(#245) 비우고 다시 썼다 |
 | 2026-09-07 | **`dev/yulim-main` 에 main 반영(#255 비짓제주 여행 이야기 포함) 후 5번 항목을 비웠다.** 직전 내용(PR #246·#251·#252)은 #254 로 이미 main 에 올라가 있었다 — 두면 다음 main PR 때 반영된 안내를 팀원에게 또 보내게 된다. **5번 골격을 `.github/pull_request_template.md` 그대로로 다시 잡았다**(`작업 내용`·`변경 사항`·`확인 사항`·`공통 파일 변경`·`관련 이슈`). 이전에는 `## 신규 설치 라이브러리` 처럼 임의 절을 썼는데 붙여넣으면 컨벤션에서 벗어난다 — 팀원 안내는 `## 공통 파일 변경` 아래에 쓰기로 자리를 정했다. 3번 표에 '예정' 으로 남아 있던 `pushNotifications.ts` 행을 #252 로 갱신했다. **품질 안건 1번(여객선 무게 판정)은 이미 닫혀 있었다** — 마이그레이션 `91540737bf42`(`cabin_weight_unlimited`·`cargo_weight_unlimited`·`cabin_conditions`)와 `_verdict()` 의 `weight_unlimited` 분기가 main 에 있고, `scripts/backfill_transport_rules.py` dry-run 이 "바꿀 행이 없습니다" 로 끝나 DB 백필도 반영돼 있다. 남은 것은 5번(모델 합의)이고, #255 가 `EDITORIAL_OPENAI_MODEL` (비우면 `OPENAI_MODEL` 을 따라감)을 추가해 **`OPENAI_MODEL` 을 비워두는 비용이 챗봇 하나에서 둘로 늘었다** |
+| 2026-09-07 | **main PR 준비 — 5번을 채웠다.** 대상은 무게 추정 차단(`chat.py` 도구 설명 · `system.py` 규칙 3건)과 여객선 데이터 보정(진도 `cabin_weight_unlimited`, 목포 `cabin_conditions`), 그리고 오전의 문서 정리다. **공용 DB(RDS)에는 이미 백필을 반영해 팀원이 따로 할 일이 없다** — 로컬 도커 DB(`make dev-local`·`make chat-check`)를 쓰는 사람만 한 번 돌리면 된다. `make chat-check` 가 보는 DB 가 `.env` 의 RDS 가 아니라 `docker-compose.local.yml` 의 로컬 postgres 라는 것을 이번에 알았다 — 결과 파일 머리의 `대상 DB:` 줄로 확인한다. 6문항 재측정은 4/6 통과이고, 남은 3번(견종 단정)은 프롬프트를 두 번 강화해도 안 고쳐져 **도구가 결론을 완성해 건네는 쪽**으로 별건 분리했다 |
