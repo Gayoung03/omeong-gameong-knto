@@ -418,8 +418,8 @@ TMAP의 거리·시간·polyline은 이 테이블에 영구 저장하지 않습�
 
 | 컬럼 | 설명 |
 | --- | --- |
-| `region` | 예보 지역 |
-| `forecast_at` | 예보 대상 시각 |
+| `region` | 예보 지역. 좌표 기반 저장 시 기상청 5km 격자 키 `kma:{nx},{ny}` 를 쓴다 |
+| `forecast_at` | 예보 대상 시각. 날짜별 스냅샷은 그날 00:00 KST |
 | `condition` | 맑음, 흐림, 비, 눈, 강풍 등 |
 | `temperature` | 대표 기온 |
 | `min_temperature`, `max_temperature` | 최저·최고 기온 |

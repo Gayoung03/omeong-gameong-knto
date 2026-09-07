@@ -21,20 +21,25 @@ from app.db.models import (
     RouteRequest,
     RouteRequestPet,
     RouteRequestStay,
+    WeatherSnapshot,
 )
 from app.db.models.enums import (
     RouteItemSlotStatus,
     RouteStatus,
     ScheduleItemType,
     TransportType,
+    WeatherCondition,
 )
 from app.integrations.llm.request_intent import extract_request_intent, merge_preferred_tags
 from app.integrations.llm.route_edit import RouteEditIntent
 from app.integrations.maps.kakao import GeocodedAddress, geocode_address
 from app.integrations.tour_api.kto import TourAPIError, TourPlace, get_nearby_places
 from app.integrations.weather.kma import (
+    KST,
+    DayForecast,
     WeatherForecastError,
-    get_precipitation_probabilities,
+    _to_grid,
+    get_daily_forecasts,
 )
 from app.recommend.common.geo import haversine_m
 from app.recommend.config.pace import PACE, effective_rule
@@ -112,7 +117,12 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
 
     pets, stay_coords, start_coord = _request_inputs(db, request)
     pet_profiles = _pet_profiles(db, request)
-    precipitation_probability = _precipitation_probability(request, start_coord)
+    day_forecasts = _day_forecasts(request, start_coord)
+    # 날씨 점수 축은 0(하루 구성 규칙으로 이동)이라 점수엔 영향이 없지만, 스키마 호환을
+    # 위해 최대 강수확률을 넘겨둔다.
+    precipitation_probability = max(
+        (forecast.pop_max for forecast in day_forecasts.values()), default=None
+    )
 
     # request_text 자유문에서 표준 태그를 보충한다(routes.md·설계 8.3-3). **로컬 변수로만**
     # 쓴다 — request ORM 속성을 바꾸면 아래 커밋에 딸려 영속화된다(이번 생성 한정 원칙).
@@ -184,6 +194,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
             day_start_anchors=day_start_anchors,
             day_end_anchors=day_end_anchors,
             pace_rule=effective_rule(request.pace, pet_profiles),
+            day_forecasts=day_forecasts,
             # healing 프리셋·weather 기준 신호. 예보와 무관하게 실내 우선 규칙을 켠다.
             indoor_bias=weights.weather > 0,
         ),
@@ -196,7 +207,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     if not any(day.items for day in itinerary.days):
         raise RecommendationGenerationError("일정에 배치할 수 있는 장소가 없습니다")
 
-    _save_itinerary(db, route, itinerary)
+    _save_itinerary(db, route, itinerary, day_forecasts, start_coord)
     selected = [item.candidate for day in itinerary.days for item in day.items]
     route.total_score = Decimal(
         str(round(sum(item.total_score for item in selected) / len(selected) * 100, 2))
@@ -345,7 +356,6 @@ def suggest_replacements(
     preferred_tags = frozenset(
         [*normalize_preferred_tags(request.preferred_tags or []), *intent.preferred_tags]
     )
-    precipitation_probability = _precipitation_probability(request, start_coord)
     return score_candidates(
         candidates,
         ScoringContext(
@@ -353,7 +363,8 @@ def suggest_replacements(
             base_coord=start_coord,
             additional_base_coords=tuple(dict.fromkeys(coord for _, coord in stay_coords)),
             preferred_tags=preferred_tags,
-            precipitation_probability=precipitation_probability,
+            # 날씨 축은 하루 구성 규칙으로 옮겨 점수 가중치가 0 이라 편집 경로에선 조회 생략.
+            precipitation_probability=None,
             pets=_pet_profiles(db, request),
         ),
     )[:limit]
@@ -452,7 +463,8 @@ def replace_route_item(
             base_coord=start_coord,
             additional_base_coords=tuple(dict.fromkeys(coord for _, coord in stay_coords)),
             preferred_tags=frozenset(normalize_preferred_tags(request.preferred_tags or [])),
-            precipitation_probability=_precipitation_probability(request, start_coord),
+            # 날씨 축은 하루 구성 규칙으로 옮겨 점수 가중치가 0 이라 편집 경로에선 조회 생략.
+            precipitation_probability=None,
             pets=_pet_profiles(db, request),
         ),
     )
@@ -835,20 +847,90 @@ def _start_coord(
     raise LocationResolutionError("출발 장소 또는 숙소 좌표가 필요합니다")
 
 
-def _precipitation_probability(
-    request: RouteRequest,
-    coord: Coordinate,
-) -> int | None:
+def _day_forecasts(request: RouteRequest, coord: Coordinate) -> dict[date, DayForecast]:
+    """여행 날짜별 예보. 예보 범위(3일) 밖·조회 실패면 그 날짜는 없다(규칙 미적용)."""
     dates = {
         date.fromordinal(request.start_at.date().toordinal() + offset)
         for offset in range((request.end_at.date() - request.start_at.date()).days + 1)
     }
     try:
-        forecasts = get_precipitation_probabilities(coord[0], coord[1], dates)
+        return get_daily_forecasts(coord[0], coord[1], dates)
     except WeatherForecastError:
         logger.warning("weather forecast unavailable", exc_info=True)
-        return None
-    return max(forecasts.values()) if forecasts else None
+        return {}
+
+
+def _weather_region(coord: Coordinate) -> str:
+    """기상청 5km 격자 키. weather_snapshots UNIQUE(region, forecast_at)의 region."""
+    nx, ny = _to_grid(coord[0], coord[1])
+    return f"kma:{nx},{ny}"
+
+
+def _snapshot_condition(forecast: DayForecast) -> WeatherCondition:
+    """일 단위 강수확률·기온으로 대표 날씨를 고른다(시간별 하늘/강수형태는 미보유).
+
+    강수확률이 높으면 비/눈(영하), 중간이면 흐림, 낮으면 맑음으로 근사한다.
+    """
+    if forecast.pop_max >= 60:
+        if forecast.tmin is not None and forecast.tmin <= 0:
+            return WeatherCondition.SNOWY
+        return WeatherCondition.RAINY
+    if forecast.pop_max >= 30:
+        return WeatherCondition.CLOUDY
+    return WeatherCondition.SUNNY
+
+
+def _representative_temp(forecast: DayForecast) -> float | None:
+    """스냅샷 대표 기온. 오후(14~15시) 기온을 우선, 없으면 최고기온."""
+    for hour in (15, 14, 13):
+        if hour in forecast.hourly_tmp:
+            return forecast.hourly_tmp[hour]
+    if forecast.tmax is not None:
+        return forecast.tmax
+    return max(forecast.hourly_tmp.values(), default=None)
+
+
+def _upsert_weather_snapshot(
+    db: Session, region: str, coord: Coordinate, route_date: date, forecast: DayForecast
+) -> uuid.UUID:
+    """그날 예보를 weather_snapshots 에 upsert 하고 id 를 돌려준다.
+
+    region 은 격자 키, forecast_at 은 그날 00:00 KST. UNIQUE(region, forecast_at) 충돌 시 갱신.
+    """
+    forecast_at = datetime.combine(route_date, time(0, 0), tzinfo=KST)
+    snapshot = db.scalar(
+        select(WeatherSnapshot).where(
+            WeatherSnapshot.region == region, WeatherSnapshot.forecast_at == forecast_at
+        )
+    )
+    temperature = _representative_temp(forecast)
+    values = {
+        "condition": _snapshot_condition(forecast),
+        "temperature": None if temperature is None else Decimal(str(round(temperature, 1))),
+        "min_temperature": (
+            None if forecast.tmin is None else Decimal(str(round(forecast.tmin, 1)))
+        ),
+        "max_temperature": (
+            None if forecast.tmax is None else Decimal(str(round(forecast.tmax, 1)))
+        ),
+        "precipitation_probability": forecast.pop_max,
+        "source_updated_at": datetime.now(KST),
+    }
+    if snapshot is None:
+        snapshot = WeatherSnapshot(
+            id=uuid.uuid4(),
+            region=region,
+            latitude=Decimal(str(coord[0])),
+            longitude=Decimal(str(coord[1])),
+            forecast_at=forecast_at,
+            **values,
+        )
+        db.add(snapshot)
+    else:
+        for field_name, value in values.items():
+            setattr(snapshot, field_name, value)
+    db.flush()
+    return snapshot.id
 
 
 def _day_anchors(
@@ -948,12 +1030,26 @@ def _save_unfilled_candidates(
         )
 
 
-def _save_itinerary(db: Session, route: Route, itinerary: Itinerary) -> None:
+def _save_itinerary(
+    db: Session,
+    route: Route,
+    itinerary: Itinerary,
+    day_forecasts: dict[date, DayForecast],
+    coord: Coordinate,
+) -> None:
+    region = _weather_region(coord)
     for day_number, day in enumerate(itinerary.days, start=1):
+        forecast = day_forecasts.get(day.route_date)
+        weather_snapshot_id = (
+            _upsert_weather_snapshot(db, region, coord, day.route_date, forecast)
+            if forecast is not None
+            else None
+        )
         route_day = RouteDay(
             route_id=route.id,
             day_number=day_number,
             route_date=day.route_date,
+            weather_snapshot_id=weather_snapshot_id,
         )
         db.add(route_day)
         db.flush()

@@ -22,6 +22,7 @@ from app.db.models import (
     RouteRequest,
     RouteRequestPet,
     RouteRequestStay,
+    WeatherSnapshot,
 )
 from app.db.models.enums import (
     DataProvider,
@@ -36,8 +37,10 @@ from app.db.models.enums import (
     ScheduleItemType,
     TransportType,
     TripPace,
+    WeatherCondition,
 )
 from app.integrations.maps.kakao import GeocodedAddress
+from app.integrations.weather.kma import DayForecast
 from app.recommend.schemas import CandidateTier
 from app.recommend.tmap import RouteLeg, TMapError
 from app.recommend.weights import resolve_weights
@@ -343,7 +346,7 @@ def test_generate_route_saves_alternatives_and_unfilled_candidates(
     monkeypatch.setattr(
         rr, "get_route", lambda *_a, **_k: RouteLeg(distance_m=1000, duration_min=10, polyline=None)
     )
-    monkeypatch.setattr(rr, "get_precipitation_probabilities", lambda *_a, **_k: {})
+    monkeypatch.setattr(rr, "get_daily_forecasts", lambda *_a, **_k: {})
 
     start = datetime(2026, 9, 20, 9, tzinfo=KST)
     request = RouteRequest(
@@ -563,7 +566,7 @@ def _weather_signal_route(db: Session, owner, applied_weights: dict) -> Route:
 
 def _capture_indoor_bias(db: Session, owner, applied_weights: dict, monkeypatch) -> bool:
     monkeypatch.setattr(rr, "_tour_api_places", lambda *_a, **_k: [])
-    monkeypatch.setattr(rr, "get_precipitation_probabilities", lambda *_a, **_k: {})
+    monkeypatch.setattr(rr, "get_daily_forecasts", lambda *_a, **_k: {})
     captured: dict[str, bool] = {}
 
     def fake_build(_scored, request, _get_route):
@@ -592,3 +595,114 @@ def test_generate_route_leaves_indoor_bias_off_without_weather_signal(
     applied = resolve_weights("balanced").model_dump()
     assert applied["weather"] == 0
     assert _capture_indoor_bias(db, owner, applied, monkeypatch) is False
+
+
+def test_generate_route_saves_and_returns_day_weather(
+    db: Session, owner, client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """생성 시 그날 예보를 weather_snapshots 에 저장·연결하고 상세 응답 weather 로 내린다."""
+    start = datetime(2026, 9, 20, 9, tzinfo=KST)
+    forecast = DayForecast(pop_max=70, tmax=31.0, tmin=24.0, hourly_tmp={15: 29.0})
+    monkeypatch.setattr(rr, "_tour_api_places", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        rr, "get_daily_forecasts", lambda *_a, **_k: {start.date(): forecast}
+    )
+    monkeypatch.setattr(
+        rr, "get_route", lambda *_a, **_k: RouteLeg(distance_m=1000, duration_min=10, polyline=None)
+    )
+
+    _seed_active_attraction(db)
+    request = RouteRequest(
+        id=uuid.uuid4(),
+        user_id=owner.id,
+        start_at=start,
+        end_at=start + timedelta(hours=10),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        companion_count=1,
+        departure_latitude=Decimal("33.4900000"),
+        departure_longitude=Decimal("126.5300000"),
+    )
+    db.add(request)
+    db.flush()
+    route = Route(
+        id=uuid.uuid4(),
+        route_request_id=request.id,
+        user_id=owner.id,
+        title="날씨 스냅샷 검증",
+        status=RouteStatus.GENERATING,
+        creation_type=RouteCreationType.RECOMMENDED,
+        version=1,
+        start_at=request.start_at,
+        end_at=request.end_at,
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+    )
+    db.add(route)
+    db.flush()
+
+    generate_route(db, route.id)
+
+    day = db.scalar(select(RouteDay).where(RouteDay.route_id == route.id))
+    assert day.weather_snapshot_id is not None
+    snapshot = db.get(WeatherSnapshot, day.weather_snapshot_id)
+    assert snapshot.region.startswith("kma:")
+    assert snapshot.condition == WeatherCondition.RAINY  # pop_max 70
+    assert snapshot.precipitation_probability == 70
+    assert float(snapshot.max_temperature) == 31.0
+    assert float(snapshot.temperature) == 29.0  # 오후(15시) 대표 기온
+
+    response = client.get(f"/api/v1/routes/{route.id}")
+    assert response.status_code == 200
+    weather = response.json()["routeDays"][0]["weather"]
+    assert weather["condition"] == "rainy"
+    assert weather["precipitationProbability"] == 70
+    assert weather["maxTemperature"] == 31.0
+
+
+def test_generate_route_without_forecast_leaves_weather_null(
+    db: Session, owner, client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(rr, "_tour_api_places", lambda *_a, **_k: [])
+    monkeypatch.setattr(rr, "get_daily_forecasts", lambda *_a, **_k: {})
+    monkeypatch.setattr(
+        rr, "get_route", lambda *_a, **_k: RouteLeg(distance_m=1000, duration_min=10, polyline=None)
+    )
+
+    _seed_active_attraction(db)
+    start = datetime(2026, 9, 20, 9, tzinfo=KST)
+    request = RouteRequest(
+        id=uuid.uuid4(),
+        user_id=owner.id,
+        start_at=start,
+        end_at=start + timedelta(hours=10),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        companion_count=1,
+        departure_latitude=Decimal("33.4900000"),
+        departure_longitude=Decimal("126.5300000"),
+    )
+    db.add(request)
+    db.flush()
+    route = Route(
+        id=uuid.uuid4(),
+        route_request_id=request.id,
+        user_id=owner.id,
+        title="예보 없음",
+        status=RouteStatus.GENERATING,
+        creation_type=RouteCreationType.RECOMMENDED,
+        version=1,
+        start_at=request.start_at,
+        end_at=request.end_at,
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+    )
+    db.add(route)
+    db.flush()
+
+    generate_route(db, route.id)
+
+    day = db.scalar(select(RouteDay).where(RouteDay.route_id == route.id))
+    assert day.weather_snapshot_id is None
+    response = client.get(f"/api/v1/routes/{route.id}")
+    assert response.json()["routeDays"][0]["weather"] is None

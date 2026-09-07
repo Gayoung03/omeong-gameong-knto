@@ -121,7 +121,7 @@ def test_route_request_generates_db_place_itinerary(
     )
     monkeypatch.setattr(
         route_recommendation,
-        "get_precipitation_probabilities",
+        "get_daily_forecasts",
         lambda *_args, **_kwargs: {},
     )
     monkeypatch.setattr(
@@ -178,7 +178,7 @@ def test_route_request_before_dinner_time_does_not_require_restaurant(
     )
     monkeypatch.setattr(
         route_recommendation,
-        "get_precipitation_probabilities",
+        "get_daily_forecasts",
         lambda *_args, **_kwargs: {},
     )
 
@@ -224,7 +224,7 @@ def test_user_can_confirm_replacement_and_refresh_adjacent_routes(
     monkeypatch.setattr(route_recommendation, "get_route", fake_route)
     monkeypatch.setattr(
         route_recommendation,
-        "get_precipitation_probabilities",
+        "get_daily_forecasts",
         lambda *_args, **_kwargs: {},
     )
     route_recommendation.generate_route(db, route_id)
@@ -293,7 +293,7 @@ def test_replacement_rejects_place_that_fails_hard_filter(
     )
     monkeypatch.setattr(
         route_recommendation,
-        "get_precipitation_probabilities",
+        "get_daily_forecasts",
         lambda *_args, **_kwargs: {},
     )
     route_recommendation.generate_route(db, route_id)
