@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime, time
+from datetime import date, datetime, time
 from zoneinfo import ZoneInfo
 
 from app.db.models.enums import ScheduleItemType, TransportType, TripPace
@@ -555,3 +555,101 @@ def test_alternatives_capped_at_three_and_unique() -> None:
     ids = [candidate.place_id for candidate in alternatives]
     assert len(ids) == len(set(ids))  # 중복 없음
     assert first.candidate.place_id not in ids  # 자기 자신 제외
+
+
+def test_evening_arrival_places_attractions_and_keeps_anchors() -> None:
+    # 저녁 도착일(18:00 시작·식당 0): 실패가 아니라 관광 배치 + 빈 저녁 + 앵커 유지.
+    trip_date = date(2026, 8, 31)
+    stay = RouteAnchor(name="숙소", coord=(33.48, 126.33), item_type=ScheduleItemType.ACCOMMODATION)
+    request = BuildRequest(
+        start_at=datetime(2026, 8, 31, 18, tzinfo=KST),
+        end_at=datetime(2026, 8, 31, 21, tzinfo=KST),
+        pace=TripPace.PACKED,
+        transport=TransportType.RENTAL_CAR,
+        start_coord=(33.5, 126.53),
+        day_start_anchors={trip_date: stay},
+        day_end_anchors={trip_date: stay},
+    )
+    attractions = [_candidate(0.9 - index / 100, lat=33.5 + index / 1000) for index in range(5)]
+
+    day = build(attractions, request, _fast_route).days[0]
+
+    assert day.items
+    assert len(day.unfilled) == 1
+    assert day.unfilled[0].item_type == ScheduleItemType.RESTAURANT
+    assert day.start_anchor == stay
+    assert day.end_anchor == stay
+
+
+def test_evening_arrival_with_no_places_still_keeps_anchors() -> None:
+    trip_date = date(2026, 8, 31)
+    stay = RouteAnchor(name="숙소", coord=(33.48, 126.33), item_type=ScheduleItemType.ACCOMMODATION)
+    request = BuildRequest(
+        start_at=datetime(2026, 8, 31, 18, tzinfo=KST),
+        end_at=datetime(2026, 8, 31, 21, tzinfo=KST),
+        pace=TripPace.PACKED,
+        transport=TransportType.RENTAL_CAR,
+        start_coord=(33.5, 126.53),
+        day_start_anchors={trip_date: stay},
+        day_end_anchors={trip_date: stay},
+    )
+
+    day = build([], request, _fast_route).days[0]
+
+    assert day.items == ()
+    assert len(day.unfilled) == 1
+    assert day.start_anchor == stay  # 빈 슬롯만 있어도 앵커는 남는다
+    assert day.end_anchor == stay
+
+
+def test_packed_lunch_preference_records_unfilled_when_no_restaurant() -> None:
+    # packed + 맛집 선호: 짧은 방문으로 슬롯이 다 차도 점심을 시도/빈 슬롯으로 남긴다.
+    request = BuildRequest(
+        start_at=datetime(2026, 8, 31, 8, tzinfo=KST),
+        end_at=datetime(2026, 8, 31, 15, tzinfo=KST),  # 저녁 아님 → 점심 선호
+        pace=TripPace.PACKED,
+        transport=TransportType.RENTAL_CAR,
+        start_coord=(33.5, 126.53),
+        restaurant_preferred=True,
+    )
+    attractions = [_candidate(0.9 - index / 100, lat=33.5 + index / 1000) for index in range(5)]
+
+    day = build(attractions, request, _fast_route).days[0]
+
+    assert day.restaurant_required is True
+    assert len(day.unfilled) == 1
+    assert day.unfilled[0].item_type == ScheduleItemType.RESTAURANT
+
+
+def test_safety_net_records_meal_when_loop_ends_early() -> None:
+    # 후보 소진으로 식사 슬롯을 시도하기 전에 루프가 끝나도 빈 식사 슬롯을 남긴다.
+    day = build([_candidate(0.9)], _request(TripPace.NORMAL), _fast_route).days[0]
+
+    assert len(day.items) == 1
+    assert len(day.unfilled) == 1
+    assert day.unfilled[0].item_type == ScheduleItemType.RESTAURANT
+
+
+def test_unfilled_slot_candidates_are_needs_check_restaurants_sorted() -> None:
+    dow = (date(2026, 8, 31).weekday() + 1) % 7
+    closed = [BusinessHour(day_of_week=dow, is_closed=True)]
+    attraction = _candidate(0.95, lat=33.501)
+    restaurants = [
+        _candidate(
+            score,
+            item_type=ScheduleItemType.RESTAURANT,
+            lat=33.5 + index / 1000,
+            business_hours=closed,
+            tier=CandidateTier.NEEDS_CHECK,
+        )
+        for index, score in enumerate((0.3, 0.8, 0.5, 0.6))
+    ]
+
+    day = build([attraction, *restaurants], _request(TripPace.NORMAL), _fast_route).days[0]
+
+    assert len(day.unfilled) == 1
+    candidates = day.unfilled[0].candidates
+    assert all(candidate.tier == CandidateTier.NEEDS_CHECK for candidate in candidates)
+    assert all(candidate.item_type == ScheduleItemType.RESTAURANT for candidate in candidates)
+    assert len(candidates) == 3  # 4개 중 상위 3
+    assert [candidate.total_score for candidate in candidates] == [0.8, 0.6, 0.5]

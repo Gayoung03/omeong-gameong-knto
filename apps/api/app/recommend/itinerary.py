@@ -196,29 +196,46 @@ def build(
             and day_end >= lunch_start
         )
         restaurant_scheduled = False
+        # 필요한 식사를 빈 슬롯으로 처리했으면 True. 이후엔 식사 슬롯을 다시 시도하지 않고
+        # 남은 시간에 관광 후보를 계속 배치한다(빈 슬롯이 슬롯 개수를 하나 차지한다).
+        meal_unfilled = False
 
-        while remaining and len(items) < rule["places_per_day"] and current_time < day_end:
+        while (
+            remaining
+            and len(items) + len(unfilled) < rule["places_per_day"]
+            and current_time < day_end
+        ):
             dinner_start = datetime.combine(route_date, DINNER_START, KST)
             dinner_start_by = datetime.combine(route_date, DINNER_START_BY, KST)
-            dinner_slot = dinner_required and (
-                len(items) == rule["places_per_day"] - 1 or current_time >= dinner_start
+            # 마지막 남은 한 슬롯은 식사용으로 남긴다(개수 기반 트리거).
+            last_slot = len(items) + len(unfilled) == rule["places_per_day"] - 1
+            dinner_slot = (
+                dinner_required
+                and not meal_unfilled
+                and (last_slot or current_time >= dinner_start)
             )
-            lunch_slot = lunch_required and not restaurant_scheduled and current_time >= lunch_start
+            lunch_slot = (
+                lunch_required
+                and not restaurant_scheduled
+                and not meal_unfilled
+                and (current_time >= lunch_start or last_slot)
+            )
             meal_slot = dinner_slot or lunch_slot
             blocked_types = (
                 {ScheduleItemType.CAFE}
                 if any(item.candidate.item_type == ScheduleItemType.CAFE for item in items)
                 else set()
             )
-            if not meal_slot or restaurant_scheduled:
+            if not meal_slot or restaurant_scheduled or meal_unfilled:
                 blocked_types.add(ScheduleItemType.RESTAURANT)
             not_before = dinner_start if dinner_slot else lunch_start if lunch_slot else None
             start_by = dinner_start_by if dinner_slot else lunch_start_by if lunch_slot else None
             # 식사 전 관광 일정이 식사 시작 시각을 침범하지 않게 슬롯을 미리 비워둔다.
             visit_deadline = day_end
-            if dinner_required and not restaurant_scheduled and not meal_slot:
+            reserve_meal = not restaurant_scheduled and not meal_unfilled and not meal_slot
+            if dinner_required and reserve_meal:
                 visit_deadline = min(visit_deadline, dinner_start)
-            elif lunch_required and not restaurant_scheduled and not meal_slot:
+            elif lunch_required and reserve_meal:
                 visit_deadline = min(visit_deadline, lunch_start)
             choice = _best_candidate_with_diversity(
                 remaining,
@@ -237,7 +254,12 @@ def build(
                 enforce_diversity=not meal_slot,
             )
             # 낮 일정이 부족하거나 식사 시간이 오면 필요한 식사를 우선 배치한다.
-            if choice is None and not meal_slot and (dinner_required or lunch_required):
+            if (
+                choice is None
+                and not meal_slot
+                and not meal_unfilled
+                and (dinner_required or lunch_required)
+            ):
                 dinner_slot = dinner_required
                 lunch_slot = lunch_required and not dinner_required
                 meal_slot = True
@@ -261,18 +283,12 @@ def build(
                     enforce_diversity=False,
                 )
             if choice is None:
-                # 필요한 식사 슬롯을 확실·확인 필요 후보로도 못 채우면 빈 슬롯으로 남긴다.
-                if meal_slot and not restaurant_scheduled:
-                    unfilled.append(
-                        UnfilledSlot(
-                            item_type=ScheduleItemType.RESTAURANT,
-                            position=len(items),
-                            reason=UNFILLED_MEAL_REASON,
-                            candidates=tuple(
-                                _unfilled_candidates(remaining, ScheduleItemType.RESTAURANT)
-                            ),
-                        )
-                    )
+                # 필요한 식사를 확실·확인 필요 후보로도 못 채우면 빈 슬롯으로 남기되,
+                # break 하지 않고 남은 시간에 관광 후보를 계속 배치한다.
+                if meal_slot and not restaurant_scheduled and not meal_unfilled:
+                    unfilled.append(_meal_unfilled_slot(remaining, len(items)))
+                    meal_unfilled = True
+                    continue
                 break
 
             rest_min = rule["rest_min"] if items else 0
@@ -323,8 +339,16 @@ def build(
             if dinner_slot:
                 break
 
+        # 어떤 경로로 루프가 끝났든(시간 초과·후보 소진) 필요한 식사가 안 채워졌으면
+        # 빈 슬롯을 남긴다. 이중 기록은 meal_unfilled 로 막는다.
+        if (dinner_required or lunch_required) and not restaurant_scheduled and not meal_unfilled:
+            unfilled.append(_meal_unfilled_slot(remaining, len(items)))
+            meal_unfilled = True
+
+        # 방문이든 빈 슬롯이든 내용이 있으면 앵커를 남긴다(빈 슬롯만 있는 날도 출발지·숙소 저장).
+        has_content = bool(items) or bool(unfilled)
         end_arrival = None
-        if items and end_anchor is not None:
+        if has_content and end_anchor is not None and (items or start_anchor):
             return_route = fetch_leg(current_coord, end_anchor.coord, current_time)
             moves.append(ScheduledMove(transport=request.transport, route=return_route))
             end_arrival = current_time + timedelta(minutes=return_route.duration_min)
@@ -336,9 +360,9 @@ def build(
                 tuple(moves),
                 dinner_required=dinner_required,
                 restaurant_required=dinner_required or lunch_required,
-                start_anchor=start_anchor if items else None,
-                end_anchor=end_anchor if items else None,
-                day_start=day_start if items and start_anchor else None,
+                start_anchor=start_anchor if has_content else None,
+                end_anchor=end_anchor if has_content else None,
+                day_start=day_start if has_content and start_anchor else None,
                 end_arrival=end_arrival,
                 unfilled=tuple(unfilled),
                 alternatives=alternatives,
@@ -544,6 +568,16 @@ def _unfilled_candidates(
     ]
     matches.sort(key=lambda candidate: (-candidate.total_score, candidate.place_id.int))
     return matches[:limit]
+
+
+def _meal_unfilled_slot(candidates: list[ScoredCandidate], position: int) -> UnfilledSlot:
+    """못 채운 식사 슬롯 하나. 확인 필요 식당 후보를 상위 3개까지 붙인다."""
+    return UnfilledSlot(
+        item_type=ScheduleItemType.RESTAURANT,
+        position=position,
+        reason=UNFILLED_MEAL_REASON,
+        candidates=tuple(_unfilled_candidates(candidates, ScheduleItemType.RESTAURANT)),
+    )
 
 
 def _diversity_group(candidate: ScoredCandidate) -> str:
