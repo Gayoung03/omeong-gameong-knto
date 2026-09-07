@@ -1,4 +1,4 @@
-from scripts.audit_category_pollution import proposed_target
+from scripts.audit_category_pollution import CONFIRMED_CORRECTIONS, proposed_target
 
 
 def test_accommodation_keywords_map_to_accommodation() -> None:
@@ -27,3 +27,10 @@ def test_accommodation_keyword_wins_over_cafe() -> None:
 def test_plain_name_has_no_proposal() -> None:
     assert proposed_target("협재해수욕장") is None
     assert proposed_target("사려니숲길") is None
+
+
+def test_confirmed_corrections_targets_are_valid() -> None:
+    names = [name for name, _ in CONFIRMED_CORRECTIONS]
+    assert names == ["성산풀하우스", "이리로스테이", "바다스케치", "제주에코스위츠", "심바카레"]
+    valid = {"accommodation", "cafe", "restaurant"}
+    assert all(target in valid for _, target in CONFIRMED_CORRECTIONS)
