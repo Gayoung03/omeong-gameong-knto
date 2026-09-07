@@ -231,6 +231,8 @@ def test_여행_상세에_빈_슬롯과_후보_슬롯요약을_내려준다(
     client: TestClient, db: Session, trip: Route
 ) -> None:
     items = sorted(_day_of(trip).items, key=lambda route_item: route_item.sort_order)
+    # 첫 항목은 앵커처럼(stay_minutes=0) 만들어 slotSummary 집계에서 빠지는지 본다.
+    items[0].stay_minutes = 0
     # 마지막 항목을 빈 저녁 슬롯으로 바꾼다(place·시각 NULL, slot_status unfilled).
     unfilled = items[-1]
     unfilled.place_id = None
@@ -274,9 +276,10 @@ def test_여행_상세에_빈_슬롯과_후보_슬롯요약을_내려준다(
     assert candidate["name"] == "확인 필요 식당"
     assert candidate["requiresVerification"] is True
     assert candidate["recommendationScore"] is None
+    # 앵커(items[0], stay_minutes=0)는 집계에서 빠진다 → 방문 슬롯 2개만 센다.
     assert body["slotSummary"] == {
-        "total": 3,
-        "filled": 2,
+        "total": 2,
+        "filled": 1,
         "needsVerification": 0,
         "unfilled": 1,
     }

@@ -651,11 +651,18 @@ def _fill_computed(
 
 
 def _slot_summary(db: Session, route_id: uuid.UUID) -> RouteSlotSummary:
-    """route_items.slot_status 집계(계산값). 앵커 포함 모든 항목을 센다."""
+    """방문 슬롯의 slot_status 집계(계산값). 출발지·숙소 앵커는 제외한다.
+
+    앵커는 _save_anchor 가 stay_minutes=0 으로 저장하므로 stay_minutes 로 걸러낸다
+    (빈 슬롯은 stay_minutes NULL 이라 포함).
+    """
     rows = db.execute(
         select(RouteItem.slot_status, func.count())
         .join(RouteDay, RouteDay.id == RouteItem.route_day_id)
-        .where(RouteDay.route_id == route_id)
+        .where(
+            RouteDay.route_id == route_id,
+            RouteItem.stay_minutes.is_(None) | (RouteItem.stay_minutes > 0),
+        )
         .group_by(RouteItem.slot_status)
     ).all()
     counts = {status: count for status, count in rows}
