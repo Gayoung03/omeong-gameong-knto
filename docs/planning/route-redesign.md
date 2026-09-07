@@ -272,7 +272,7 @@ weather_api, internal`. 후보: `jeju_open_data`. **출처 목록 확정 후 추
 - 마이그레이션은 **하나로 묶지 않는다.** ① `route_items.slot_status` + `route_item_candidates`
   ② `pets` + `route_request_pets` ③ `places.cuisine` 세 개로 나눠 각 Phase에 맞춘다.
 - 실서비스 DB(Railway)와 팀 RDS 양쪽 적용은 기존 배치 관례를 따른다.
-- **적용 시 백필**: Phase 5 이전에 만든 `route_requests.applied_weights`는 `weather`가 0.15(옛 기본값)라 재생성 시 `indoor_bias`가 잘못 켜진다. 마이그레이션 적용 때 기존 행의 `weather`를 0으로 백필한다(팀 RDS 2건).
+- **데이터 마이그레이션 `a1f5c9d3e7b2`(Phase 5)**: Phase 5 이전에 만든 `route_requests.applied_weights`는 `weather`가 0.15(옛 기본값)라 재생성 시 `indoor_bias`가 잘못 켜진다. 마이그레이션이 기존 행을 `healing`이면 0.10, 그 외 0으로 바꾸고 6키 합이 1이 되게 재정규화한다(downgrade는 no-op). 변환 로직은 마이그레이션 파일 안에 복사돼 앱 코드와 독립이다.
 
 ---
 
