@@ -7,16 +7,21 @@ TMAP 캐시가 없거나 호출 상한을 넘겼을 때, 또는 상세 응답에
 실측 38구간(TMAP 12 + 캐시 26)에서 평균 33.7% 빗나갔다 — 3km 를 8분으로 봤지만
 실제는 17분이었다. 아래 식은 같은 데이터에서 17.1% 로 줄었다.
 
-- 차량: 고정 7분 + 직선거리/600(≈36km/h 실효). 직선 경로가 한라산 정상 반경 10km
-  안을 지나면 횡단·산길 도로배율(실측 1.46~1.73)을 반영해 ×1.15. 거리는 직선×1.35
-  (해안 1.11~1.17, 횡단 최대 1.73 사이의 절충).
+- 차량: 고정 7분 + 직선거리/600(≈36km/h 실효). 거리는 직선×1.35(해안 1.11~1.17,
+  횡단 최대 1.73 사이의 절충).
 - 도보: 직선×1.3 / 75(≈4.5km/h). 거리는 직선×1.3.
+
+한라산 횡단 배율(정상 반경 10km ×1.15)을 붙였다가 실측에서 뺐다: 전체 MAPE 가
+17.1%→19.0%, 장거리는 15.3%→21.3% 로 오히려 커졌다. 600m/min 이라는 보수적
+속도가 산길 우회를 이미 흡수해, 횡단 6구간도 배율 없이 추정/실제 0.89~1.17
+(평균 ≈1.03)이었다. 표본이 작아 "산이 무관"이 아니라 "이 식에서는 별도 배율이
+불필요"로 기록한다.
 """
 
 import math
 
 from app.db.models.enums import TransportType
-from app.recommend.common.geo import distance_to_segment_m, haversine_m
+from app.recommend.common.geo import haversine_m
 from app.recommend.tmap import RouteLeg
 
 Coordinate = tuple[float, float]
@@ -34,11 +39,6 @@ CAR_DISTANCE_FACTOR = 1.35
 # 도보 추정 상수.
 WALK_DISTANCE_FACTOR = 1.3
 WALK_METERS_PER_MINUTE = 75
-
-# 한라산 정상. 직선 경로가 이 반경 안을 지나면 횡단(산길) 배율을 적용한다.
-HALLASAN_SUMMIT: Coordinate = (33.3617, 126.5292)
-HALLASAN_CROSSING_RADIUS_M = 10_000.0
-CROSSING_DURATION_FACTOR = 1.15
 
 
 def estimate_leg(
@@ -60,21 +60,9 @@ def estimate_leg(
             source="estimate",
         )
 
-    minutes = CAR_FIXED_MINUTES + straight_m / CAR_METERS_PER_MINUTE
-    if crosses_hallasan(from_coord, to_coord):
-        minutes *= CROSSING_DURATION_FACTOR
     return RouteLeg(
         distance_m=round(straight_m * CAR_DISTANCE_FACTOR),
-        duration_min=math.ceil(minutes),
+        duration_min=math.ceil(CAR_FIXED_MINUTES + straight_m / CAR_METERS_PER_MINUTE),
         polyline=None,
         source="estimate",
-    )
-
-
-def crosses_hallasan(from_coord: Coordinate, to_coord: Coordinate) -> bool:
-    """직선 경로가 한라산 정상 반경 안을 지나는지(횡단·산길 배율 판정)."""
-
-    return (
-        distance_to_segment_m(HALLASAN_SUMMIT, from_coord, to_coord)
-        <= HALLASAN_CROSSING_RADIUS_M
     )

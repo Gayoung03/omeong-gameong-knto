@@ -9,7 +9,7 @@ import pytest
 
 from app.db.models.enums import TransportType
 from app.recommend.common.geo import haversine_m
-from app.recommend.travel_estimate import crosses_hallasan, estimate_leg
+from app.recommend.travel_estimate import estimate_leg
 
 # 실측 좌표 (위도, 경도).
 COORDS: dict[str, tuple[float, float]] = {
@@ -43,32 +43,13 @@ CALIBRATION: list[tuple[str, str, int]] = [
     ("함덕", "표선", 45),
 ]
 
-# 공항→중문은 빠른 평화로 고속 구간이라 한라산 반경 배율이 과추정된다(비율 1.48).
-# 그 한 구간만 상한을 넓혀 명시하고, 나머지는 0.75~1.40 안에 든다.
-CROSSING_OVERESTIMATE = {("제주공항", "중문"): 1.50}
-
-
 @pytest.mark.parametrize(("frm", "to", "tmap_min"), CALIBRATION)
 def test_car_estimate_ratio_within_bounds(frm: str, to: str, tmap_min: int) -> None:
+    # 배율 없는 7+직선/600 은 전 구간 0.75~1.40(현재 최대 1.36, 애월→성산).
     leg = estimate_leg(COORDS[frm], COORDS[to], TransportType.RENTAL_CAR)
     ratio = leg.duration_min / tmap_min
-    upper = CROSSING_OVERESTIMATE.get((frm, to), 1.40)
-    assert 0.75 <= ratio <= upper, f"{frm}->{to} ratio={ratio:.2f}"
+    assert 0.75 <= ratio <= 1.40, f"{frm}->{to} ratio={ratio:.2f}"
     assert leg.source == "estimate"
-
-
-def test_hallasan_crossing_detection() -> None:
-    assert crosses_hallasan(COORDS["제주공항"], COORDS["서귀포"]) is True
-    assert crosses_hallasan(COORDS["애월"], COORDS["성산일출봉"]) is False
-    assert crosses_hallasan(COORDS["김녕"], COORDS["성산일출봉"]) is False
-
-
-def test_crossing_adds_duration_over_non_crossing_of_same_distance() -> None:
-    # 같은 직선거리라도 한라산을 지나면 소요시간이 더 크다.
-    crossing = estimate_leg(COORDS["제주공항"], COORDS["서귀포"], TransportType.RENTAL_CAR)
-    assert crossing.duration_min > math.ceil(
-        7 + haversine_m(COORDS["제주공항"], COORDS["서귀포"]) / 600
-    )
 
 
 def test_walk_uses_walk_factor_and_speed() -> None:
