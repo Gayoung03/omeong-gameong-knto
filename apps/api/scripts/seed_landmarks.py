@@ -300,18 +300,243 @@ def run_revert(db: Session, path: Path) -> int:
     return 0
 
 
+# --- 기존 행 정책 갱신(--update-existing) --------------------------------------
+
+# 정책 갱신 JSON 에서 받아 그대로 덮어쓰는 선택 컬럼. policy_type·source·reliability·
+# verified_at 은 아래에서 항상 설정한다.
+_UPDATE_OPTIONAL_COLUMNS = (
+    "leash_required",
+    "carrier_required",
+    "food_area_allowed",
+    "notes",
+    "caution_note",
+    "source_url",
+    "allowed_sizes",
+)
+
+
+def validate_updates(updates: list[dict]) -> list[ValidationError]:
+    """정책 갱신 항목 검증 — 하나라도 실패하면 전체 거부."""
+    policy_values = {policy.value for policy in PetPolicyType}
+    errors: list[ValidationError] = []
+    for update in updates:
+        name = str(update.get("name") or "?")
+        if not update.get("name"):
+            errors.append(ValidationError(name, "name 이 비어 있습니다"))
+        policy = update.get("pet_policy") or {}
+        if not policy.get("source_url"):
+            errors.append(ValidationError(name, "pet_policy.source_url 이 없습니다"))
+        if policy.get("policy_type") not in policy_values:
+            errors.append(
+                ValidationError(name, f"policy_type 이 enum 밖입니다: {policy.get('policy_type')}")
+            )
+    return errors
+
+
+def policy_column_values(policy: dict) -> dict:
+    """정책 JSON → place_pet_policies 컬럼 값. source·reliability 는 항상 internal/90."""
+    values: dict = {
+        "policy_type": PetPolicyType(policy["policy_type"]),
+        "source": DataProvider.INTERNAL,
+        "reliability_score": Decimal(POLICY_RELIABILITY),
+    }
+    for key in _UPDATE_OPTIONAL_COLUMNS:
+        if key in policy:
+            values[key] = policy[key]
+    if "max_weight_kg" in policy:
+        max_weight = policy["max_weight_kg"]
+        values["max_weight_kg"] = Decimal(str(max_weight)) if max_weight is not None else None
+    if "verified_at" in policy:
+        values["verified_at"] = _parse_verified_at(policy["verified_at"])
+    return values
+
+
+def _latest_policy(db: Session, place_id: uuid.UUID) -> PlacePetPolicy | None:
+    return db.scalar(
+        select(PlacePetPolicy)
+        .where(PlacePetPolicy.place_id == place_id)
+        .order_by(PlacePetPolicy.verified_at.desc().nullslast(), PlacePetPolicy.id)
+        .limit(1)
+    )
+
+
+def _serialize_policy(column: str, value: object) -> object:
+    if value is None:
+        return None
+    if column in {"policy_type", "source"}:
+        return value.value if hasattr(value, "value") else value
+    if column in {"max_weight_kg", "reliability_score"}:
+        return str(value)
+    if column == "verified_at":
+        return value.isoformat()
+    return value
+
+
+def _deserialize_policy(column: str, value: object) -> object:
+    if value is None:
+        return None
+    if column == "policy_type":
+        return PetPolicyType(value)
+    if column == "source":
+        return DataProvider(value)
+    if column in {"max_weight_kg", "reliability_score"}:
+        return Decimal(str(value))
+    if column == "verified_at":
+        return datetime.fromisoformat(value)
+    return value
+
+
+def write_update_snapshot(snapshot: list[dict]) -> Path:
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    path = Path(f"landmark-updates-{stamp}.json")
+    path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def run_update(db: Session, path: Path, *, apply: bool) -> int:
+    target = describe_target()
+    print(f"대상 DB : {target}", flush=True)
+    if not path.exists():
+        print(f"입력 파일이 없습니다: {path}")
+        return 1
+
+    updates = load_items(path)
+    errors = validate_updates(updates)
+    if errors:
+        print(f"\n검증 실패 {len(errors)}건 — 아무것도 바꾸지 않습니다:")
+        for error in errors:
+            print(f"  {error.name}: {error.reason}")
+        return 1
+
+    # 전체 Place ORM 이 아니라 필요한 컬럼만 읽는다 — 아직 마이그레이션 안 된 컬럼이
+    # 있어도 dry-run 이 돌아가도록.
+    active = {
+        name: (place_id, category)
+        for place_id, name, category in db.execute(
+            select(Place.id, Place.name, Place.category).where(Place.is_active.is_(True))
+        ).all()
+    }
+    plans: list[tuple[uuid.UUID, str, str, PlacePetPolicy | None, dict, str | None]] = []
+    not_found: list[str] = []
+    for update in updates:
+        entry = active.get(update["name"])
+        if entry is None:
+            not_found.append(update["name"])
+            continue
+        place_id, category = entry
+        values = policy_column_values(update["pet_policy"])
+        category_fix = update.get("category_fix")
+        plans.append(
+            (place_id, update["name"], category, _latest_policy(db, place_id), values, category_fix)
+        )
+
+    print(f"\n갱신 대상 : {len(plans)}곳  (이름으로 못 찾음 {len(not_found)}곳)")
+    for name in not_found:
+        print(f"  미발견  {name}")
+    for _place_id, name, category, existing, values, category_fix in plans:
+        action = "정책 덮어쓰기" if existing is not None else "정책 신규 생성"
+        category_note = (
+            f", category {category}→{category_fix}"
+            if category_fix and category_fix != category
+            else ""
+        )
+        policy_type = values["policy_type"].value
+        print(f"  {name}: {action} (policy_type={policy_type}){category_note}")
+
+    if not plans:
+        print("\n갱신할 것이 없습니다.")
+        return 0
+    if not apply:
+        print("\n확인만 했습니다. 실제로 바꾸려면 --apply 를 붙이세요.")
+        return 0
+    if is_shared_db() and not confirm(target, len(plans)):
+        print("\n취소했습니다.")
+        return 1
+
+    snapshot: list[dict] = []
+    for place_id, _name, category, existing, values, category_fix in plans:
+        entry = {"__place_id__": str(place_id), "__category__": category}
+        if existing is not None:
+            entry["__policy_id__"] = str(existing.id)
+            entry["__created__"] = False
+            for column in values:
+                entry[column] = _serialize_policy(column, getattr(existing, column))
+            for column, value in values.items():
+                setattr(existing, column, value)
+        else:
+            created = PlacePetPolicy(place_id=place_id, **values)
+            db.add(created)
+            db.flush()
+            entry["__policy_id__"] = str(created.id)
+            entry["__created__"] = True
+        if category_fix and category_fix != category:
+            place = db.get(Place, place_id)
+            if place is not None:
+                place.category = category_fix
+        snapshot.append(entry)
+    db.commit()
+    path_out = write_update_snapshot(snapshot)
+    print(f"\n{len(plans)}곳을 갱신했습니다.")
+    print(f"되돌릴 때 쓸 목록 : {path_out}")
+    return 0
+
+
+def run_update_revert(db: Session, path: Path) -> int:
+    if not path.exists():
+        print(f"파일이 없습니다: {path}")
+        return 1
+    snapshot = json.loads(path.read_text(encoding="utf-8"))
+    target = describe_target()
+    print(f"대상 DB : {target}", flush=True)
+    print(f"되돌릴 갱신 : {len(snapshot)}건 ({path})", flush=True)
+    if is_shared_db() and not confirm(target, len(snapshot)):
+        print("\n취소했습니다.")
+        return 1
+    for entry in snapshot:
+        place = db.get(Place, uuid.UUID(entry["__place_id__"]))
+        if place is not None:
+            place.category = entry["__category__"]
+        policy_id = uuid.UUID(entry["__policy_id__"])
+        if entry["__created__"]:
+            db.execute(delete(PlacePetPolicy).where(PlacePetPolicy.id == policy_id))
+            continue
+        row = db.get(PlacePetPolicy, policy_id)
+        if row is not None:
+            for column, value in entry.items():
+                if column.startswith("__"):
+                    continue
+                setattr(row, column, _deserialize_policy(column, value))
+    db.commit()
+    print(f"\n{len(snapshot)}건을 되돌렸습니다.")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--in", dest="path", type=Path, default=Path(DATA_DEFAULT))
-    parser.add_argument("--apply", action="store_true", help="실제로 넣는다. 없으면 검증·조회만.")
     parser.add_argument(
-        "--revert", type=Path, metavar="파일", help="--apply 가 남긴 목록의 장소를 삭제한다."
+        "--update-existing",
+        dest="update_path",
+        type=Path,
+        metavar="파일",
+        help="이름으로 기존 활성 행을 찾아 정책을 교체(+category_fix)한다.",
+    )
+    parser.add_argument("--apply", action="store_true", help="실제로 반영한다. 없으면 검증·조회만.")
+    parser.add_argument(
+        "--revert",
+        type=Path,
+        metavar="파일",
+        help="시드(.txt)면 장소 삭제, 갱신 스냅샷(.json)이면 정책·카테고리를 되돌린다.",
     )
     args = parser.parse_args()
 
     with SessionLocal() as db:
         if args.revert:
+            if args.revert.suffix == ".json":
+                return run_update_revert(db, args.revert)
             return run_revert(db, args.revert)
+        if args.update_path is not None:
+            return run_update(db, args.update_path, apply=args.apply)
         return run_seed(db, args.path, apply=args.apply)
 
 

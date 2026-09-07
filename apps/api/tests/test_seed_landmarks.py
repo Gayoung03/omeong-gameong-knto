@@ -1,11 +1,16 @@
+from decimal import Decimal
+
 import pytest
 
+from app.db.models.enums import DataProvider, PetPolicyType
 from app.integrations.maps.kakao import GeocodedAddress
 from scripts.seed_landmarks import (
     ExistingPlace,
     duplicate_reason,
+    policy_column_values,
     resolve_coord,
     validate,
+    validate_updates,
 )
 
 VALID_TAGS = frozenset(
@@ -111,3 +116,35 @@ def test_existing_coords_skip_geocoding() -> None:
     )
     assert geocoded is False
     assert coord == (33.4241, 126.9296)
+
+
+# --- 기존 행 정책 갱신(--update-existing) ------------------------------------
+
+
+def test_policy_column_values_maps_and_forces_internal() -> None:
+    values = policy_column_values(
+        {
+            "policy_type": "partial_allowed",
+            "leash_required": True,
+            "allowed_sizes": ["small"],
+            "max_weight_kg": 13,
+            "caution_note": "소형견",
+            "source_url": "https://x",
+            "verified_at": "2026-09-08",
+        }
+    )
+    assert values["policy_type"] == PetPolicyType.PARTIAL_ALLOWED
+    assert values["source"] == DataProvider.INTERNAL
+    assert values["reliability_score"] == Decimal(90)
+    assert values["leash_required"] is True
+    assert values["allowed_sizes"] == ["small"]
+    assert values["max_weight_kg"] == Decimal("13")
+    assert values["verified_at"].isoformat().startswith("2026-09-08")
+    # 주어지지 않은 선택 컬럼은 넣지 않는다(덮어쓰지 않음).
+    assert "carrier_required" not in values
+
+
+def test_validate_updates_rejects_missing_source_url() -> None:
+    update = {"name": "천지연폭포", "pet_policy": {"policy_type": "outdoor_only"}}
+    errors = validate_updates([update])
+    assert any("source_url" in error.reason for error in errors)
