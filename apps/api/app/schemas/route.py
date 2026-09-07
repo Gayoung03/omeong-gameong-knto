@@ -6,6 +6,7 @@ from datetime import date, datetime
 from pydantic import Field, computed_field, model_validator
 
 from app.db.models.enums import (
+    PetEnergyLevel,
     PetPolicyType,
     PetSize,
     PetSpecies,
@@ -443,6 +444,13 @@ class RouteRequestStayCreate(APISchema):
         return self
 
 
+class RouteRequestPetInput(APISchema):
+    """이번 여행에 데려갈 반려동물과 이번 여행 컨디션(energyLevel)."""
+
+    pet_id: uuid.UUID
+    energy_level: PetEnergyLevel | None = None
+
+
 class RouteRequestCreate(APISchema):
     title: str | None = Field(default=None, max_length=150)
     start_at: datetime
@@ -457,6 +465,8 @@ class RouteRequestCreate(APISchema):
     user_criteria: list[str] = Field(default_factory=list)
     request_text: str | None = None
     pet_ids: list[uuid.UUID] = Field(default_factory=list)
+    #: 반려동물별 이번 여행 컨디션. petIds 와 함께 오면 pets 가 우선(routes.md).
+    pets: list[RouteRequestPetInput] = Field(default_factory=list)
     stays: list[RouteRequestStayCreate] = Field(default_factory=list)
 
     @model_validator(mode="after")
