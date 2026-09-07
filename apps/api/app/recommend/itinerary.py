@@ -507,6 +507,9 @@ def _best_candidate(
             if end_coord is not None
             else 0
         )
+        # 그날 마지막 숙소 복귀 구간도 같은 상한으로 거른다(가장 피곤한 구간).
+        if max_travel_min is not None and return_min > max_travel_min:
+            continue
         visit = _fit_visit(
             candidate,
             max(current_time + timedelta(minutes=rest_min + travel_min), not_before)

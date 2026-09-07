@@ -691,3 +691,25 @@ def test_travel_limit_relaxes_when_no_candidate_within_limit() -> None:
 
     placed = [item.candidate.place_id for item in result.days[0].items]
     assert far.place_id in placed
+
+
+def test_travel_limit_applies_to_return_leg_to_stay() -> None:
+    # 시작점엔 가깝지만 그날 숙소 복귀가 상한을 넘는 고득점 후보는 제외되고,
+    # 시작·숙소 양쪽 상한 안에 드는 후보가 먼저 배치된다.
+    stay = RouteAnchor(name="숙소", coord=(33.72, 126.53), item_type=ScheduleItemType.ACCOMMODATION)
+    near = _candidate(0.5, lat=33.61, lng=126.53)
+    far_from_stay = _candidate(0.9, lat=33.5, lng=126.53)
+    car_sick_rule = effective_rule(TripPace.NORMAL, [PetProfile(car_sickness=True)])
+    request = BuildRequest(
+        start_at=datetime(2026, 8, 31, 9, tzinfo=KST),
+        end_at=datetime(2026, 8, 31, 19, tzinfo=KST),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        start_coord=(33.5, 126.53),
+        pace_rule=car_sick_rule,
+        day_end_anchors={date(2026, 8, 31): stay},
+    )
+
+    result = build([near, far_from_stay], request, _fast_route)
+
+    assert result.days[0].items[0].candidate.place_id == near.place_id
