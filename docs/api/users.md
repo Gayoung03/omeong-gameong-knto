@@ -344,6 +344,9 @@ GET /api/v1/pets?includeDeleted=true
       "age": 5,
       "imageUrl": "https://...",
       "healthNotes": null,
+      "activityLevel": null,
+      "sociability": null,
+      "carSickness": null,
       "isPrimary": true,
       "status": "active"
     }
@@ -361,6 +364,11 @@ GET /api/v1/pets?includeDeleted=true
 `speciesDetail`은 `species`가 `other`일 때만 값이 있고, 그 외에는 항상 `null`입니다
 (DB CHECK 제약 — 문서 상단 참고).
 
+`activityLevel`·`sociability`·`carSickness`는 **루트 추천의 반려동물 중심 개인화**에 쓰는 여행 특성입니다
+**[재설계 2026-09-07]** ([`route-redesign.md`](../planning/route-redesign.md)). `activityLevel`·`sociability`는
+`low` `normal` `high`, `carSickness`는 `true`/`false`/`null`(모름)입니다. 셋 다 `null`이면 추천 규칙을
+적용하지 않습니다. `healthNotes`는 자유문이라 규칙에 쓰지 않습니다.
+
 ---
 
 ## POST /pets
@@ -376,7 +384,10 @@ GET /api/v1/pets?includeDeleted=true
   "weightKg": 4.2,
   "birthDate": "2021-05-03",
   "imageUrl": "https://...",
-  "healthNotes": "슬개골 주의"
+  "healthNotes": "슬개골 주의",
+  "activityLevel": "high",
+  "sociability": "normal",
+  "carSickness": false
 }
 ```
 
@@ -388,6 +399,9 @@ GET /api/v1/pets?includeDeleted=true
 | `size` | — | `small` `medium` `large` |
 | `weightKg` | — | 0 이상 |
 | `birthDate` | — | 날짜 (`2021-05-03`) |
+| `activityLevel` | — | `low` `normal` `high` **[재설계 2026-09-07]** |
+| `sociability` | — | `low` `normal` `high` |
+| `carSickness` | — | `true` `false`. 생략하면 `null`(모름) |
 
 "기타" 선택 시 요청 예시입니다.
 
@@ -482,3 +496,4 @@ API는 **404로 통일**합니다. 삭제된 리소스는 조회되지 않는다
 | 2026-08-15 | 탈퇴 후 같은 이메일 재가입을 **차단**으로 확정. 남은 확인 필요는 탈퇴 행 보관 기간뿐 |
 | 2026-08-18 | 탈퇴 계정 보관 **30일** 확정(이후 이메일·닉네임 익명화). `preferredTags`를 **영문 코드**로 확정하고 매핑표 추가. 태그 목록 자체는 추천 방식 확정 시 재검토로 보류 |
 | 2026-09-02 | **탈퇴 시 챗봇 대화·메시지 즉시 물리 삭제 확정** (ai-io-column-design 8.3-2). 회원 soft delete 와 같은 트랜잭션에서 `chat_conversations` 하드 삭제, 다른 데이터는 불변 |
+| 2026-09-07 | 루트 추천 재설계 반영 ([`route-redesign.md`](../planning/route-redesign.md)) — `pets`에 여행 특성 `activityLevel` `sociability` `carSickness` 추가 (DB README "성격 태그 MVP 제외" 결정 개정). 이번 여행 컨디션은 [`routes.md`](./routes.md)의 `pets[].energyLevel` |
