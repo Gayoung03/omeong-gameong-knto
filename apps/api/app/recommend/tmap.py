@@ -5,6 +5,7 @@ import math
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import Literal
 
 import httpx
 from sqlalchemy import delete, select
@@ -33,6 +34,8 @@ class RouteLeg:
     distance_m: int
     duration_min: int
     polyline: str | None
+    # 이 구간 값의 출처. TMAP 실호출 상한은 "tmap"만 센다(캐시·추정 제외).
+    source: Literal["tmap", "cache", "estimate"] = "tmap"
 
 
 def get_route(
