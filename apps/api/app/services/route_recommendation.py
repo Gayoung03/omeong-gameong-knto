@@ -545,7 +545,20 @@ def resync_item_times(
     if not ordered_items or anchor_starts_at is None:
         return
 
-    first = ordered_items[0]
+    # 앞쪽 빈 슬롯은 시각 NULL 로 두고(계약: unfilled 는 시각 없음), 첫 채워진 항목을
+    # 앵커 시각에 고정한다. 사용자가 빈 슬롯을 맨 앞으로 옮겨도 시각이 생기지 않게 한다.
+    index = 0
+    while (
+        index < len(ordered_items)
+        and ordered_items[index].slot_status == RouteItemSlotStatus.UNFILLED
+    ):
+        ordered_items[index].starts_at = None
+        ordered_items[index].ends_at = None
+        index += 1
+    if index >= len(ordered_items):
+        return
+
+    first = ordered_items[index]
     first.starts_at = anchor_starts_at
     # stay_minutes 가 0 이면(숙소·출발지 앵커) ends_at 을 안 쓴다 — 0 분을 더하면
     # ends_at == starts_at 이 되어 DB CheckConstraint(date_order, "ends_at > starts_at")
@@ -558,7 +571,7 @@ def resync_item_times(
         route,
         first.ends_at or anchor_starts_at,
         _route_item_coord(db, first),
-        ordered_items[1:],
+        ordered_items[index + 1 :],
     )
 
 

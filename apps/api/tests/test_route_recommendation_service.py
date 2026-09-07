@@ -27,6 +27,7 @@ from app.services.route_recommendation import (
     _paired_stay_anchor,
     _slot_status_of,
     resolve_location,
+    resync_item_times,
 )
 
 KST = timezone(timedelta(hours=9))
@@ -35,6 +36,45 @@ KST = timezone(timedelta(hours=9))
 def test_slot_status_maps_tier() -> None:
     assert _slot_status_of(CandidateTier.VERIFIED) == RouteItemSlotStatus.FILLED
     assert _slot_status_of(CandidateTier.NEEDS_CHECK) == RouteItemSlotStatus.NEEDS_VERIFICATION
+
+
+def test_resync_keeps_leading_unfilled_null_and_anchors_first_filled() -> None:
+    anchor = datetime(2026, 9, 10, 10, tzinfo=KST)
+    route = SimpleNamespace(
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        end_at=datetime(2026, 9, 10, 22, tzinfo=KST),
+    )
+    unfilled = SimpleNamespace(
+        place_id=None,
+        latitude=None,
+        longitude=None,
+        stay_minutes=None,
+        starts_at=anchor,  # 잘못 들어간 시각이 지워져야 한다
+        ends_at=None,
+        slot_status=RouteItemSlotStatus.UNFILLED,
+    )
+    filled = SimpleNamespace(
+        place_id=None,
+        latitude=Decimal("33.45"),
+        longitude=Decimal("126.31"),
+        stay_minutes=60,
+        starts_at=None,
+        ends_at=None,
+        slot_status=RouteItemSlotStatus.FILLED,
+    )
+
+    resync_item_times(
+        FakeSession(),  # type: ignore[arg-type]
+        route,  # type: ignore[arg-type]
+        [unfilled, filled],
+        anchor,
+    )
+
+    assert unfilled.starts_at is None
+    assert unfilled.ends_at is None
+    assert filled.starts_at == anchor
+    assert filled.ends_at == anchor + timedelta(minutes=60)
 
 
 class FakeSession:
