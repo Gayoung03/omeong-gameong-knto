@@ -261,4 +261,5 @@ def _leg_from_cache(cache: RouteCalculationCache) -> RouteLeg:
         distance_m=cache.distance_meters,
         duration_min=cache.duration_minutes,
         polyline=cache.polyline,
+        source="cache",
     )

@@ -153,7 +153,9 @@ def build(
                 )
                 tmap_available = False
                 return estimate_leg(origin, destination, request.transport)
-            route_calls += 1
+            # 캐시 적중·추정은 상한에서 제외하고 실제 TMAP 호출만 센다.
+            if leg.source == "tmap":
+                route_calls += 1
             return leg
 
         start_anchor = request.day_start_anchors.get(route_date)

@@ -144,6 +144,31 @@ def test_tmap_call_cap_resets_each_day() -> None:
     assert result.days[1].items
 
 
+def test_cap_counts_only_real_tmap_calls_not_cache_hits() -> None:
+    # 캐시 적중 레그(source="cache")는 상한에 세지 않는다. 20회를 넘겨도 상한에
+    # 안 걸려, (여기선 모두 시간 초과로 탈락하는) 후보 전체를 끝까지 시도한다.
+    request = BuildRequest(
+        start_at=datetime(2026, 8, 31, 9, tzinfo=KST),
+        end_at=datetime(2026, 8, 31, 16, tzinfo=KST),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        start_coord=(33.5, 126.53),
+    )
+    candidates = [
+        _candidate(0.9 - index / 1000, lat=33.5 + index / 5000) for index in range(25)
+    ]
+    calls: list[tuple] = []
+
+    def cache_route(*args):
+        calls.append(args)
+        return RouteLeg(distance_m=100_000, duration_min=600, polyline=None, source="cache")
+
+    result = build(candidates, request, cache_route)
+
+    assert len(calls) == 25  # > MAX_TMAP_CALLS_PER_DAY 인데도 상한에 안 걸림
+    assert result.days[0].items == ()
+
+
 def test_tmap_error_disables_real_calls_for_whole_trip(caplog) -> None:
     # 첫 호출이 TMapError 를 내면 여행 전체에서 실제 호출을 끄고 추정으로 진행한다.
     request = BuildRequest(

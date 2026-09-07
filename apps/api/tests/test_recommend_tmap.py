@@ -138,7 +138,7 @@ def test_get_route_returns_valid_cache_without_calling_tmap(
         TransportType.RENTAL_CAR,
     )
 
-    assert leg == RouteLeg(distance_m=1200, duration_min=7, polyline=None)
+    assert leg == RouteLeg(distance_m=1200, duration_min=7, polyline=None, source="cache")
     assert db.added == []
 
 
@@ -190,7 +190,7 @@ def test_get_cached_route_returns_latest_leg_without_requesting_tmap() -> None:
         TransportType.RENTAL_CAR,
     )
 
-    assert leg == RouteLeg(distance_m=3400, duration_min=12, polyline="[]")
+    assert leg == RouteLeg(distance_m=3400, duration_min=12, polyline="[]", source="cache")
 
 
 def test_get_cached_route_returns_none_when_cache_is_missing() -> None:
