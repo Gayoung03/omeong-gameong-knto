@@ -546,7 +546,8 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
           "moveToNext": {
             "transport": "rental_car",
             "distanceMeters": 8200,
-            "durationMinutes": 17
+            "durationMinutes": 17,
+            "isEstimated": false
           }
         },
         {
@@ -589,8 +590,9 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
 | --- | --- |
 | `creationType` | `recommended` \| `manual`. `manual`이면 `pets`가 `route_pets` 기준이고 재생성이 불가합니다 |
 | `place` | `place_id`가 있을 때. 직접 입력한 장소면 `null`이고 `customPlaceName`에 이름이 들어감 |
-| `moveToNext` | 마지막 항목이면 `null`. `route_moves` + TMAP 계산 결과 |
-| `distanceMeters` `durationMinutes` | **DB에 영구 저장하지 않습니다.** `route_calculation_cache`에 최대 24시간만 캐시하고 만료되면 다시 계산합니다 |
+| `moveToNext` | 마지막 항목이면 `null`. `route_moves` + TMAP 계산 결과. **[개정 2026-09-07]** 캐시가 없으면(추정으로 만든 구간, 24시간 만료) 실측 보정 추정값으로 채우고 `isEstimated: true`를 붙임. 빈 슬롯 앞 항목과 추정을 지원하지 않는 이동수단(`public_transport` `ferry` `airplane`)만 `null` |
+| `distanceMeters` `durationMinutes` | **DB에 영구 저장하지 않습니다.** `route_calculation_cache`에 최대 24시간만 캐시합니다. 캐시가 없으면 외부 API를 부르지 않고 추정값(`isEstimated: true`)을 내립니다 |
+| `isEstimated` | 계산값. 추정식은 차량 **고정 7분 + 직선거리 ÷ 600m/min**, 도보 직선×1.3 ÷ 75m/min. TMAP 실측 38구간으로 보정해 평균 오차 17% (이전 직선÷500m/min 은 34%). 한라산 횡단 배율은 실측상 오차를 키워 두지 않음. 같은 식을 일정 조립의 후보 선택과 TMAP 상한·오류 폴백에도 씀 |
 | `weather` | `route_days.weather_snapshot_id` 조인. 없으면 `null` |
 | `isSelected` | 추천 항목 중 사용자가 뺀 것을 구분. 기본 `true` |
 | `slotStatus` | **[재설계 2026-09-07]** `filled` \| `needs_verification` \| `unfilled`. `unfilled`면 `place`·시각이 `null`이고 `candidates`에 확인 필요 후보가 붙음. `needs_verification`이면 장소는 있지만 동반 여부가 미확인 — 앱은 "확인 필요" 라벨과 `place.phone`을 함께 보여줌 |
@@ -941,4 +943,4 @@ AI 추천 후보 또는 사용자가 직접 고른 DB 장소로 일정 항목을
 | 2026-08-18 | 미정 2건 확정 — 폴링 **2초 간격 / 3분 타임아웃**, `failureReason`은 컬럼 추가 없이 응답에만, 수동 여행 재생성은 **`422`**. 수동 생성 엔드포인트는 **보류 유지**하되 DB 준비 완료 사실과 유력안을 정리 |
 | 2026-09-02 | `requestText` write-only 해소 (ai-io-column-design 8.3-3) — 백그라운드 생성 단계에서 LLM 으로 태그를 추출해 `preferredTags`와 병합(이번 생성 한정, 요청 행 불변). `pace`는 스키마상 "미지정" 상태가 없어 병합 대상에서 제외. 실패 시 무시 |
 | 2026-09-07 | **루트 추천 재설계 반영** ([`route-redesign.md`](../planning/route-redesign.md)) — 부분 성공(빈 슬롯 `slotStatus`, `slotSummary`, `failed`는 전일 공백일 때만), 슬롯별 대안 `candidates`, 후보 3등급(확실/확인 필요/불가), 날씨를 하루 구성 규칙으로, 반려동물 중심 개인화(`pets[].energyLevel`, 반려 점수에 반려동물 반영), `recommendationReason` 의미 변경, `place.petPolicy`·`cuisine`·`phone` 노출, `nearbyAnimalHospitals`, `regenerate` 미구현 명시. "식당 부족 시 실패" 규칙 개정 |
-| 2026-09-07 | Phase 1 검수 반영 (#263) — `weather` 가중치는 Phase 5 전까지 **0.10 유지**(healing 프리셋 무효화 방지), `preferredTags`는 라벨·코드 모두 받아 **코드로 저장**함을 명시. TMAP 호출은 하루 12회 상한, 오류 시 여행 단위로 직선거리 추정 폴백 |
+| 2026-09-07 | Phase 1 검수 반영 (#263) — `weather` 가중치는 Phase 5 전까지 **0.10 유지**(healing 프리셋 무효화 방지), `preferredTags`는 라벨·코드 모두 받아 **코드로 저장**함을 명시. TMAP 호출은 하루 12회 상한(실제 호출만 카운트, 캐시 적중 제외), 오류 시 여행 단위로 추정 폴백. 추정식을 실측 기반(7분 + 직선÷600m/min)으로 교체하고 상세 응답 `moveToNext`에 `isEstimated` 추가 — 캐시 만료 후 이동 정보가 사라지던 문제 해소 |
