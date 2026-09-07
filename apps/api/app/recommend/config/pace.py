@@ -39,25 +39,32 @@ SENIOR_AGE_YEARS = 8
 CAR_SICKNESS_MAX_TRAVEL_MIN = 40
 
 
+def _is_slow_pet(pet: PetProfile) -> bool:
+    """이 반려동물 때문에 하루를 늦춰야 하는가.
+
+    나이는 노령이면 감속. 활동량은 **이번 여행 컨디션(energy_level)이 평소
+    활동량(activity_level)을 덮어쓴다**(계약 §3.4: energy_level > activity_level >
+    미적용). 그래서 평소 저활동이어도 이번에 컨디션이 좋으면 감속하지 않는다.
+    """
+    if pet.age_years is not None and pet.age_years >= SENIOR_AGE_YEARS:
+        return True
+    effective_level = pet.energy_level or pet.activity_level
+    return effective_level in (PetEnergyLevel.LOW, PetActivityLevel.LOW)
+
+
 def effective_rule(pace: TripPace, pets: Sequence[PetProfile]) -> PaceRule:
     """반려동물 나이·활동량·이번 컨디션·차멀미를 반영한 하루 구성 규칙.
 
-    - 만 8세 이상 **또는** activity_level=low **또는** energy_level=low 인 반려동물이
-      하나라도 있으면 하루 장소 수 −1(최소 2)·휴식 +15.
+    - 노령(만 8세 이상)이거나 유효 활동량(energy_level or activity_level)이 low 인
+      반려동물이 하나라도 있으면 하루 장소 수 −1(최소 2)·휴식 +15.
     - car_sickness 인 반려동물이 하나라도 있으면 구간 이동시간 상한 40분·휴식 +10.
-    - high energy 로 저하 조건이 없으면 변경 없음(1차). 반려동물이 없으면 PACE 표 그대로.
+    - 저하 조건이 없으면 변경 없음. 반려동물이 없으면 PACE 표 그대로.
     """
     rule: PaceRule = dict(PACE[pace.value])  # type: ignore[assignment]
     if not pets:
         return rule
 
-    slowed = any(
-        (pet.age_years is not None and pet.age_years >= SENIOR_AGE_YEARS)
-        or pet.activity_level == PetActivityLevel.LOW
-        or pet.energy_level == PetEnergyLevel.LOW
-        for pet in pets
-    )
-    if slowed:
+    if any(_is_slow_pet(pet) for pet in pets):
         rule["places_per_day"] = max(2, rule["places_per_day"] - 1)
         rule["rest_min"] += 15
     if any(pet.car_sickness for pet in pets):

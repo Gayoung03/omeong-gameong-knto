@@ -72,6 +72,26 @@ def test_high_energy_active_pet_keeps_base_day() -> None:
     assert rule["rest_min"] == PACE[TripPace.NORMAL]["rest_min"]
 
 
+def test_trip_energy_overrides_baseline_activity_level() -> None:
+    # 계약 §3.4: energy_level > activity_level. 평소 저활동이어도 이번 컨디션이
+    # 좋으면(HIGH) 감속하지 않고, 평소 활발해도 이번 컨디션이 나쁘면(LOW) 감속한다.
+    base = PACE[TripPace.NORMAL]
+
+    not_slowed = effective_rule(
+        TripPace.NORMAL,
+        [PetProfile(activity_level=PetActivityLevel.LOW, energy_level=PetEnergyLevel.HIGH)],
+    )
+    assert not_slowed["places_per_day"] == base["places_per_day"]
+    assert not_slowed["rest_min"] == base["rest_min"]
+
+    slowed = effective_rule(
+        TripPace.NORMAL,
+        [PetProfile(activity_level=PetActivityLevel.HIGH, energy_level=PetEnergyLevel.LOW)],
+    )
+    assert slowed["places_per_day"] == base["places_per_day"] - 1
+    assert slowed["rest_min"] == base["rest_min"] + 15
+
+
 def test_car_sickness_caps_travel_and_adds_rest() -> None:
     base = PACE[TripPace.NORMAL]
 
