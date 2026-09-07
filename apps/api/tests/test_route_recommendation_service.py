@@ -706,3 +706,24 @@ def test_generate_route_without_forecast_leaves_weather_null(
     assert day.weather_snapshot_id is None
     response = client.get(f"/api/v1/routes/{route.id}")
     assert response.json()["routeDays"][0]["weather"] is None
+
+
+def test_upsert_weather_snapshot_is_idempotent_on_region_and_date(db: Session) -> None:
+    # 같은 격자·날짜로 두 번 upsert 해도 행은 1개, 값은 갱신된다(ON CONFLICT).
+    coord = (33.49, 126.53)
+    route_date = datetime(2026, 9, 20, tzinfo=KST).date()
+    first = DayForecast(pop_max=20, tmax=25.0, tmin=20.0, hourly_tmp={15: 24.0})
+    second = DayForecast(pop_max=80, tmax=31.0, tmin=24.0, hourly_tmp={15: 29.0})
+    region = rr._weather_region(coord)
+
+    id_a = rr._upsert_weather_snapshot(db, region, coord, route_date, first)
+    id_b = rr._upsert_weather_snapshot(db, region, coord, route_date, second)
+    db.flush()
+
+    assert id_a == id_b
+    rows = list(
+        db.scalars(select(WeatherSnapshot).where(WeatherSnapshot.region == region))
+    )
+    assert len(rows) == 1
+    assert rows[0].precipitation_probability == 80  # 갱신됨
+    assert rows[0].condition == WeatherCondition.RAINY

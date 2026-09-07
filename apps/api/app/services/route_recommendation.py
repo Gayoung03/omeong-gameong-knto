@@ -7,6 +7,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import (
@@ -912,16 +913,15 @@ def _upsert_weather_snapshot(
 ) -> uuid.UUID:
     """그날 예보를 weather_snapshots 에 upsert 하고 id 를 돌려준다.
 
-    region 은 격자 키, forecast_at 은 그날 00:00 KST. UNIQUE(region, forecast_at) 충돌 시 갱신.
+    region 은 격자 키, forecast_at 은 그날 00:00 KST. 같은 격자·날짜를 동시에 생성하는
+    두 요청이 겹쳐도 SELECT→INSERT 는 UNIQUE(region, forecast_at) IntegrityError 로
+    정상 일정을 FAILED 로 만든다. 저장소 첫 ON CONFLICT 도입 — 원자적 upsert 로 막는다.
     """
     forecast_at = datetime.combine(route_date, time(0, 0), tzinfo=KST)
-    snapshot = db.scalar(
-        select(WeatherSnapshot).where(
-            WeatherSnapshot.region == region, WeatherSnapshot.forecast_at == forecast_at
-        )
-    )
     temperature = _representative_temp(forecast)
-    values = {
+    mutable = {
+        "latitude": Decimal(str(coord[0])),
+        "longitude": Decimal(str(coord[1])),
         "condition": _snapshot_condition(forecast),
         "temperature": None if temperature is None else Decimal(str(round(temperature, 1))),
         "min_temperature": (
@@ -933,21 +933,13 @@ def _upsert_weather_snapshot(
         "precipitation_probability": forecast.pop_max,
         "source_updated_at": datetime.now(KST),
     }
-    if snapshot is None:
-        snapshot = WeatherSnapshot(
-            id=uuid.uuid4(),
-            region=region,
-            latitude=Decimal(str(coord[0])),
-            longitude=Decimal(str(coord[1])),
-            forecast_at=forecast_at,
-            **values,
-        )
-        db.add(snapshot)
-    else:
-        for field_name, value in values.items():
-            setattr(snapshot, field_name, value)
-    db.flush()
-    return snapshot.id
+    statement = (
+        pg_insert(WeatherSnapshot)
+        .values(id=uuid.uuid4(), region=region, forecast_at=forecast_at, **mutable)
+        .on_conflict_do_update(index_elements=["region", "forecast_at"], set_=mutable)
+        .returning(WeatherSnapshot.id)
+    )
+    return db.execute(statement).scalar_one()
 
 
 def _day_anchors(
