@@ -24,6 +24,7 @@ from app.db.models import (
     WeatherSnapshot,
 )
 from app.db.models.enums import (
+    PetEnergyLevel,
     RouteItemSlotStatus,
     RouteStatus,
     ScheduleItemType,
@@ -115,8 +116,9 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     if request is None:
         raise RecommendationGenerationError("추천 요청을 찾지 못했습니다")
 
-    pets, stay_coords, start_coord = _request_inputs(db, request)
-    pet_profiles = _pet_profiles(db, request)
+    linked_pets, stay_coords, start_coord = _request_inputs(db, request)
+    pets = [pet for pet, _ in linked_pets]
+    pet_profiles = _pet_profiles_from(linked_pets)
     day_forecasts = _day_forecasts(request, start_coord)
     # 날씨 점수 축은 0(하루 구성 규칙으로 이동)이라 점수엔 영향이 없지만, 스키마 호환을
     # 위해 최대 강수확률을 넘겨둔다.
@@ -332,7 +334,8 @@ def suggest_replacements(
             .where(RouteDay.route_id == route.id, RouteItem.place_id.is_not(None))
         ).all()
     )
-    pets, stay_coords, start_coord = _request_inputs(db, request)
+    linked_pets, stay_coords, start_coord = _request_inputs(db, request)
+    pets = [pet for pet, _ in linked_pets]
     if intent.location_anchor == "stay" and stay_coords:
         start_coord = stay_coords[0][1]
     elif target.place_id is not None:
@@ -365,7 +368,7 @@ def suggest_replacements(
             preferred_tags=preferred_tags,
             # 날씨 축은 하루 구성 규칙으로 옮겨 점수 가중치가 0 이라 편집 경로에선 조회 생략.
             precipitation_probability=None,
-            pets=_pet_profiles(db, request),
+            pets=_pet_profiles_from(linked_pets),
         ),
     )[:limit]
 
@@ -450,7 +453,8 @@ def replace_route_item(
     if request is None:
         raise RecommendationGenerationError("추천 요청을 찾지 못했습니다")
 
-    pets, stay_coords, start_coord = _request_inputs(db, request)
+    linked_pets, stay_coords, start_coord = _request_inputs(db, request)
+    pets = [pet for pet, _ in linked_pets]
     weights = (
         Weights(**request.applied_weights)
         if request.applied_weights is not None
@@ -465,7 +469,7 @@ def replace_route_item(
             preferred_tags=frozenset(normalize_preferred_tags(request.preferred_tags or [])),
             # 날씨 축은 하루 구성 규칙으로 옮겨 점수 가중치가 0 이라 편집 경로에선 조회 생략.
             precipitation_probability=None,
-            pets=_pet_profiles(db, request),
+            pets=_pet_profiles_from(linked_pets),
         ),
     )
     scored_by_id = {candidate.place_id: candidate for candidate in scored}
@@ -768,16 +772,44 @@ def _route_item_coord(db: Session, item: RouteItem) -> Coordinate | None:
     return (float(place.latitude), float(place.longitude)) if place is not None else None
 
 
+LinkedPet = tuple[Pet, PetEnergyLevel | None]
+
+
+def _linked_pets(db: Session, request: RouteRequest) -> list[LinkedPet]:
+    """요청에 연결된 반려동물과 이번 여행 컨디션(energy_level)을 한 번에 읽는다.
+
+    필터(반려 정책 판정)는 Pet 을, 점수·하루 구성은 energy_level 을 함께 써서,
+    _request_inputs 와 _pet_profiles 가 같은 조회를 두 번 하지 않게 공용화한다.
+    """
+    rows = db.execute(
+        select(Pet, RouteRequestPet.energy_level)
+        .join(RouteRequestPet, RouteRequestPet.pet_id == Pet.id)
+        .where(RouteRequestPet.route_request_id == request.id)
+        .order_by(Pet.id)
+    ).all()
+    return [(pet, energy_level) for pet, energy_level in rows]
+
+
+def _pet_profiles_from(linked_pets: list[LinkedPet]) -> tuple[PetProfile, ...]:
+    """이미 조회한 반려동물+컨디션으로 반려 점수·하루 구성용 프로필을 만든다."""
+    return tuple(
+        PetProfile(
+            size=pet.size,
+            weight_kg=float(pet.weight_kg) if pet.weight_kg is not None else None,
+            age_years=calculate_age(pet.birth_date),
+            activity_level=pet.activity_level,
+            car_sickness=pet.car_sickness,
+            energy_level=energy_level,
+        )
+        for pet, energy_level in linked_pets
+    )
+
+
 def _request_inputs(
     db: Session,
     request: RouteRequest,
-) -> tuple[list[Pet], list[tuple[RouteRequestStay, Coordinate]], Coordinate]:
-    pet_ids = list(
-        db.scalars(
-            select(RouteRequestPet.pet_id).where(RouteRequestPet.route_request_id == request.id)
-        ).all()
-    )
-    pets = list(db.scalars(select(Pet).where(Pet.id.in_(pet_ids))).all()) if pet_ids else []
+) -> tuple[list[LinkedPet], list[tuple[RouteRequestStay, Coordinate]], Coordinate]:
+    linked_pets = _linked_pets(db, request)
     stays = list(
         db.scalars(
             select(RouteRequestStay)
@@ -807,30 +839,15 @@ def _request_inputs(
         )
         request.departure_latitude = Decimal(str(departure_coord[0]))
         request.departure_longitude = Decimal(str(departure_coord[1]))
-    return pets, stay_coords, _start_coord(db, request, stay_coords)
+    return linked_pets, stay_coords, _start_coord(db, request, stay_coords)
 
 
 def _pet_profiles(db: Session, request: RouteRequest) -> tuple[PetProfile, ...]:
-    """반려 점수·하루 구성에 쓰는 반려동물 프로필. 요청에 연결된 반려동물의 여행
-    특성(pets)과 이번 여행 컨디션(route_request_pets.energy_level)을 합쳐 만든다.
+    """반려 점수·하루 구성에 쓰는 반려동물 프로필(요청 단독 조회 버전).
+
+    편집 경로처럼 _request_inputs 의 linked_pets 를 이미 갖고 있지 않을 때 쓴다.
     """
-    rows = db.execute(
-        select(Pet, RouteRequestPet.energy_level)
-        .join(RouteRequestPet, RouteRequestPet.pet_id == Pet.id)
-        .where(RouteRequestPet.route_request_id == request.id)
-        .order_by(Pet.id)
-    ).all()
-    return tuple(
-        PetProfile(
-            size=pet.size,
-            weight_kg=float(pet.weight_kg) if pet.weight_kg is not None else None,
-            age_years=calculate_age(pet.birth_date),
-            activity_level=pet.activity_level,
-            car_sickness=pet.car_sickness,
-            energy_level=energy_level,
-        )
-        for pet, energy_level in rows
-    )
+    return _pet_profiles_from(_linked_pets(db, request))
 
 
 def _start_coord(
