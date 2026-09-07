@@ -1,5 +1,6 @@
 """점수화된 장소를 시간 제약이 있는 일자별 일정으로 조립한다."""
 
+import logging
 import math
 import uuid
 from collections import Counter
@@ -9,10 +10,12 @@ from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from app.db.models.enums import ScheduleItemType, TransportType, TripPace
-from app.recommend.common.geo import haversine_m
 from app.recommend.config.pace import PACE
 from app.recommend.schemas import BusinessHour, ScoredCandidate
-from app.recommend.tmap import RouteLeg
+from app.recommend.tmap import RouteLeg, TMapError
+from app.recommend.travel_estimate import SUPPORTED_TRANSPORTS, estimate_leg
+
+logger = logging.getLogger(__name__)
 
 KST = ZoneInfo("Asia/Seoul")
 DINNER_START = time(17)
@@ -22,14 +25,10 @@ LUNCH_START_BY = time(14)
 Coordinate = tuple[float, float]
 RouteProvider = Callable[[Coordinate, Coordinate, TransportType, datetime | None], RouteLeg]
 
-# 후보 비교 때마다 TMAP을 부르지 않기 위한 보수적인 평균 이동 속도다.
-SPEED_METERS_PER_MINUTE = {
-    TransportType.RENTAL_CAR: 500,
-    TransportType.OWN_CAR: 500,
-    TransportType.TAXI: 500,
-    TransportType.WALK: 75,
-}
-SUPPORTED_TRANSPORTS = frozenset(SPEED_METERS_PER_MINUTE)
+# 후보가 계속 시간 제약에 안 맞으면 후보 수만큼 TMAP(타임아웃 10초)을 부를 수 있어
+# 폴링 한도(3분)를 넘긴다. 하루당 호출을 이 상한으로 묶고, 초과분은 직선거리 추정으로
+# 대체해 일정 조립을 계속 진행한다.
+MAX_TMAP_CALLS_PER_DAY = 12
 
 DIVERSITY_GROUP_BY_CATEGORY = {
     "beach": "coast",
@@ -107,12 +106,15 @@ def build(
     end_at = _as_kst(request.end_at)
     if end_at <= start_at:
         raise ValueError("여행 종료 시각은 시작 시각보다 늦어야 합니다")
-    if request.transport not in SPEED_METERS_PER_MINUTE:
+    if request.transport not in SUPPORTED_TRANSPORTS:
         raise ValueError(f"일정 조립에서 지원하지 않는 이동수단입니다: {request.transport.value}")
 
     rule = PACE[request.pace.value]
     remaining = list(scored)
     days: list[ItineraryDay] = []
+    # TMAP 이 한 번 오류를 내면 여행 전체에 대해 실제 호출을 끈다. 타임아웃 10초짜리
+    # 오류를 날마다 상한(12)만큼 반복하면 3분 폴링을 넘기므로 첫 오류에서 바로 끈다.
+    tmap_available = True
 
     for route_date in _dates(start_at.date(), end_at.date()):
         window_start, window_end = (_parse_time(value) for value in rule["window"])
@@ -121,6 +123,41 @@ def build(
         items: list[ScheduledItem] = []
         moves: list[ScheduledMove] = []
         rejected_today: set[uuid.UUID] = set()
+        route_calls = 0
+        cap_logged = False
+
+        def fetch_leg(
+            origin: Coordinate,
+            destination: Coordinate,
+            depart_at: datetime,
+            day: date = route_date,
+        ) -> RouteLeg:
+            """상한 이내·TMAP 정상일 때는 실제 경로를, 그 외에는 직선거리 추정을 돌려준다."""
+            nonlocal route_calls, cap_logged, tmap_available
+            if tmap_available and route_calls >= MAX_TMAP_CALLS_PER_DAY:
+                if not cap_logged:
+                    logger.warning(
+                        "TMAP 호출 상한(%d) 도달 — %s 이후 구간은 직선거리로 추정합니다",
+                        MAX_TMAP_CALLS_PER_DAY,
+                        day,
+                    )
+                    cap_logged = True
+            if not tmap_available or route_calls >= MAX_TMAP_CALLS_PER_DAY:
+                return estimate_leg(origin, destination, request.transport)
+            try:
+                leg = get_route(origin, destination, request.transport, depart_at)
+            except TMapError:
+                logger.warning(
+                    "TMAP 조회 실패 — 이번 여행의 이후 구간은 직선거리로 추정합니다",
+                    exc_info=True,
+                )
+                tmap_available = False
+                return estimate_leg(origin, destination, request.transport)
+            # 캐시 적중·추정은 상한에서 제외하고 실제 TMAP 호출만 센다.
+            if leg.source == "tmap":
+                route_calls += 1
+            return leg
+
         start_anchor = request.day_start_anchors.get(route_date)
         end_anchor = request.day_end_anchors.get(route_date)
         current_coord = start_anchor.coord if start_anchor else request.start_coord
@@ -204,12 +241,7 @@ def build(
 
             rest_min = rule["rest_min"] if items else 0
             depart_at = current_time + timedelta(minutes=rest_min)
-            route = get_route(
-                current_coord,
-                (choice.lat, choice.lng),
-                request.transport,
-                depart_at,
-            )
+            route = fetch_leg(current_coord, (choice.lat, choice.lng), depart_at)
             arrival = depart_at + timedelta(minutes=route.duration_min)
             visit = _fit_visit(
                 choice,
@@ -240,12 +272,7 @@ def build(
 
         end_arrival = None
         if items and end_anchor is not None:
-            return_route = get_route(
-                current_coord,
-                end_anchor.coord,
-                request.transport,
-                current_time,
-            )
+            return_route = fetch_leg(current_coord, end_anchor.coord, current_time)
             moves.append(ScheduledMove(transport=request.transport, route=return_route))
             end_arrival = current_time + timedelta(minutes=return_route.duration_min)
 
@@ -366,15 +393,11 @@ def _best_candidate(
             )
         ):
             continue
-        travel_min = math.ceil(
-            haversine_m(current_coord, (candidate.lat, candidate.lng))
-            / SPEED_METERS_PER_MINUTE[transport]
-        )
+        travel_min = estimate_leg(
+            current_coord, (candidate.lat, candidate.lng), transport
+        ).duration_min
         return_min = (
-            math.ceil(
-                haversine_m((candidate.lat, candidate.lng), end_coord)
-                / SPEED_METERS_PER_MINUTE[transport]
-            )
+            estimate_leg((candidate.lat, candidate.lng), end_coord, transport).duration_min
             if end_coord is not None
             else 0
         )
@@ -401,14 +424,15 @@ def _diversity_group(candidate: ScoredCandidate) -> str:
     category_group = DIVERSITY_GROUP_BY_CATEGORY.get(candidate.source_category or "")
     if category_group is not None:
         return category_group
+    # candidate.tags 는 place_tags.code(영문)다.
     tags = set(candidate.tags)
-    if "바다" in tags:
+    if "sea" in tags:
         return "coast"
-    if tags & {"산책", "휴식"}:
+    if tags & {"walk", "rest"}:
         return "nature"
-    if "실내관광" in tags:
+    if "indoor_tourism" in tags:
         return "culture"
-    if "체험" in tags:
+    if "experience" in tags:
         return "experience"
     return candidate.item_type.value
 

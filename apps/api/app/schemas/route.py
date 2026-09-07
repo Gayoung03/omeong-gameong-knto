@@ -99,11 +99,13 @@ class PlaceSummary(APISchema):
 
 
 class RouteMoveResponse(APISchema):
-    """다음 일정까지의 이동 정보. TMAP 계산 캐시에서 채운다."""
+    """다음 일정까지의 이동 정보. TMAP 계산 캐시가 있으면 그 값, 없으면 추정값."""
 
     transport: TransportType
     distance_meters: int
     duration_minutes: int
+    #: 캐시가 없어 직선거리 추정으로 채운 값이면 True(응답 isEstimated).
+    is_estimated: bool = False
 
 
 class RouteDistanceSummary(APISchema):
