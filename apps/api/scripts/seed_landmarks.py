@@ -111,12 +111,24 @@ def resolve_coord(
     return (geocoded.latitude, geocoded.longitude), True
 
 
-def duplicate_reason(name: str, coord: Coordinate, existing: list[ExistingPlace]) -> str | None:
-    """이미 있는 장소면 건너뛸 이유를, 아니면 None."""
+def duplicate_reason(
+    name: str,
+    coord: Coordinate,
+    existing: list[ExistingPlace],
+    *,
+    allow_nearby: bool = False,
+) -> str | None:
+    """이미 있는 장소면 건너뛸 이유를, 아니면 None.
+
+    allow_nearby 면 같은 단지 안 다른 장소(박물관·전시관 등)와 겹쳐도 넣도록 100m
+    검사만 건너뛴다. 같은 이름 중복 검사는 그대로 유지한다.
+    """
 
     for place in existing:
         if place.name == name:
             return f"같은 이름 존재: {name}"
+    if allow_nearby:
+        return None
     for place in existing:
         if place.is_active and haversine_m(coord, place.coord) <= DUPLICATE_RADIUS_M:
             return f"100m 이내 활성 장소: {place.name}"
@@ -251,7 +263,9 @@ def run_seed(db: Session, path: Path, *, apply: bool) -> int:
     for item in items:
         coord, was_geocoded = resolve_coord(item)
         geocoded += was_geocoded
-        reason = duplicate_reason(item["name"], coord, existing)
+        reason = duplicate_reason(
+            item["name"], coord, existing, allow_nearby=bool(item.get("allow_nearby"))
+        )
         if reason is not None:
             skips.append((item["name"], reason))
             continue

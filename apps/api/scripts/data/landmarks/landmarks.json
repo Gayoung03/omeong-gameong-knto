@@ -55,7 +55,8 @@
       "verified_at": "2026-09-08"
     },
     "latitude": 33.421622,
-    "longitude": 126.549752
+    "longitude": 126.549752,
+    "allow_nearby": true
   },
   {
     "name": "한라산국립공원 어리목탐방로",
@@ -172,7 +173,8 @@
       "verified_at": "2026-09-08"
     },
     "latitude": 33.457184,
-    "longitude": 126.714669
+    "longitude": 126.714669,
+    "allow_nearby": true
   },
   {
     "name": "비자림",

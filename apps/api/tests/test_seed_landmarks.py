@@ -91,6 +91,20 @@ def test_inactive_place_does_not_block_by_distance() -> None:
     assert duplicate_reason("섭지코지", (33.4241, 126.9296), existing) is None
 
 
+def test_allow_nearby_skips_distance_but_keeps_name_check() -> None:
+    existing = [ExistingPlace("같은 단지 박물관", (33.4241, 126.9296), True)]
+    # allow_nearby 면 100m 안 다른 장소가 있어도 넣는다.
+    assert (
+        duplicate_reason("거문오름", (33.4241, 126.9296), existing, allow_nearby=True) is None
+    )
+    # 그래도 같은 이름은 여전히 막는다.
+    same_name = [ExistingPlace("거문오름", (34.0, 127.0), True)]
+    assert (
+        duplicate_reason("거문오름", (33.4241, 126.9296), same_name, allow_nearby=True)
+        is not None
+    )
+
+
 # --- 지오코딩 폴백 -----------------------------------------------------------
 
 
