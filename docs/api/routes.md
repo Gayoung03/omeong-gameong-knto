@@ -539,6 +539,7 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
               "primaryImageUrl": "https://...",
               "recommendationScore": 87.5,
               "recommendationReason": "목줄 착용 시 야외 동반 가능 · 숙소에서 12분",
+              "phone": null,
               "requiresVerification": false
             }
           ],
@@ -571,7 +572,8 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
               "address": "제주특별자치도 서귀포시 ...",
               "primaryImageUrl": null,
               "recommendationScore": null,
-              "recommendationReason": "동반 여부 확인 필요 · 전화 064-...",
+              "recommendationReason": "동반 여부 확인 필요",
+              "phone": "064-...",
               "requiresVerification": true
             }
           ],
@@ -596,8 +598,8 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
 | `weather` | `route_days.weather_snapshot_id` 조인. 없으면 `null` |
 | `isSelected` | 추천 항목 중 사용자가 뺀 것을 구분. 기본 `true` |
 | `slotStatus` | **[재설계 2026-09-07]** `filled` \| `needs_verification` \| `unfilled`. `unfilled`면 `place`·시각이 `null`이고 `candidates`에 확인 필요 후보가 붙음. `needs_verification`이면 장소는 있지만 동반 여부가 미확인 — 앱은 "확인 필요" 라벨과 `place.phone`을 함께 보여줌 |
-| `candidates` | **[재설계 2026-09-07]** 슬롯별 대안 후보 최대 3개 (`route_item_candidates`). 모양은 `edit-suggestions`의 `suggestions` 항목과 같고 `requiresVerification`만 추가. 같은 날짜의 항목이 편집되면 그 날짜의 후보는 모두 지워져 빈 배열이 됨 |
-| `slotSummary` | 계산값. `route_items.slot_status` 집계. 상태 조회 응답과 같음 |
+| `candidates` | **[재설계 2026-09-07]** 슬롯별 대안 후보 최대 3개 (`route_item_candidates`). 모양은 `edit-suggestions`의 `suggestions` 항목과 같고 `requiresVerification`과 `phone`(확인 전화용, `places.phone`)을 추가. 같은 날짜의 항목이 편집되면 그 날짜의 후보는 모두 지워져 빈 배열이 됨 |
+| `slotSummary` | 계산값. `route_items.slot_status` 집계. **출발지·숙소 앵커(체류시간 0인 항목)는 빼고 방문 슬롯만 센다** (2026-09-08 결정). 상태 조회 응답과 같음 |
 | `nearbyAnimalHospitals` | 계산값, 저장 안 함. 숙소와 각 날짜 동선에서 가까운 동물병원(`places.category_detail = '동물병원'`) 최대 3곳. `is24Hours`는 이름의 "24시"로 판정 (영업시간 데이터가 없음) |
 | `place.petPolicy` | 동반 조건과 근거 출처. [`places.md`](./places.md) 상세의 `petPolicy` 부분집합 |
 | `place.cuisine` `place.phone` | 음식 종류(카카오 로컬 분류로 보강, 없으면 `null`)와 전화번호 |
@@ -943,4 +945,5 @@ AI 추천 후보 또는 사용자가 직접 고른 DB 장소로 일정 항목을
 | 2026-08-18 | 미정 2건 확정 — 폴링 **2초 간격 / 3분 타임아웃**, `failureReason`은 컬럼 추가 없이 응답에만, 수동 여행 재생성은 **`422`**. 수동 생성 엔드포인트는 **보류 유지**하되 DB 준비 완료 사실과 유력안을 정리 |
 | 2026-09-02 | `requestText` write-only 해소 (ai-io-column-design 8.3-3) — 백그라운드 생성 단계에서 LLM 으로 태그를 추출해 `preferredTags`와 병합(이번 생성 한정, 요청 행 불변). `pace`는 스키마상 "미지정" 상태가 없어 병합 대상에서 제외. 실패 시 무시 |
 | 2026-09-07 | **루트 추천 재설계 반영** ([`route-redesign.md`](../planning/route-redesign.md)) — 부분 성공(빈 슬롯 `slotStatus`, `slotSummary`, `failed`는 전일 공백일 때만), 슬롯별 대안 `candidates`, 후보 3등급(확실/확인 필요/불가), 날씨를 하루 구성 규칙으로, 반려동물 중심 개인화(`pets[].energyLevel`, 반려 점수에 반려동물 반영), `recommendationReason` 의미 변경, `place.petPolicy`·`cuisine`·`phone` 노출, `nearbyAnimalHospitals`, `regenerate` 미구현 명시. "식당 부족 시 실패" 규칙 개정 |
+| 2026-09-08 | Phase 3 구현 반영 (#269) — `slotSummary`는 출발지·숙소 앵커를 빼고 방문 슬롯만 집계, 후보 객체에 `phone` 추가(근거 문장에서 전화번호 분리). 식사 슬롯을 못 채우면 빈 슬롯을 남기고 남은 시간에 관광을 계속 배치 |
 | 2026-09-07 | Phase 1 검수 반영 (#263) — `weather` 가중치는 Phase 5 전까지 **0.10 유지**(healing 프리셋 무효화 방지), `preferredTags`는 라벨·코드 모두 받아 **코드로 저장**함을 명시. TMAP 호출은 하루 12회 상한(실제 호출만 카운트, 캐시 적중 제외), 오류 시 여행 단위로 추정 폴백. 추정식을 실측 기반(7분 + 직선÷600m/min)으로 교체하고 상세 응답 `moveToNext`에 `isEstimated` 추가 — 캐시 만료 후 이동 정보가 사라지던 문제 해소 |

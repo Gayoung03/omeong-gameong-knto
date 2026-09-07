@@ -139,7 +139,7 @@ DB 리뷰안대로 **`route_request_pets`(반려동물별)**로 간다. 여러 �
 | 항목 | 이유 |
 | --- | --- |
 | `routes.status` enum | 값 추가 안 함. 부분 성공은 `generated` |
-| 완성도(`completionRate` 등) | 계산값. `route_items.slot_status` 집계로 응답에만 |
+| 완성도(`slotSummary`) | 계산값. `route_items.slot_status` 집계로 응답에만. 출발지·숙소 앵커(체류시간 0)는 제외 (2026-09-08 결정) |
 | 실패 사유 | 기존 확정대로 응답 전용 |
 | 동물병원 안전망 | 응답 시점 계산. 저장 테이블·PostGIS 없음. 기존 좌표 인덱스로 bounding-box 후 haversine |
 | 근거 출처 문장 | `place_pet_policies.source/source_url/verified_at/caution_note` 기존 컬럼 노출 |
@@ -321,8 +321,8 @@ weather_api, internal`. 후보: `jeju_open_data`. **출처 목록 확정 후 추
 | --- | --- | --- |
 | 0 | 현재 엔진으로 시나리오 매트릭스(권역 4 × 속도 3 × 1~3박) 실패율·슬롯 충족률 측정. 문서 추인. 앱 팀 통보 | — |
 | 1 | **긴급**: TMAP 호출 상한 + 직선거리 폴백. 태그 코드 매핑 + 가중치 재조정 (같은 PR) — **구현 완료 2026-09-07** (#263, TMAP 오류 시 여행 단위 추정 폴백 포함. 가중치 반려 .45 · 근접 .25 · 취향 .20 · 날씨 .10). **1b 완료**: 추정식 `7분 + 직선÷600m/min`(TMAP 실측 38구간 MAPE 34%→17%, 한라산 배율은 실측상 불필요), 상한은 실제 호출만 카운트, 상세 응답 `isEstimated` 폴백 | — |
-| 2 | 데이터 보강 (병렬): 명소 큐레이션, 카테고리별 체류시간, 환경 백필, 카테고리 오염 정리, 카카오 음식 종류 | ③ `cuisine` |
-| 3 | 부분 성공 + tier: 후보 3값(`VERIFIED/NEEDS_CHECK/BLOCKED`), 하드 실패 제거, 빈 슬롯 행, 후보 저장, 완성도 응답 | ① `slot_status` + `route_item_candidates` |
+| 2 | 데이터 보강 (병렬): 명소 큐레이션, 카테고리별 체류시간, 환경 백필, 카테고리 오염 정리, 카카오 음식 종류 — **구현 완료 2026-09-08** (#268, 명소 28곳·정책 갱신 3곳, DB 적용은 보류) | ③ `cuisine` |
+| 3 | 부분 성공 + tier: 후보 3값(`VERIFIED/NEEDS_CHECK/BLOCKED`), 하드 실패 제거, 빈 슬롯 행, 후보 저장, 완성도 응답 — **구현 완료 2026-09-08** (#269, Phase 2 위 스택 브랜치. 식사 슬롯 미충족은 어떤 경로든 빈 슬롯 기록, 후보 응답 `phone`) | ① `slot_status` + `route_item_candidates` |
 | 4 | 반려동물 중심 개인화: `applied_weights` 하위호환, pets 컬럼, `pet_score(candidate, pets, condition)`, 속도 규칙 보정, 이동시간 상한 완화 단계 | ② `pets` + `route_request_pets` |
 | 5 | 하루 구성 규칙: 기상청 날짜별 예보(기온 포함), 슬롯 계획(`plan_day`) 도입, `build` 분해, `weather_snapshot_id` 채움 | — |
 | 6 | 근거 문장 템플릿 + 출처 노출, LLM 여행 설명 1회, 동물병원 안전망 모듈 | — |
