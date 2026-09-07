@@ -372,18 +372,33 @@ generating → generated → saved → ongoing → completed
 | `recommendation_score` | 장소 추천 점수 |
 | `recommendation_reason` | 추천 근거 |
 | `is_selected` | 사용자 선택 유지 여부 |
+| `slot_status` | `filled`(확정) / `needs_verification`(정책 unknown 장소로 메움) / `unfilled`(못 채운 슬롯, place·시각 NULL). 기본 `filled` |
 
-`place_id`와 `custom_place_name` 중 하나는 반드시 존재해야 합니다.
+CHECK `slot_status_place_consistency`: `unfilled`이면 `place_id`·`custom_place_name`이 모두 NULL, 그 외에는 `place_id`나 `custom_place_name` 중 하나가 반드시 존재해야 합니다.
 
 ### `route_moves`
 
-연속한 일정 항목 사이의 이동 구간입니다.
+연속한 일정 항목 사이의 이동 구간입니다. `unfilled` 슬롯은 잇지 않습니다.
 
 | 컬럼 | 설명 |
 | --- | --- |
 | `from_item_id` | 출발 일정 항목 |
 | `to_item_id` | 도착 일정 항목 |
 | `transport` | 이동수단 |
+
+### `route_item_candidates`
+
+슬롯별 대안 후보(생성 시 슬롯마다 최대 3개). `filled`·`needs_verification` 슬롯의 후보는 "대신 갈 곳", `unfilled` 슬롯의 후보는 "확인 필요 후보"입니다. 같은 날짜 항목이 편집(교체·추가·삭제·순서 변경)되면 그 날짜 후보는 모두 삭제됩니다.
+
+| 컬럼 | 설명 |
+| --- | --- |
+| `route_item_id` | 슬롯 FK (cascade) |
+| `place_id` | 후보 장소 FK (cascade) |
+| `rank` | 1~3 순위 (`(route_item_id, rank)` 유일) |
+| `recommendation_score` | 후보 점수 (unfilled 후보는 NULL 가능) |
+| `recommendation_reason` | 후보 근거 |
+| `requires_verification` | 동반 여부 확인 필요 후보이면 true |
+| `created_at` | 생성 시각 |
 
 TMAP의 거리·시간·polyline은 이 테이블에 영구 저장하지 않습니다.
 

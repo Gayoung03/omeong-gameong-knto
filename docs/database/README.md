@@ -44,7 +44,7 @@ Enum 18개
 | 회원/반려동물 | `users`, `pets`, `user_travel_preferences`, `user_social_accounts` |
 | 장소 | `places`, `place_external_refs`, `place_business_hours`, `place_pet_policies`, `place_tags`, `place_tag_links` |
 | 루트 입력 | `route_requests`, `route_request_pets`, `route_request_stays` |
-| 루트 결과/내 여행 | `routes`, `route_days`, `route_items`, `route_moves` |
+| 루트 결과/내 여행 | `routes`, `route_days`, `route_items`, `route_moves`, `route_item_candidates` |
 | 날씨/이동 | `weather_snapshots`, `route_calculation_cache` |
 | 여행 부가기능 | `route_checklist_items`, `route_memos` |
 | 저장/리뷰 | `favorites`, `reviews`, `review_images` |
