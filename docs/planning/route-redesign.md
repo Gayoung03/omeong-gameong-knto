@@ -323,7 +323,7 @@ weather_api, internal`. 후보: `jeju_open_data`. **출처 목록 확정 후 추
 | 1 | **긴급**: TMAP 호출 상한 + 직선거리 폴백. 태그 코드 매핑 + 가중치 재조정 (같은 PR) — **구현 완료 2026-09-07** (#263, TMAP 오류 시 여행 단위 추정 폴백 포함. 가중치 반려 .45 · 근접 .25 · 취향 .20 · 날씨 .10). **1b 완료**: 추정식 `7분 + 직선÷600m/min`(TMAP 실측 38구간 MAPE 34%→17%, 한라산 배율은 실측상 불필요), 상한은 실제 호출만 카운트, 상세 응답 `isEstimated` 폴백 | — |
 | 2 | 데이터 보강 (병렬): 명소 큐레이션, 카테고리별 체류시간, 환경 백필, 카테고리 오염 정리, 카카오 음식 종류 — **구현 완료 2026-09-08** (#268, 명소 28곳·정책 갱신 3곳, DB 적용은 보류) | ③ `cuisine` |
 | 3 | 부분 성공 + tier: 후보 3값(`VERIFIED/NEEDS_CHECK/BLOCKED`), 하드 실패 제거, 빈 슬롯 행, 후보 저장, 완성도 응답 — **구현 완료 2026-09-08** (#269, Phase 2 위 스택 브랜치. 식사 슬롯 미충족은 어떤 경로든 빈 슬롯 기록, 후보 응답 `phone`) | ① `slot_status` + `route_item_candidates` |
-| 4 | 반려동물 중심 개인화: `applied_weights` 하위호환, pets 컬럼, `pet_score(candidate, pets, condition)`, 속도 규칙 보정, 이동시간 상한 완화 단계 | ② `pets` + `route_request_pets` |
+| 4 | 반려동물 중심 개인화: `applied_weights` 하위호환, pets 컬럼, `pet_score(candidate, pets, condition)`, 속도 규칙 보정, 이동시간 상한 완화 단계 — **구현 완료 2026-09-08** (#270, 스택. 컨디션이 활동량을 덮어씀, 차멀미 상한은 숙소 복귀 구간 포함, 사회성은 저장만) | ② `pets` + `route_request_pets` |
 | 5 | 하루 구성 규칙: 기상청 날짜별 예보(기온 포함), 슬롯 계획(`plan_day`) 도입, `build` 분해, `weather_snapshot_id` 채움 | — |
 | 6 | 근거 문장 템플릿 + 출처 노출, LLM 여행 설명 1회, 동물병원 안전망 모듈 | — |
 | 7 | 여유 시: `regenerate` 엔드포인트(명세만 있고 미구현), `route_recommendation.py` 분해 | — |
