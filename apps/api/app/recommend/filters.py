@@ -159,6 +159,7 @@ def _policies_by_place(db: Session, place_ids: Sequence[uuid.UUID]) -> dict[uuid
                 carrier_required=row.carrier_required,
                 leash_required=row.leash_required,
                 vaccination_required=row.vaccination_required,
+                muzzle_required=row.muzzle_required,
                 reliability_score=(
                     float(row.reliability_score) if row.reliability_score is not None else None
                 ),

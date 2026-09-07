@@ -2,10 +2,11 @@ import uuid
 
 import pytest
 
-from app.db.models.enums import PetPolicyType, PlaceEnvironment, ScheduleItemType
-from app.recommend.schemas import Candidate, PetPolicy, Weights
+from app.db.models.enums import PetPolicyType, PetSize, PlaceEnvironment, ScheduleItemType
+from app.recommend.schemas import Candidate, PetPolicy, PetProfile, Weights
 from app.recommend.scoring import (
     ScoringContext,
+    _fit_factor,
     pet_score,
     preference_score,
     proximity_score,
@@ -138,3 +139,47 @@ def test_rating_and_popularity_do_not_change_balanced_total_score() -> None:
     assert low_result.total_score == pytest.approx(high_result.total_score)
     assert "평점" not in high_result.reason
     assert "인기" not in high_result.reason
+
+
+def test_fit_factor_weight_over_seventy_percent_penalized() -> None:
+    policy = PetPolicy(policy_type=PetPolicyType.INDOOR_ALLOWED, max_weight_kg=10)
+    assert _fit_factor(policy, PetProfile(size=PetSize.SMALL, weight_kg=8)) == pytest.approx(0.85)
+    assert _fit_factor(policy, PetProfile(size=PetSize.SMALL, weight_kg=7)) == pytest.approx(1.0)
+
+
+def test_fit_factor_carrier_by_size() -> None:
+    policy = PetPolicy(policy_type=PetPolicyType.INDOOR_ALLOWED, carrier_required=True)
+    assert _fit_factor(policy, PetProfile(size=PetSize.LARGE)) == pytest.approx(0.6)
+    assert _fit_factor(policy, PetProfile(size=PetSize.MEDIUM)) == pytest.approx(0.8)
+    assert _fit_factor(policy, PetProfile(size=PetSize.SMALL)) == pytest.approx(1.0)
+
+
+def test_fit_factor_muzzle_only_penalizes_large() -> None:
+    policy = PetPolicy(policy_type=PetPolicyType.INDOOR_ALLOWED, muzzle_required=True)
+    assert _fit_factor(policy, PetProfile(size=PetSize.LARGE)) == pytest.approx(0.9)
+    assert _fit_factor(policy, PetProfile(size=PetSize.SMALL)) == pytest.approx(1.0)
+
+
+def test_fit_factor_size_exclusion_zeroes() -> None:
+    policy = PetPolicy(policy_type=PetPolicyType.INDOOR_ALLOWED, allowed_sizes=["small"])
+    assert _fit_factor(policy, PetProfile(size=PetSize.LARGE)) == 0.0
+
+
+def test_pet_score_applies_min_fit_across_pets() -> None:
+    # 정책: INDOOR_ALLOWED·carrier_required·reliability 100 → base 0.85.
+    candidate = _candidate(
+        pet_policy=PetPolicy(
+            policy_type=PetPolicyType.INDOOR_ALLOWED,
+            carrier_required=True,
+            reliability_score=100,
+        )
+    )
+    small = PetProfile(size=PetSize.SMALL)
+    large = PetProfile(size=PetSize.LARGE)
+
+    # 반려동물 없음 → base 그대로.
+    assert pet_score(candidate) == pytest.approx(0.85)
+    # 소형만 → carrier 계수 1.0.
+    assert pet_score(candidate, [small]) == pytest.approx(0.85)
+    # 대형 포함 → 가장 덜 맞는(대형 0.6) 기준.
+    assert pet_score(candidate, [small, large]) == pytest.approx(0.85 * 0.6)
