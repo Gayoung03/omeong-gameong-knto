@@ -287,7 +287,7 @@
       "allowed_sizes": [],
       "max_weight_kg": null,
       "food_area_allowed": null,
-      "notes": "제주관광공사 답변(2024-06-30): 지정 해수욕장 12곳 중 월정리만 백사장 산책도 불가",
+      "notes": "지정 해수욕장 12곳 중 월정리만 백사장 산책도 불가(마을회 관리 지침, 2024-06-30 확인)",
       "caution_note": "반려동물 출입 금지",
       "source_url": "https://ijto.or.kr/korean/Bd/view.php?bno=1515&btable=qna&lcate=&p=5",
       "verified_at": "2026-09-08"
@@ -318,7 +318,7 @@
       "allowed_sizes": [],
       "max_weight_kg": null,
       "food_area_allowed": null,
-      "notes": "한국관광공사 반려동물 동반여행(2024-05): 목줄 착용 권장. TourAPI 반려동물 정보: 일부구역 동반가능, 목줄 착용",
+      "notes": "해안 산책로에서 목줄 착용 시 동반 가능(일부 구역). 실내 시설은 시설별 확인",
       "caution_note": "목줄 착용·배변봉투 지참",
       "source_url": "https://korean.visitkorea.or.kr/detail/rem_detail.do?cotid=5bf42aa9-c0dd-4456-a34b-478f953766df",
       "verified_at": "2026-09-08"
@@ -349,7 +349,7 @@
       "allowed_sizes": [],
       "max_weight_kg": null,
       "food_area_allowed": null,
-      "notes": "한국관광공사(2023-12): 모든 견종 가능, 맹견은 입마개, 목줄·배변봉투 필수, 전체 지역 동반 가능",
+      "notes": "모든 견종 동반 가능. 맹견은 입마개 필수, 목줄·배변봉투 지참, 전체 구역 동반 가능(2023-12 확인)",
       "caution_note": "목줄 착용·배변봉투 지참",
       "source_url": "https://korean.visitkorea.or.kr/detail/rem_detail.do?cotid=c4d29c40-df9e-48a7-b662-0bb137e38135",
       "verified_at": "2026-09-08"
@@ -379,7 +379,7 @@
       "allowed_sizes": [],
       "max_weight_kg": null,
       "food_area_allowed": null,
-      "notes": "한국관광공사 반려동물 동반여행 등록. 정상부 탐방로는 일부 구간만 개방될 수 있음",
+      "notes": "목줄 착용 시 탐방로 동반 가능. 자연휴식년제로 정상부 탐방로는 일부 구간만 개방될 수 있음",
       "caution_note": "목줄 착용·배변봉투 지참. 휴식년제 개방 구간 확인",
       "source_url": "https://korean.visitkorea.or.kr/detail/ms_detail.do?cotid=5429c4dc-e53a-4f15-a02d-061927bdf791",
       "verified_at": "2026-09-08"
@@ -409,7 +409,7 @@
       "allowed_sizes": [],
       "max_weight_kg": null,
       "food_area_allowed": null,
-      "notes": "한국관광공사 반려동물 동반여행 등록. 2026-05-08부터 차마 출입·취사·야영 금지(오름 27곳)",
+      "notes": "목줄 착용 시 탐방로 동반 가능. 2026-05-08부터 차마 출입·취사·야영 금지(오름 27곳)",
       "caution_note": "목줄 착용·배변봉투 지참",
       "source_url": "https://korean.visitkorea.or.kr/detail/ms_detail.do?cotid=951e2041-3348-4244-b468-827205d00296",
       "verified_at": "2026-09-08"
@@ -439,7 +439,7 @@
       "allowed_sizes": [],
       "max_weight_kg": null,
       "food_area_allowed": null,
-      "notes": "한국관광공사 반려동물 동반여행 등록. TourAPI: 전구역 동반가능, 목줄 착용",
+      "notes": "목줄 착용 시 전 구역 동반 가능",
       "caution_note": "목줄 착용·배변봉투 지참",
       "source_url": "https://korean.visitkorea.or.kr/detail/ms_detail.do?cotid=e07448fb-88d6-4dc9-a4ea-0a2af32b071e",
       "verified_at": "2026-09-08"
@@ -469,7 +469,7 @@
       "allowed_sizes": [],
       "max_weight_kg": null,
       "food_area_allowed": null,
-      "notes": "한국관광공사 반려동물 동반여행 등록(TourAPI KorPetTourService2). 전구역 동반가능, 목줄 착용",
+      "notes": "목줄 착용 시 전 구역 동반 가능",
       "caution_note": "목줄 착용·배변봉투 지참",
       "source_url": "https://korean.visitkorea.or.kr/other/other_list.do?otdid=22dd6a3f-9d71-42f8-9163-295a7ac62fb8&choiceTag=%EB%B0%98%EB%A0%A4%EB%8F%99%EB%AC%BC%ED%8A%B9%EC%A7%91%EA%B4%80%EB%AA%A8%EC%95%84%EB%B3%B4%EA%B8%B0&choiceTagId=ea3e3647-65a8-11ef-95cd-0050569dc2b9",
       "verified_at": "2026-09-08"
@@ -499,7 +499,7 @@
       "allowed_sizes": [],
       "max_weight_kg": null,
       "food_area_allowed": null,
-      "notes": "한국관광공사 반려동물 동반여행 등록. TourAPI: 전구역 동반가능, 목줄 착용",
+      "notes": "목줄 착용 시 전 구역 동반 가능(도로·산책 구간)",
       "caution_note": "목줄 착용·배변봉투 지참",
       "source_url": "https://korean.visitkorea.or.kr/detail/ms_detail.do?cotid=57d16fc1-42ec-4f4c-bc4e-7a15e88c0be6",
       "verified_at": "2026-09-08"
@@ -529,7 +529,7 @@
       "allowed_sizes": [],
       "max_weight_kg": null,
       "food_area_allowed": null,
-      "notes": "한국관광공사 반려동물 동반여행 등록(TourAPI KorPetTourService2). 전구역 동반가능, 목줄 착용",
+      "notes": "목줄 착용 시 전 구역 동반 가능",
       "caution_note": "목줄 착용·배변봉투 지참",
       "source_url": "https://korean.visitkorea.or.kr/other/other_list.do?otdid=22dd6a3f-9d71-42f8-9163-295a7ac62fb8&choiceTag=%EB%B0%98%EB%A0%A4%EB%8F%99%EB%AC%BC%ED%8A%B9%EC%A7%91%EA%B4%80%EB%AA%A8%EC%95%84%EB%B3%B4%EA%B8%B0&choiceTagId=ea3e3647-65a8-11ef-95cd-0050569dc2b9",
       "verified_at": "2026-09-08"
@@ -559,7 +559,7 @@
       "allowed_sizes": [],
       "max_weight_kg": null,
       "food_area_allowed": null,
-      "notes": "한국관광공사(2023-12): 대형견 가능(목줄 필수), 맹견 불가, 야외만 동반 가능, 이동 가방 지참 시 실내 동반 가능. 반려동물 입장 무료",
+      "notes": "대형견 가능(목줄 필수), 맹견 불가. 야외만 동반 가능, 이동 가방 지참 시 실내 동반 가능. 반려동물 입장 무료(2023-12 확인)",
       "caution_note": "실내는 이동 가방 지참 시만",
       "source_url": "https://korean.visitkorea.or.kr/detail/rem_detail.do?cotid=2fd0ce38-52cf-4ed7-9968-68c8ecdb3aa4",
       "verified_at": "2026-09-08"
@@ -589,7 +589,7 @@
       "allowed_sizes": [],
       "max_weight_kg": null,
       "food_area_allowed": null,
-      "notes": "한국관광공사 반려동물 동반여행 등록. TourAPI: 일부구역 동반가능, 목줄 착용",
+      "notes": "목줄 착용 시 일부 구역(야외 정원) 동반 가능. 실내 카페는 시설 확인",
       "caution_note": "목줄 착용·배변봉투 지참",
       "source_url": "https://korean.visitkorea.or.kr/detail/ms_detail.do?cotid=10301f56-cc9d-4d90-88a4-5e9fbae4942d",
       "verified_at": "2026-09-08"
@@ -620,7 +620,7 @@
       "allowed_sizes": [],
       "max_weight_kg": null,
       "food_area_allowed": null,
-      "notes": "한국관광공사 반려동물 동반여행 등록. TourAPI: 일부구역 동반가능, 목줄 착용·유모차·이동장 사용. 여객선 탑승 규정은 선사 확인",
+      "notes": "목줄 착용·유모차·이동장 사용 시 일부 구역 동반 가능. 여객선 탑승 규정은 선사 확인",
       "caution_note": "여객선 반려동물 규정 확인(케이지 등)",
       "source_url": "https://korean.visitkorea.or.kr/detail/ms_detail.do?cotid=19b4ad99-2045-4fea-8614-7d9a82d44a91",
       "verified_at": "2026-09-08"
@@ -681,7 +681,7 @@
       "allowed_sizes": [],
       "max_weight_kg": null,
       "food_area_allowed": null,
-      "notes": "한국관광공사 반려동물 동반여행 등록(TourAPI KorPetTourService2). 전구역 동반가능, 목줄 착용",
+      "notes": "목줄 착용 시 전 구역 동반 가능",
       "caution_note": "목줄 착용·배변봉투 지참",
       "source_url": "https://korean.visitkorea.or.kr/other/other_list.do?otdid=22dd6a3f-9d71-42f8-9163-295a7ac62fb8&choiceTag=%EB%B0%98%EB%A0%A4%EB%8F%99%EB%AC%BC%ED%8A%B9%EC%A7%91%EA%B4%80%EB%AA%A8%EC%95%84%EB%B3%B4%EA%B8%B0&choiceTagId=ea3e3647-65a8-11ef-95cd-0050569dc2b9",
       "verified_at": "2026-09-08"

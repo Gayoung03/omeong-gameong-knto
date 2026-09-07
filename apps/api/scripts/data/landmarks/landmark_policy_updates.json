@@ -31,7 +31,7 @@
     "pet_policy": {
       "policy_type": "partial_allowed",
       "leash_required": true,
-      "notes": "한국관광공사(2024-05): 등길이 40cm 이하·몸무게 13kg 이하 권장, 매주 토요일 16:30부터 반려동물 동반 운영",
+      "notes": "등길이 40cm 이하·몸무게 13kg 이하 권장, 매주 토요일 16:30부터 반려동물 동반 운영(2024-05 확인)",
       "caution_note": "토요일 16:30 이후, 소형견 권장",
       "source_url": "https://korean.visitkorea.or.kr/detail/rem_detail.do?cotid=5bf42aa9-c0dd-4456-a34b-478f953766df",
       "verified_at": "2026-09-08"
