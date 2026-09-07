@@ -16,11 +16,14 @@ from datetime import UTC, datetime, time, timedelta, timezone
 
 from sqlalchemy import select, update
 
+from app.core.config import settings
 from app.db.models import EditorialStory, EditorialStorySource
 from app.db.models.enums import EditorialStoryKind, EditorialStoryStatus
 from app.db.session import SessionLocal
+from app.integrations.instagram import InstagramAPIError, fetch_recent_posts
 from app.integrations.visitjeju import (
     VisitJejuAPIError,
+    VisitJejuContent,
     fetch_all_contents,
     fetch_content_detail,
 )
@@ -75,24 +78,64 @@ def _save_story(db, candidate, draft, *, day, publish: bool) -> EditorialStory:
     source = db.scalar(
         select(EditorialStorySource).where(
             EditorialStorySource.story_id == story.id,
-            EditorialStorySource.provider == "visitjeju",
+            EditorialStorySource.provider == candidate.source_provider,
             EditorialStorySource.external_id == candidate.source.content_id,
         )
     )
     if source is None:
-        db.add(
-            EditorialStorySource(
-                id=uuid.uuid4(),
-                story_id=story.id,
-                provider="visitjeju",
-                external_id=candidate.source.content_id,
-                source_name="제주관광공사 비짓제주",
-                source_title=candidate.source.title,
-                source_url=candidate.source.source_url,
-                source_image_url=candidate.source.image_url,
-            )
+        source = EditorialStorySource(
+            id=uuid.uuid4(),
+            story_id=story.id,
+            provider=candidate.source_provider,
+            external_id=candidate.source.content_id,
         )
+        db.add(source)
+    source.source_name = candidate.source_name
+    source.source_title = candidate.source.title
+    source.source_url = candidate.source.source_url
+    source.source_image_url = candidate.source.image_url
+    source.source_published_at = candidate.source_published_at
     return story
+
+
+def _instagram_candidate(candidate):
+    """설정된 계정의 최신 게시물을 여행 이야기 카드 원문으로 바꾼다."""
+    if not (settings.instagram_user_id or settings.instagram_access_token):
+        return candidate
+    try:
+        posts = fetch_recent_posts(limit=10)
+    except InstagramAPIError as error:
+        raise SystemExit(str(error)) from None
+    if not posts:
+        print("Instagram 게시물이 없어 비짓제주 여행 이야기를 사용합니다")
+        return candidate
+    post = posts[0]
+    caption_without_tags = re.sub(r"(?<!\w)#[^\s#]+", "", post.caption)
+    body = re.sub(r"\s+", " ", caption_without_tags).strip() or post.caption
+    first_line = next(
+        (line.strip() for line in post.caption.splitlines() if line.strip()),
+        f"@{post.username}의 Instagram 이야기",
+    )
+    source = VisitJejuContent(
+        content_id=post.media_id,
+        title=first_line[:160],
+        category="Instagram",
+        introduction=body[:500],
+        tags=post.hashtags,
+        address=None,
+        image_url=post.image_urls[0],
+        source_url=post.permalink,
+        body=body,
+        image_urls=post.image_urls,
+    )
+    return replace(
+        candidate,
+        category="Instagram 제주 이야기",
+        source=source,
+        source_provider="instagram",
+        source_name=f"Instagram @{post.username}",
+        source_published_at=post.timestamp,
+    )
 
 
 def main() -> None:
@@ -117,6 +160,12 @@ def main() -> None:
             print(f"상세 정보 생략: {candidate.source.title} ({error})")
         enriched_candidates.append(candidate)
     candidates = enriched_candidates
+    candidates = [
+        _instagram_candidate(candidate)
+        if candidate.kind == EditorialStoryKind.STORY
+        else candidate
+        for candidate in candidates
+    ]
 
     with SessionLocal() as db:
         for candidate in candidates:
