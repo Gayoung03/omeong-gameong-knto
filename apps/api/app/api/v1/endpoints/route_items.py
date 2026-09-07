@@ -32,6 +32,7 @@ from app.services.place_access import load_visible_place
 from app.services.route_access import load_owned_day, load_owned_item
 from app.services.route_recommendation import (
     RecommendationGenerationError,
+    clear_day_candidates,
     replace_route_item,
     resync_item_times,
     resync_items_after,
@@ -168,6 +169,7 @@ def create_route_item(
     _renumber(db, ordered)
     _rebuild_moves(db, ordered, route.transport)
     resync_item_times(db, route, ordered, anchor)
+    clear_day_candidates(db, day.id)
     db.commit()
     db.refresh(item)
     return RouteItemResponse.model_validate(item)
@@ -260,6 +262,7 @@ def reorder_route_items(
     _renumber(db, ordered)
     _rebuild_moves(db, ordered, route.transport)
     resync_item_times(db, route, ordered, anchor)
+    clear_day_candidates(db, day.id)
     db.commit()
     return [RouteItemResponse.model_validate(item) for item in ordered]
 
@@ -293,5 +296,6 @@ def delete_route_item(
     _renumber(db, remaining)
     _rebuild_moves(db, remaining, route.transport)
     resync_item_times(db, route, remaining, anchor)
+    clear_day_candidates(db, day.id)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

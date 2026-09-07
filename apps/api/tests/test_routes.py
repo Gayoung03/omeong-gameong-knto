@@ -9,12 +9,13 @@ DB 가 필요한 테스트는 TEST_DATABASE_URL 이 없으면 통째로 건너�
 """
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.v1.endpoints import routes
@@ -26,8 +27,10 @@ from app.db.models import (
     Route,
     RouteCalculationCache,
     RouteDay,
+    RouteItem,
     RouteItemCandidate,
     RouteMove,
+    RouteRequest,
     TravelLog,
     User,
 )
@@ -35,10 +38,12 @@ from app.db.models.enums import (
     DataProvider,
     PetPolicyType,
     PetSpecies,
+    RouteCreationType,
     RouteItemSlotStatus,
     RouteStatus,
     ScheduleItemType,
     TransportType,
+    TripPace,
 )
 from app.integrations.llm.route_edit import RouteEditIntent
 from app.integrations.tour_api.kto import TourPlace
@@ -275,6 +280,146 @@ def test_여행_상세에_빈_슬롯과_후보_슬롯요약을_내려준다(
         "needsVerification": 0,
         "unfilled": 1,
     }
+
+
+def _day_candidate_count(db: Session, day: RouteDay) -> int:
+    return db.scalar(
+        select(func.count())
+        .select_from(RouteItemCandidate)
+        .join(RouteItem, RouteItem.id == RouteItemCandidate.route_item_id)
+        .where(RouteItem.route_day_id == day.id)
+    )
+
+
+def _seed_day_candidates(db: Session, day: RouteDay) -> None:
+    place = Place(
+        id=uuid.uuid4(),
+        name="대안 장소",
+        category="cafe",
+        latitude=Decimal("33.5000000"),
+        longitude=Decimal("126.5000000"),
+    )
+    db.add(place)
+    db.flush()
+    for item in sorted(day.items, key=lambda route_item: route_item.sort_order):
+        db.add(
+            RouteItemCandidate(
+                id=uuid.uuid4(),
+                route_item_id=item.id,
+                place_id=place.id,
+                rank=1,
+                requires_verification=False,
+            )
+        )
+    db.flush()
+
+
+def test_일정_삭제하면_그날짜_후보가_지워진다(client: TestClient, db: Session, trip: Route) -> None:
+    day = _day_of(trip)
+    _seed_day_candidates(db, day)
+    assert _day_candidate_count(db, day) == 3
+
+    target = sorted(day.items, key=lambda route_item: route_item.sort_order)[-1]
+    response = client.delete(f"/api/v1/route-items/{target.id}")
+
+    assert response.status_code == 204
+    assert _day_candidate_count(db, day) == 0
+
+
+def test_순서_변경하면_그날짜_후보가_지워진다(client: TestClient, db: Session, trip: Route) -> None:
+    day = _day_of(trip)
+    _seed_day_candidates(db, day)
+    ids = [str(item.id) for item in sorted(day.items, key=lambda route_item: route_item.sort_order)]
+
+    response = client.put(
+        f"/api/v1/route-days/{day.id}/items/order", json={"itemIds": list(reversed(ids))}
+    )
+
+    assert response.status_code == 200
+    assert _day_candidate_count(db, day) == 0
+
+
+def test_빈_슬롯에_장소를_넣으면_채워지고_후보가_지워진다(
+    client: TestClient, db: Session, owner: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.route_recommendation.get_precipitation_probabilities",
+        lambda *_args, **_kwargs: {},
+    )
+    kst = timezone(timedelta(hours=9))
+    start = datetime(2026, 9, 20, 9, tzinfo=kst)
+    request = RouteRequest(
+        id=uuid.uuid4(),
+        user_id=owner.id,
+        start_at=start,
+        end_at=start + timedelta(hours=9),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        companion_count=1,
+        departure_latitude=Decimal("33.4900000"),
+        departure_longitude=Decimal("126.5300000"),
+    )
+    db.add(request)
+    db.flush()
+    route = Route(
+        id=uuid.uuid4(),
+        route_request_id=request.id,
+        user_id=owner.id,
+        title="빈 슬롯 채우기",
+        status=RouteStatus.GENERATED,
+        creation_type=RouteCreationType.RECOMMENDED,
+        version=1,
+        start_at=start,
+        end_at=start + timedelta(hours=9),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+    )
+    db.add(route)
+    db.flush()
+    day = RouteDay(id=uuid.uuid4(), route_id=route.id, day_number=1, route_date=start.date())
+    db.add(day)
+    db.flush()
+    unfilled = RouteItem(
+        id=uuid.uuid4(),
+        route_day_id=day.id,
+        item_type=ScheduleItemType.RESTAURANT,
+        sort_order=0,
+        slot_status=RouteItemSlotStatus.UNFILLED,
+        recommendation_reason="확실히 동반 가능한 식당을 찾지 못했어요.",
+    )
+    db.add(unfilled)
+    db.flush()
+    restaurant = Place(
+        id=uuid.uuid4(),
+        name="확인 필요 식당",
+        category="restaurant",
+        latitude=Decimal("33.4996000"),
+        longitude=Decimal("126.5312000"),
+        is_active=True,
+    )
+    db.add(restaurant)
+    db.flush()
+    db.add(
+        RouteItemCandidate(
+            id=uuid.uuid4(),
+            route_item_id=unfilled.id,
+            place_id=restaurant.id,
+            rank=1,
+            requires_verification=True,
+        )
+    )
+    db.flush()
+
+    response = client.put(
+        f"/api/v1/route-items/{unfilled.id}/place", json={"placeId": str(restaurant.id)}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    # 정책이 없는 장소라 확인 필요(needs_verification)로 채워진다.
+    assert body["slotStatus"] == "needs_verification"
+    assert body["place"]["id"] == str(restaurant.id)
+    assert _day_candidate_count(db, day) == 0
 
 
 def test_여행_상세에_tour_api_실시간_장소를_내려준다(

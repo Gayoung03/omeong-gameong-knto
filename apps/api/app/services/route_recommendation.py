@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import (
@@ -335,6 +335,49 @@ def suggest_replacements(
     )[:limit]
 
 
+def clear_day_candidates(db: Session, day_id: uuid.UUID) -> None:
+    """그 날짜 항목들의 슬롯 대안 후보(route_item_candidates)를 모두 지운다.
+
+    교체·추가·삭제·순서 변경으로 슬롯 구성이 바뀌면 기존 후보는 더 이상 맞지 않는다.
+    """
+    db.execute(
+        delete(RouteItemCandidate).where(
+            RouteItemCandidate.route_item_id.in_(
+                select(RouteItem.id).where(RouteItem.route_day_id == day_id)
+            )
+        )
+    )
+
+
+def _rebuild_day_moves(db: Session, day: RouteDay, default_transport) -> None:
+    """빈 슬롯을 채운 뒤 그 날짜의 이동을 다시 잇는다(빈 슬롯은 여전히 제외).
+
+    기존 이동수단은 물려주고, 물려받을 게 없으면 여행 기본값을 쓴다.
+    """
+    ordered = sorted(day.items, key=lambda route_item: route_item.sort_order)
+    connectable = [
+        route_item
+        for route_item in ordered
+        if route_item.slot_status != RouteItemSlotStatus.UNFILLED
+    ]
+    ids = [route_item.id for route_item in ordered]
+    previous = {
+        move.from_item_id: move.transport
+        for move in db.scalars(select(RouteMove).where(RouteMove.from_item_id.in_(ids)))
+    }
+    db.execute(delete(RouteMove).where(RouteMove.from_item_id.in_(ids)))
+    db.flush()
+    for current, following in zip(connectable, connectable[1:], strict=False):
+        db.add(
+            RouteMove(
+                from_item_id=current.id,
+                to_item_id=following.id,
+                transport=previous.get(current.id, default_transport),
+            )
+        )
+    db.flush()
+
+
 def replace_route_item(
     db: Session,
     route: Route,
@@ -345,6 +388,7 @@ def replace_route_item(
     """선택한 DB 장소를 다시 검증한 뒤 일정 항목과 인접 경로를 갱신한다."""
 
     replacing_stay = item.item_type == ScheduleItemType.ACCOMMODATION
+    was_unfilled = item.slot_status == RouteItemSlotStatus.UNFILLED
     if item.recommendation_score is None and item.item_type == ScheduleItemType.CUSTOM:
         raise RecommendationGenerationError("출발지는 장소 교체 대상이 아닙니다")
     if route.route_request_id is None:
@@ -405,6 +449,11 @@ def replace_route_item(
         changed_item.latitude = Decimal(str(replacement.lat))
         changed_item.longitude = Decimal(str(replacement.lng))
         changed_item.item_type = replacement.item_type
+        changed_item.slot_status = (
+            RouteItemSlotStatus.FILLED
+            if replacing_stay
+            else _slot_status_of(replacement.tier)
+        )
         changed_item.recommendation_score = (
             None if replacing_stay else Decimal(str(round(replacement.total_score * 100, 2)))
         )
@@ -414,8 +463,12 @@ def replace_route_item(
     db.flush()
 
     for changed_day, _changed_item in changed_items:
+        # 빈 슬롯을 채웠으면 그 항목엔 인접 이동이 없었으므로 그 날짜의 이동을 다시 잇는다.
+        if was_unfilled:
+            _rebuild_day_moves(db, changed_day, route.transport)
         ordered = sorted(changed_day.items, key=lambda route_item: route_item.sort_order)
         resync_item_times(db, route, ordered, ordered[0].starts_at if ordered else None)
+        clear_day_candidates(db, changed_day.id)
 
     route_items = list(
         db.scalars(
