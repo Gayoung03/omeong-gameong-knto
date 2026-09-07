@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
@@ -8,12 +9,13 @@ from app.recommend.itinerary import (
     DINNER_START_BY,
     LUNCH_START,
     LUNCH_START_BY,
+    MAX_TMAP_CALLS_PER_DAY,
     BuildRequest,
     RouteAnchor,
     build,
 )
 from app.recommend.schemas import BusinessHour, ScoredCandidate
-from app.recommend.tmap import RouteLeg
+from app.recommend.tmap import RouteLeg, TMapError
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -86,10 +88,6 @@ def test_relaxed_pace_selects_at_most_three_and_calls_only_selected_routes() -> 
 
 
 def test_daily_tmap_calls_are_capped_and_fall_back_to_estimates(caplog) -> None:
-    import logging
-
-    from app.recommend.itinerary import MAX_TMAP_CALLS_PER_DAY
-
     # 저녁 없는 짧은 하루 — 식사 슬롯 없이 관광 후보만 계속 걸러지는 상황을 만든다.
     request = BuildRequest(
         start_at=datetime(2026, 8, 31, 9, tzinfo=KST),
@@ -115,7 +113,64 @@ def test_daily_tmap_calls_are_capped_and_fall_back_to_estimates(caplog) -> None:
     # 상한까지만 실제 호출하고, 그 뒤 구간은 추정으로 일정을 완성한다.
     assert len(calls) == MAX_TMAP_CALLS_PER_DAY
     assert len(result.days[0].items) == 4  # normal pace: places_per_day
-    assert any("TMAP 호출 상한" in record.message for record in caplog.records)
+    # cap_logged 가드가 살아 경고는 정확히 한 번만 남는다.
+    cap_logs = [r for r in caplog.records if "TMAP 호출 상한" in r.message]
+    assert len(cap_logs) == 1
+
+
+def test_tmap_call_cap_resets_each_day() -> None:
+    # 마지막 날만 저녁 없이 끝나도록 이틀 여행을 구성한다. 카운터가 날마다 리셋되면
+    # 2일차에서도 상한만큼 실제 호출이 다시 일어난다.
+    request = BuildRequest(
+        start_at=datetime(2026, 8, 31, 9, tzinfo=KST),
+        end_at=datetime(2026, 9, 1, 16, tzinfo=KST),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        start_coord=(33.5, 126.53),
+    )
+    candidates = [
+        _candidate(0.9 - index / 1000, lat=33.5 + index / 5000) for index in range(40)
+    ]
+    calls: list[tuple] = []
+
+    def slow_route(*args):
+        calls.append(args)
+        return RouteLeg(distance_m=100_000, duration_min=600, polyline=None)
+
+    result = build(candidates, request, slow_route)
+
+    assert len(calls) == MAX_TMAP_CALLS_PER_DAY * 2
+    assert result.days[0].items
+    assert result.days[1].items
+
+
+def test_tmap_error_disables_real_calls_for_whole_trip(caplog) -> None:
+    # 첫 호출이 TMapError 를 내면 여행 전체에서 실제 호출을 끄고 추정으로 진행한다.
+    request = BuildRequest(
+        start_at=datetime(2026, 8, 31, 9, tzinfo=KST),
+        end_at=datetime(2026, 9, 1, 16, tzinfo=KST),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        start_coord=(33.5, 126.53),
+    )
+    candidates = [
+        _candidate(0.9 - index / 1000, lat=33.5 + index / 5000) for index in range(10)
+    ]
+    calls: list[tuple] = []
+
+    def failing_route(*args):
+        calls.append(args)
+        raise TMapError("TMAP 다운")
+
+    with caplog.at_level(logging.WARNING, logger="app.recommend.itinerary"):
+        result = build(candidates, request, failing_route)
+
+    # 첫 오류 한 번만 실제로 호출하고, 이후 모든 날짜는 추정으로 채운다.
+    assert len(calls) == 1
+    assert result.days[0].items
+    assert result.days[1].items
+    error_logs = [r for r in caplog.records if "TMAP 조회 실패" in r.message]
+    assert len(error_logs) == 1
 
 
 def test_a_day_contains_at_most_one_cafe() -> None:

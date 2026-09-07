@@ -13,7 +13,7 @@ from app.db.models.enums import ScheduleItemType, TransportType, TripPace
 from app.recommend.common.geo import haversine_m
 from app.recommend.config.pace import PACE
 from app.recommend.schemas import BusinessHour, ScoredCandidate
-from app.recommend.tmap import RouteLeg
+from app.recommend.tmap import RouteLeg, TMapError
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +121,9 @@ def build(
     rule = PACE[request.pace.value]
     remaining = list(scored)
     days: list[ItineraryDay] = []
+    # TMAP 이 한 번 오류를 내면 여행 전체에 대해 실제 호출을 끈다. 타임아웃 10초짜리
+    # 오류를 날마다 상한(12)만큼 반복하면 3분 폴링을 넘기므로 첫 오류에서 바로 끈다.
+    tmap_available = True
 
     for route_date in _dates(start_at.date(), end_at.date()):
         window_start, window_end = (_parse_time(value) for value in rule["window"])
@@ -138,9 +141,9 @@ def build(
             depart_at: datetime,
             day: date = route_date,
         ) -> RouteLeg:
-            """상한 안에서는 실제 경로를, 넘으면 직선거리 추정을 돌려준다."""
-            nonlocal route_calls, cap_logged
-            if route_calls >= MAX_TMAP_CALLS_PER_DAY:
+            """상한 이내·TMAP 정상일 때는 실제 경로를, 그 외에는 직선거리 추정을 돌려준다."""
+            nonlocal route_calls, cap_logged, tmap_available
+            if tmap_available and route_calls >= MAX_TMAP_CALLS_PER_DAY:
                 if not cap_logged:
                     logger.warning(
                         "TMAP 호출 상한(%d) 도달 — %s 이후 구간은 직선거리로 추정합니다",
@@ -148,9 +151,19 @@ def build(
                         day,
                     )
                     cap_logged = True
+            if not tmap_available or route_calls >= MAX_TMAP_CALLS_PER_DAY:
+                return _estimated_leg(origin, destination, request.transport)
+            try:
+                leg = get_route(origin, destination, request.transport, depart_at)
+            except TMapError:
+                logger.warning(
+                    "TMAP 조회 실패 — 이번 여행의 이후 구간은 직선거리로 추정합니다",
+                    exc_info=True,
+                )
+                tmap_available = False
                 return _estimated_leg(origin, destination, request.transport)
             route_calls += 1
-            return get_route(origin, destination, request.transport, depart_at)
+            return leg
 
         start_anchor = request.day_start_anchors.get(route_date)
         end_anchor = request.day_end_anchors.get(route_date)
