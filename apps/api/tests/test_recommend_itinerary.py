@@ -820,3 +820,35 @@ def test_heat_relaxes_when_only_outdoor_candidates_at_midday() -> None:
     )
 
     assert [item.candidate.place_id for item in result.days[0].items] == [outdoor.place_id]
+
+
+def test_forced_meal_fallback_still_offers_restaurant_alternatives() -> None:
+    """활동이 없어 식사를 당겨 채우는 폴백에서도 그 식사 항목에 대안 후보가 붙는다.
+
+    구 코드는 폴백 경로에서 blocked_types 에 RESTAURANT 가 남아 대안이 항상 빈
+    배열이었다. 리팩터(32d8746)에서 슬롯별 SlotSearchContext 재구성으로 바로잡았고,
+    계약(슬롯마다 대안 제공)에 맞으므로 이 동작을 회귀 테스트로 잠근다.
+    """
+    # 관광 후보 없이 식당만 → 첫 슬롯에서 활동을 못 채워 식사 폴백이 발동한다.
+    restaurants = [
+        _candidate(
+            0.9 - index / 100,
+            item_type=ScheduleItemType.RESTAURANT,
+            lat=33.5 + index / 1000,
+        )
+        for index in range(4)
+    ]
+
+    result = build(
+        restaurants,
+        _request(TripPace.NORMAL),  # 09~19시 → 저녁 필요
+        _fast_route,
+    )
+
+    day = result.days[0]
+    assert day.items
+    dinner = day.items[-1]
+    assert dinner.candidate.item_type == ScheduleItemType.RESTAURANT
+    alternatives = day.alternatives[dinner.candidate.place_id]
+    assert alternatives  # 빈 배열이 아니다(구 코드 회귀 방지)
+    assert all(alt.item_type == ScheduleItemType.RESTAURANT for alt in alternatives)
