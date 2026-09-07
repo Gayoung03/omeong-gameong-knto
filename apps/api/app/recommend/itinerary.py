@@ -1,5 +1,6 @@
 """점수화된 장소를 시간 제약이 있는 일자별 일정으로 조립한다."""
 
+import logging
 import math
 import uuid
 from collections import Counter
@@ -13,6 +14,8 @@ from app.recommend.common.geo import haversine_m
 from app.recommend.config.pace import PACE
 from app.recommend.schemas import BusinessHour, ScoredCandidate
 from app.recommend.tmap import RouteLeg
+
+logger = logging.getLogger(__name__)
 
 KST = ZoneInfo("Asia/Seoul")
 DINNER_START = time(17)
@@ -30,6 +33,11 @@ SPEED_METERS_PER_MINUTE = {
     TransportType.WALK: 75,
 }
 SUPPORTED_TRANSPORTS = frozenset(SPEED_METERS_PER_MINUTE)
+
+# 후보가 계속 시간 제약에 안 맞으면 후보 수만큼 TMAP(타임아웃 10초)을 부를 수 있어
+# 폴링 한도(3분)를 넘긴다. 하루당 호출을 이 상한으로 묶고, 초과분은 직선거리 추정으로
+# 대체해 일정 조립을 계속 진행한다.
+MAX_TMAP_CALLS_PER_DAY = 12
 
 DIVERSITY_GROUP_BY_CATEGORY = {
     "beach": "coast",
@@ -121,6 +129,29 @@ def build(
         items: list[ScheduledItem] = []
         moves: list[ScheduledMove] = []
         rejected_today: set[uuid.UUID] = set()
+        route_calls = 0
+        cap_logged = False
+
+        def fetch_leg(
+            origin: Coordinate,
+            destination: Coordinate,
+            depart_at: datetime,
+            day: date = route_date,
+        ) -> RouteLeg:
+            """상한 안에서는 실제 경로를, 넘으면 직선거리 추정을 돌려준다."""
+            nonlocal route_calls, cap_logged
+            if route_calls >= MAX_TMAP_CALLS_PER_DAY:
+                if not cap_logged:
+                    logger.warning(
+                        "TMAP 호출 상한(%d) 도달 — %s 이후 구간은 직선거리로 추정합니다",
+                        MAX_TMAP_CALLS_PER_DAY,
+                        day,
+                    )
+                    cap_logged = True
+                return _estimated_leg(origin, destination, request.transport)
+            route_calls += 1
+            return get_route(origin, destination, request.transport, depart_at)
+
         start_anchor = request.day_start_anchors.get(route_date)
         end_anchor = request.day_end_anchors.get(route_date)
         current_coord = start_anchor.coord if start_anchor else request.start_coord
@@ -204,12 +235,7 @@ def build(
 
             rest_min = rule["rest_min"] if items else 0
             depart_at = current_time + timedelta(minutes=rest_min)
-            route = get_route(
-                current_coord,
-                (choice.lat, choice.lng),
-                request.transport,
-                depart_at,
-            )
+            route = fetch_leg(current_coord, (choice.lat, choice.lng), depart_at)
             arrival = depart_at + timedelta(minutes=route.duration_min)
             visit = _fit_visit(
                 choice,
@@ -240,12 +266,7 @@ def build(
 
         end_arrival = None
         if items and end_anchor is not None:
-            return_route = get_route(
-                current_coord,
-                end_anchor.coord,
-                request.transport,
-                current_time,
-            )
+            return_route = fetch_leg(current_coord, end_anchor.coord, current_time)
             moves.append(ScheduledMove(transport=request.transport, route=return_route))
             end_arrival = current_time + timedelta(minutes=return_route.duration_min)
 
@@ -393,6 +414,16 @@ def _best_candidate(
         choices.append((candidate.total_score / max(cost, 1), candidate.total_score, candidate))
 
     return max(choices, key=lambda choice: choice[:2])[2] if choices else None
+
+
+def _estimated_leg(
+    from_coord: Coordinate, to_coord: Coordinate, transport: TransportType
+) -> RouteLeg:
+    """TMAP 상한을 넘겼을 때 쓰는 직선거리 기반 이동 추정."""
+
+    distance_m = round(haversine_m(from_coord, to_coord))
+    duration_min = math.ceil(distance_m / SPEED_METERS_PER_MINUTE[transport])
+    return RouteLeg(distance_m=distance_m, duration_min=duration_min, polyline=None)
 
 
 def _diversity_group(candidate: ScoredCandidate) -> str:

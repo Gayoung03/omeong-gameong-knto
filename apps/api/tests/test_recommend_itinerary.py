@@ -85,6 +85,39 @@ def test_relaxed_pace_selects_at_most_three_and_calls_only_selected_routes() -> 
     assert result.days[0].items[-1].starts_at >= datetime(2026, 8, 31, 17, tzinfo=KST)
 
 
+def test_daily_tmap_calls_are_capped_and_fall_back_to_estimates(caplog) -> None:
+    import logging
+
+    from app.recommend.itinerary import MAX_TMAP_CALLS_PER_DAY
+
+    # 저녁 없는 짧은 하루 — 식사 슬롯 없이 관광 후보만 계속 걸러지는 상황을 만든다.
+    request = BuildRequest(
+        start_at=datetime(2026, 8, 31, 9, tzinfo=KST),
+        end_at=datetime(2026, 8, 31, 16, tzinfo=KST),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        start_coord=(33.5, 126.53),
+    )
+    # 서로 가까워 추정 이동시간으로는 모두 통과하지만, 실제(가짜) TMAP 시간은
+    # 하루 창을 넘겨 매번 _fit_visit 에서 탈락하는 후보들.
+    candidates = [
+        _candidate(0.9 - index / 1000, lat=33.5 + index / 5000) for index in range(20)
+    ]
+    calls: list[tuple] = []
+
+    def slow_route(*args):
+        calls.append(args)
+        return RouteLeg(distance_m=100_000, duration_min=600, polyline=None)
+
+    with caplog.at_level(logging.WARNING, logger="app.recommend.itinerary"):
+        result = build(candidates, request, slow_route)
+
+    # 상한까지만 실제 호출하고, 그 뒤 구간은 추정으로 일정을 완성한다.
+    assert len(calls) == MAX_TMAP_CALLS_PER_DAY
+    assert len(result.days[0].items) == 4  # normal pace: places_per_day
+    assert any("TMAP 호출 상한" in record.message for record in caplog.records)
+
+
 def test_a_day_contains_at_most_one_cafe() -> None:
     cafes = [
         _candidate(score, item_type=ScheduleItemType.CAFE, lat=33.5 + index / 1000)
