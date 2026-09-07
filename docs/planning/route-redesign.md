@@ -1,6 +1,13 @@
 # 루트 추천 재설계 — 정의·리뷰·스키마 변경안
 
-작성일: 2026-09-07 · 상태: **초안 (팀 공유·추인 대기)** · 작성: viowlet
+작성일: 2026-09-07 · 갱신: 2026-09-08 · 상태: **Phase 1~5 구현 완료, PR 리뷰·머지 대기** · 작성: viowlet
+
+> **현재 상태 (2026-09-08)**
+>
+> - 구현: Phase 1·1b(#267) → 2(#272) → 3(#273) → 4(#274) → 5(#275) 모두 로컬 검수 통과, PR 열림. 스택 PR이라 **#266 → #267 → #272 → #273 → #274 → #275 순서로 merge commit**으로 합치고, 앞 PR이 머지되면 뒤 PR의 base를 `dev/viowlet-main`으로 바꾼다.
+> - DB: 마이그레이션 4개(`c1a2b3d4e5f6` cuisine → `d2b3c4e5f6a7` slot_status·후보 → `e3c4d5f6a7b8` pets 특성 → `a1f5c9d3e7b2` weather 백필)와 Phase 2 스크립트(명소 시드·정책 갱신·환경 백필·카테고리 정정·cuisine 추출)는 **어느 DB에도 적용하지 않았다**. 적용 시점·순서는 §6 Phase 2 행과 §3.7 참고.
+> - 보류 중인 판단: **카카오 로컬 데이터 저장 문제** — [`kakao-data-replacement-assessment.md`](./kakao-data-replacement-assessment.md). 카카오 단독 장소 598곳·지오코딩 좌표·`cuisine`이 걸려 있다. 인허가 데이터 실측(파일 확보 필요)과 팀 결정 전까지 DB 데이터 삭제·변경 금지, `cuisine` 추출 미실행, 명소 시드 좌표는 적용 전 공공 지오코더로 재확인.
+> - 남은 단계: Phase 6(근거 문장 템플릿·출처 노출, LLM 여행 설명 1회, 동물병원 안전망), Phase 7(`regenerate`, 시나리오 매트릭스 측정). 앱 팀 통보(`docs/api/README.md` 8장). 명소 전화 확인 8곳(`apps/api/scripts/data/landmarks/README.md`).
 
 이 문서는 루트 추천 기능을 다시 정의하고, 그 정의에 필요한 DB 스키마 변경을 제안한다.
 API 계약 변경은 추인 후 [`docs/api/routes.md`](../api/routes.md)에, 스키마 변경은
