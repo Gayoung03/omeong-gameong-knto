@@ -65,4 +65,5 @@ uv run python -m scripts.manage_admin revoke --email admin@example.com
 ```
 
 운영 환경에서는 실수 방지를 위해 `--confirm-production`을 함께 입력해야 한다.
-로컬 `seed_dev` 계정은 관리자 웹 확인을 위해 자동으로 권한을 갖는다.
+로컬 `seed_dev` 는 관리자 웹 확인용 계정 `admin@omeong.local`(nickname 관리자)을
+따로 심는다. 시드 사용자 `seed@omeong.local`(율무)은 일반 사용자다.

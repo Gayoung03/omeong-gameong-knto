@@ -7,7 +7,6 @@
 import uuid
 from collections import defaultdict
 from datetime import UTC, datetime
-from enum import Enum
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -34,6 +33,7 @@ from app.schemas.admin_editorial import (
     AdminEditorialStoryUpdate,
     AdminUserResponse,
 )
+from app.services.admin_audit import json_value as _json_value
 
 router = APIRouter(prefix="/admin")
 DbSession = Annotated[Session, Depends(get_db)]
@@ -63,18 +63,6 @@ def _sources_by_story(
     for source in sources:
         result[source.story_id].append(source)
     return result
-
-
-def _json_value(value: object) -> object:
-    if isinstance(value, Enum):
-        return value.value
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, list):
-        return [_json_value(item) for item in value]
-    if isinstance(value, dict):
-        return {key: _json_value(item) for key, item in value.items()}
-    return value
 
 
 def _audit(

@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     #: 제주 여행 이야기 초안은 일반 챗봇과 별도로 모델을 바꿀 수 있다.
     editorial_openai_model: str = ""
+    #: 1:1 문의 답변 초안 생성 모델. 비우면 openai_model 을 쓴다.
+    inquiry_openai_model: str = ""
     #: 첫 응답까지 20초, 전체 60초(설계 결정 E2).
     chat_connect_timeout_seconds: float = 20.0
     chat_timeout_seconds: float = 60.0

@@ -4,12 +4,14 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
     admin,
+    admin_support,
     auth,
     chatbot,
     checklists,
     editorial,
     guides,
     health,
+    inquiries,
     memos,
     notices,
     notifications,
@@ -26,6 +28,7 @@ from app.api.v1.endpoints import (
 
 api_router = APIRouter()
 api_router.include_router(admin.router, tags=["admin"])
+api_router.include_router(admin_support.router, tags=["admin"])
 api_router.include_router(health.router, tags=["system"])
 api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(routes.router, tags=["routes"])
@@ -34,6 +37,7 @@ api_router.include_router(checklists.router, tags=["routes"])
 api_router.include_router(memos.router, tags=["routes"])
 api_router.include_router(notifications.router, tags=["notifications"])
 api_router.include_router(notices.router, tags=["notices"])
+api_router.include_router(inquiries.router, tags=["inquiries"])
 api_router.include_router(editorial.router, tags=["editorial-stories"])
 api_router.include_router(places.router, tags=["places"])
 api_router.include_router(reviews.router, tags=["reviews"])

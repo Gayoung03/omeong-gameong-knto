@@ -1,6 +1,13 @@
 # 오멍가멍 관리자 웹
 
-비짓제주 여행 이야기 초안을 검수·수정·게시하는 React + Vite SPA입니다.
+운영 콘솔 React + Vite SPA입니다. 현재 메뉴:
+
+- **여행 이야기** — 비짓제주 초안 검수·수정·게시
+- **1:1 문의** — 사용자 문의 확인·답변 (답변 시 AI 초안 생성)
+- **공지사항** — 공지 작성·수정·발행 (발행 시 전 사용자 알림 1회)
+- 품질 검증 — 다음 작업 (비활성)
+
+API 스펙: [editorial-stories.md](../../docs/api/editorial-stories.md), [admin-support.md](../../docs/api/admin-support.md)
 
 ## 로컬 실행
 
@@ -12,8 +19,9 @@ SEED_DEV_PASSWORD=<로컬비밀번호> make db-seed-local
 make admin-dev
 ```
 
-`http://localhost:5173`에 접속해 `seed@omeong.local`과 위에서 지정한
-비밀번호로 로그인합니다. 다른 API를 사용하려면 `.env`를 만듭니다.
+`http://localhost:5173`에 접속해 **`admin@omeong.local`** 과 위 `SEED_DEV_PASSWORD`
+값으로 로그인합니다. (`seed@omeong.local` = 율무는 일반 사용자라 로그인하면 403.
+문의를 남기는 쪽 계정입니다.) 다른 API를 사용하려면 `.env`를 만듭니다.
 
 ```bash
 cp .env.example .env

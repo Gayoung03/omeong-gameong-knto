@@ -1,9 +1,11 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
+import { usePendingInquiryCount } from '../lib/usePendingInquiryCount';
 
 export function AppLayout() {
   const { user, logout } = useAuth();
+  const pendingInquiries = usePendingInquiryCount();
 
   return (
     <div className="admin-shell">
@@ -16,9 +18,24 @@ export function AppLayout() {
           </div>
         </div>
         <nav className="side-nav" aria-label="관리자 메뉴">
+          <p className="nav-group">콘텐츠</p>
           <NavLink to="/stories" className={({ isActive }) => (isActive ? 'active' : '')}>
             <span className="nav-icon" aria-hidden="true">▦</span>
             여행 이야기
+          </NavLink>
+          <p className="nav-group">고객지원</p>
+          <NavLink to="/inquiries" className={({ isActive }) => (isActive ? 'active' : '')}>
+            <span className="nav-icon" aria-hidden="true">✉</span>
+            1:1 문의
+            {pendingInquiries !== null && pendingInquiries > 0 && (
+              <span className="nav-badge" aria-label={`미답변 ${pendingInquiries}건`}>
+                {pendingInquiries > 99 ? '99+' : pendingInquiries}
+              </span>
+            )}
+          </NavLink>
+          <NavLink to="/notices" className={({ isActive }) => (isActive ? 'active' : '')}>
+            <span className="nav-icon" aria-hidden="true">◈</span>
+            공지사항
           </NavLink>
           <span className="nav-disabled" aria-disabled="true">
             <span className="nav-icon" aria-hidden="true">◇</span>

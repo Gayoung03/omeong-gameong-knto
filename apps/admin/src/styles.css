@@ -165,8 +165,8 @@ a { color: inherit; }
 .admin-profile > div { display: grid; min-width: 90px; }
 .admin-profile strong { font-size: 12px; }
 .admin-profile span { color: #8a857e; font-size: 10px; }
-.admin-profile button { padding: 6px 9px; border: 0; color: #8a857e; background: transparent; font-size: 11px; }
-.admin-profile button:hover { color: var(--red); }
+.admin-profile button { margin-left: 4px; padding: 7px 14px; border: 1px solid #e0c4bd; border-radius: 8px; color: var(--red); background: #fff5f4; font-size: 12px; font-weight: 700; transition: 150ms ease; }
+.admin-profile button:hover { color: #fff; background: var(--red); border-color: var(--red); }
 .page-content { width: min(1540px, 100%); margin: 0 auto; padding: 40px; }
 .content-card { border: 1px solid var(--line); border-radius: 15px; background: #fff; box-shadow: var(--shadow); }
 .app-loading, .page-loading { display: flex; min-height: 100vh; align-items: center; justify-content: center; gap: 12px; color: var(--muted); font-size: 13px; }
@@ -311,6 +311,33 @@ tbody tr:hover { background: #fffaf6; }
 .confirm-modal h2 { margin: 0 0 9px; font-size: 19px; letter-spacing: -0.03em; }
 .confirm-modal p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+
+/* 고객지원 콘솔 */
+.nav-group { margin: 16px 0 4px; padding: 0 13px; color: #7d766c; font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.side-nav .nav-group:first-child { margin-top: 0; }
+.nav-badge { display: inline-grid; min-width: 18px; height: 18px; margin-left: auto; place-items: center; padding: 0 5px; border-radius: 999px; color: #fff; background: var(--red); font-size: 10px; font-weight: 700; }
+.side-nav a.active .nav-badge { background: #fff; color: var(--red); }
+tbody tr.row-attention { background: #fffaf5; }
+tbody tr.row-attention:hover { background: #fff4ea; }
+tbody tr.row-attention td:first-child { box-shadow: inset 3px 0 0 var(--orange); }
+.count-attention { color: var(--red) !important; }
+.status-pending { color: #9c5a1e; background: #fff0d8; }
+.status-completed { color: #287354; background: #e4f4eb; }
+.status-live { color: #287354; background: #e4f4eb; }
+.status-stopped { color: #6f6b66; background: #efeeec; }
+.inquiry-body { margin: 0; color: #4c473f; font-size: 15px; line-height: 1.9; white-space: pre-wrap; }
+.inquiry-images { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.inquiry-images img { width: 116px; height: 116px; border-radius: 9px; object-fit: cover; background: #f2f0ec; }
+.context-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 14px; }
+.context-chips > span:first-child { color: #9a948c; font-size: 10px; font-weight: 600; }
+.context-chip { padding: 4px 8px; border-radius: 999px; color: #7a5b3f; background: #fff1e8; font-size: 10px; }
+.answer-editor { width: 100%; min-height: 340px; padding: 18px; border: 1px solid #ded9d2; border-radius: 10px; line-height: 1.9; font-size: 15px; resize: vertical; }
+.answer-actions { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+.answered-at { margin: 10px 0 0; color: #9a948c; font-size: 11px; }
+.answer-sent { margin: 0; padding: 18px; border: 1px solid var(--line); border-radius: 10px; color: #4c473f; font: inherit; font-size: 15px; line-height: 1.9; white-space: pre-wrap; background: #fdfcfb; }
+.checkbox-field { display: flex; flex-direction: row; align-items: center; gap: 9px; color: #4f4a44; font-size: 13px; font-weight: 600; }
+.checkbox-field input { width: 16px; height: 16px; }
+.form-section > .answer-actions + .answered-at { margin-top: 8px; }
 
 @media (max-width: 1120px) {
   .editor-layout { grid-template-columns: 1fr; }

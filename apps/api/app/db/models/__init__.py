@@ -1,6 +1,8 @@
 """Import every SQLAlchemy model so Alembic can discover the metadata."""
 
 from app.db.models.community import (
+    AdminInquiryAuditLog,
+    AdminNoticeAuditLog,
     ChatConversation,
     ChatMessage,
     Favorite,
@@ -53,9 +55,11 @@ from app.db.models.users import (
 )
 
 __all__ = [
+    "AdminEditorialAuditLog",
+    "AdminInquiryAuditLog",
+    "AdminNoticeAuditLog",
     "ChatConversation",
     "ChatMessage",
-    "AdminEditorialAuditLog",
     "Favorite",
     "EditorialStory",
     "EditorialStorySource",
