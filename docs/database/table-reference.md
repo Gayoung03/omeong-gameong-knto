@@ -245,11 +245,20 @@
 
 ### `place_tags`
 
-추천에 사용하는 표준 태그 사전입니다.
+추천에 사용하는 표준 태그 사전입니다. `code`가 계약이고 `name`은 한글 라벨입니다.
 
-```text
-바다, 카페, 산책, 포토스팟, 체험, 휴식, 실내관광
-```
+| `code` | `name` |
+| --- | --- |
+| `sea` | 바다 |
+| `cafe` | 카페 |
+| `walk` | 산책 |
+| `photo_spot` | 포토스팟 |
+| `experience` | 체험 |
+| `rest` | 휴식 |
+| `indoor_tourism` | 실내관광 |
+
+추천 엔진(`app/recommend/config/tags.py`)·`user_travel_preferences.preferred_tags`·`route_requests.preferred_tags`는
+모두 `code`를 씁니다 (2026-09-07 통일, 이전에는 엔진이 `name`을 표준 태그로 써서 취향 점수가 항상 0이었음).
 
 ### `place_tag_links`
 

@@ -203,6 +203,7 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 | `companionCount` | — | 기본 1. 1 이상 |
 | `petIds` | — | 본인 소유 반려동물 |
 | `pets[]` | — | **[확인 필요 — 앱 팀]** (2026-09-07) 반려동물별 **이번 여행 컨디션**. `petId`는 본인 소유, `energyLevel`은 `low` `normal` `high`. `petIds`와 함께 보내면 `pets`가 우선. 생략하면 `pets.activityLevel` 기본값을 씀. `route_request_pets.energy_level`에 스냅샷 |
+| `preferredTags` | — | 화면 라벨(`바다·해변` `카페` `맛집` …)이나 DB 코드(`sea` `cafe` …) 어느 쪽이든 받고, 서버가 `place_tags.code` 7종(+`category:restaurant`)으로 정규화해 저장 (2026-09-07, [`users.md`](./users.md) 취향 태그 코드 표). 저장값은 항상 코드 |
 | `stays[].checkOutAt` | — | `checkInAt`보다 뒤 |
 | `requestText` | — | 자유 요청문. 202 응답 후 **백그라운드 생성 단계에서** LLM 으로 선호 태그를 추출해 `preferredTags`와 **합쳐서 이번 생성에만** 사용한다(요청 행은 바꾸지 않음). 추출은 표준 태그 어휘로 제한되고, 실패하면 무시하고 원래 값으로 진행한다. `pace` 등 다른 필드는 건드리지 않는다 |
 
@@ -219,8 +220,10 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 `priorityPreset`에서 기본 가중치 배수를 적용한 다음 `userCriteria`로 사용자가 고른
 항목을 추가 부스트하고, 합계가 1이 되도록 정규화합니다. 최종값만
 `route_requests.applied_weights`에 저장합니다. **[개정 2026-09-07]** 6개 키는 하위호환을 위해
-유지하되 `weather`·`rating`·`popularity`는 0으로 고정합니다. 취향·인기 축은 화면 전면에서
-빠지고, 반려 점수는 장소 정책만이 아니라 **동반 반려동물의 크기·나이·컨디션**을 함께 봅니다.
+유지합니다. `rating`·`popularity`는 0이고, `weather`는 Phase 5에서 하루 구성 규칙으로 옮길 때까지
+0.10을 남겨 `healing` 프리셋과 `userCriteria: ["weather"]`가 무효가 되지 않게 합니다
+(기본값 반려 0.45 · 근접 0.25 · 취향 0.20 · 날씨 0.10). 취향·인기 축은 화면 전면에서 빠지고,
+반려 점수는 장소 정책만이 아니라 **동반 반려동물의 크기·나이·컨디션**을 함께 봅니다.
 
 추천 생성 시 출발지(없으면 첫 숙소) 좌표를 기상청 5km 격자로 변환해 단기예보를
 조회합니다. **[개정 2026-09-07]** 날씨는 점수 축이 아니라 **하루 구성 규칙**으로 씁니다.
@@ -938,3 +941,4 @@ AI 추천 후보 또는 사용자가 직접 고른 DB 장소로 일정 항목을
 | 2026-08-18 | 미정 2건 확정 — 폴링 **2초 간격 / 3분 타임아웃**, `failureReason`은 컬럼 추가 없이 응답에만, 수동 여행 재생성은 **`422`**. 수동 생성 엔드포인트는 **보류 유지**하되 DB 준비 완료 사실과 유력안을 정리 |
 | 2026-09-02 | `requestText` write-only 해소 (ai-io-column-design 8.3-3) — 백그라운드 생성 단계에서 LLM 으로 태그를 추출해 `preferredTags`와 병합(이번 생성 한정, 요청 행 불변). `pace`는 스키마상 "미지정" 상태가 없어 병합 대상에서 제외. 실패 시 무시 |
 | 2026-09-07 | **루트 추천 재설계 반영** ([`route-redesign.md`](../planning/route-redesign.md)) — 부분 성공(빈 슬롯 `slotStatus`, `slotSummary`, `failed`는 전일 공백일 때만), 슬롯별 대안 `candidates`, 후보 3등급(확실/확인 필요/불가), 날씨를 하루 구성 규칙으로, 반려동물 중심 개인화(`pets[].energyLevel`, 반려 점수에 반려동물 반영), `recommendationReason` 의미 변경, `place.petPolicy`·`cuisine`·`phone` 노출, `nearbyAnimalHospitals`, `regenerate` 미구현 명시. "식당 부족 시 실패" 규칙 개정 |
+| 2026-09-07 | Phase 1 검수 반영 (#263) — `weather` 가중치는 Phase 5 전까지 **0.10 유지**(healing 프리셋 무효화 방지), `preferredTags`는 라벨·코드 모두 받아 **코드로 저장**함을 명시. TMAP 호출은 하루 12회 상한, 오류 시 여행 단위로 직선거리 추정 폴백 |

@@ -145,7 +145,7 @@ DB 리뷰안대로 **`route_request_pets`(반려동물별)**로 간다. 여러 �
 | 태그 코드 통일 | DB 무변경. `recommend/config/tags.py`에 코드↔라벨 매핑 |
 | 체류시간 기본값 | DB 무변경. 카테고리별 상수(`recommend/config/`). `average_stay_minutes`가 있으면 우선 |
 | 환경(`environment`) 추정 | 기존 컬럼 백필 배치. 스키마 무변경 |
-| `applied_weights` | 6키 유지, `weather`·`popularity`·`rating` 값 0 |
+| `applied_weights` | 6키 유지. `rating`·`popularity` 0, `weather`는 Phase 5 전까지 **0.10** (Phase 1 검수에서 결정 — 0이면 `healing` 프리셋과 `userCriteria: weather`가 조용히 무효화됨) |
 | `route_days.weather_snapshot_id` | 이미 있으나 **미사용**. D6 구현 시 채운다 (`weather_snapshots` UNIQUE(region, forecast_at)의 region 정의는 구현 시 결정) |
 | 명소 큐레이션 행 | `places` + `place_pet_policies(source='internal', source_url)` 기존 구조. `created_by_user_id`는 NULL 유지 |
 
@@ -319,7 +319,7 @@ weather_api, internal`. 후보: `jeju_open_data`. **출처 목록 확정 후 추
 | Phase | 내용 | 스키마 |
 | --- | --- | --- |
 | 0 | 현재 엔진으로 시나리오 매트릭스(권역 4 × 속도 3 × 1~3박) 실패율·슬롯 충족률 측정. 문서 추인. 앱 팀 통보 | — |
-| 1 | **긴급**: TMAP 호출 상한 + 직선거리 폴백. 태그 코드 매핑 + 가중치 재조정 (같은 PR) | — |
+| 1 | **긴급**: TMAP 호출 상한 + 직선거리 폴백. 태그 코드 매핑 + 가중치 재조정 (같은 PR) — **구현 완료 2026-09-07** (#263, TMAP 오류 시 여행 단위 추정 폴백 포함. 가중치 반려 .45 · 근접 .25 · 취향 .20 · 날씨 .10) | — |
 | 2 | 데이터 보강 (병렬): 명소 큐레이션, 카테고리별 체류시간, 환경 백필, 카테고리 오염 정리, 카카오 음식 종류 | ③ `cuisine` |
 | 3 | 부분 성공 + tier: 후보 3값(`VERIFIED/NEEDS_CHECK/BLOCKED`), 하드 실패 제거, 빈 슬롯 행, 후보 저장, 완성도 응답 | ① `slot_status` + `route_item_candidates` |
 | 4 | 반려동물 중심 개인화: `applied_weights` 하위호환, pets 컬럼, `pet_score(candidate, pets, condition)`, 속도 규칙 보정, 이동시간 상한 완화 단계 | ② `pets` + `route_request_pets` |
@@ -338,3 +338,5 @@ weather_api, internal`. 후보: `jeju_open_data`. **출처 목록 확정 후 추
 3. 24시 동물병원 판정을 `place_business_hours`로 할 수 있는지 실데이터 확인. 안 되면 이름·설명 문자열.
 4. `weather_snapshots` UNIQUE(region, forecast_at)에서 좌표 기반 저장 시 `region` 정의.
 5. 명소 큐레이션 목록 초안 검토자.
+6. Phase 5에서 `weather` 축을 빼면서 `healing` 프리셋과 `userCriteria: weather`를 하루 구성 규칙(실내 비중 상향)으로 어떻게 재정의할지. 앱의 선택지 문구도 함께 조정.
+7. 가입 화면 취향 선택지(`vibeOptions`)와 `place_tags.code` 7종의 어휘 통일 (앱 팀, 우선순위 낮음).

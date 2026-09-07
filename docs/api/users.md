@@ -283,25 +283,29 @@ enum 값은 영문 코드 그대로입니다. `rental_car`의 값 자체에 있�
 `preferredTags`에는 **영문 코드**를 넣습니다. 화면에 보일 한글은 앱이 라벨로 바꿉니다
 ([`README.md`](./README.md) 7장 규약).
 
+**[확정 2026-09-07]** 추천 방식이 규칙 기반으로 정해지면서 목록도 확정합니다. 취향 태그는
+**장소 태그 사전(`place_tags.code`) 7종과 같은 단어**를 씁니다. 엔진이 사용자 태그와 장소 태그의
+교집합으로 취향 점수를 내므로 두 어휘가 같아야 합니다.
+
 | 화면 표시 | 코드 |
 | --- | --- |
-| 자연 | `nature` |
-| 실내 | `indoor` |
+| 바다 | `sea` |
 | 카페 | `cafe` |
 | 산책 | `walk` |
-| 사진 | `photo` |
-| 조용한 | `quiet` |
-| 활동적 | `active` |
+| 포토스팟 | `photo_spot` |
+| 체험 | `experience` |
+| 휴식 | `rest` |
+| 실내관광 | `indoor_tourism` |
+
+이전 표(`nature` `indoor` `photo` `quiet` `active`)는 가입 화면 선택지를 옮긴 임시 목록이었고 장소
+태그와 맞지 않아 폐기합니다. 서버는 화면 라벨(`바다·해변` `산책·공원` `실내 관광` `오름·자연`
+`문화·전시` `맛집`)과 한글 라벨(`바다` 등)도 받아 코드로 정규화하므로 앱은 코드나 라벨 어느 쪽을
+보내도 됩니다 (`app/recommend/config/tags.py`).
 
 > **앱 수정 필요.** [`signupOptions.ts`](../../apps/mobile/src/features/auth/constants/signupOptions.ts)의
-> `vibeOptions`가 지금 `{ value: '자연' }`처럼 한글을 값으로 쓰고 있습니다.
-> 같은 파일의 `petTypeOptions`처럼 `{ value: 'nature', label: '자연' }` 형태로 바꿔야 합니다.
-
-> **[확인 필요] — 목록 자체는 아직 보류입니다.**
-> 위 7개는 **현재 앱 화면에 있는 선택지를 코드로 옮긴 것**입니다.
-> 이 목록이 장소 태그(`place_tags`)와 단어를 맞춰야 하는지는
-> **추천 방식(규칙 기반 / AI)이 정해져야** 답이 나옵니다.
-> 자세한 내용은 [`places.md`](./places.md)의 `GET /place-tags` 절에 있습니다.
+> `vibeOptions`(자연·실내·카페·산책·사진·조용한·활동적)는 위 7종과 단어가 다릅니다.
+> 선택지를 위 표로 바꾸거나, 루트 입력 화면의 장소 유형 선택지와 같은 라벨을 쓰도록 맞춰야 합니다.
+> 재설계에서 취향은 전면 축이 아니므로 우선순위는 낮습니다 ([`route-redesign.md`](../planning/route-redesign.md)).
 
 `preferredTags`는 `user_travel_preferences.preferred_tags`(문자열 배열)에 그대로 저장됩니다.
 `place_tags` 테이블의 외래키가 아니라서 목록이 바뀌어도 DB 제약에 걸리지 않습니다.
@@ -497,3 +501,4 @@ API는 **404로 통일**합니다. 삭제된 리소스는 조회되지 않는다
 | 2026-08-18 | 탈퇴 계정 보관 **30일** 확정(이후 이메일·닉네임 익명화). `preferredTags`를 **영문 코드**로 확정하고 매핑표 추가. 태그 목록 자체는 추천 방식 확정 시 재검토로 보류 |
 | 2026-09-02 | **탈퇴 시 챗봇 대화·메시지 즉시 물리 삭제 확정** (ai-io-column-design 8.3-2). 회원 soft delete 와 같은 트랜잭션에서 `chat_conversations` 하드 삭제, 다른 데이터는 불변 |
 | 2026-09-07 | 루트 추천 재설계 반영 ([`route-redesign.md`](../planning/route-redesign.md)) — `pets`에 여행 특성 `activityLevel` `sociability` `carSickness` 추가 (DB README "성격 태그 MVP 제외" 결정 개정). 이번 여행 컨디션은 [`routes.md`](./routes.md)의 `pets[].energyLevel` |
+| 2026-09-07 | 취향 태그 **목록 확정** — `place_tags.code` 7종(`sea` `cafe` `walk` `photo_spot` `experience` `rest` `indoor_tourism`)으로 통일. 2026-08-18 임시 표(`nature` …) 폐기. 서버는 라벨·코드 모두 받아 코드로 저장 (Phase 1, #263) |
