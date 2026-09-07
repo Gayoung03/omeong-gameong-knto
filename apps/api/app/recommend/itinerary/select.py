@@ -70,7 +70,7 @@ class SlotSearchContext:
     diversity_group_counts: Counter[str] = field(default_factory=Counter)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Rung:
     """완화 사다리의 한 단계. 아래로 갈수록 제약을 하나씩 푼다."""
 
@@ -94,10 +94,14 @@ def best_candidate_with_diversity(
     if not enforce_diversity:
         # 환경 선호 준수 → 환경 해제 → 이동 상한 해제 → 확인 필요 허용 순으로 완화한다.
         rungs = (
-            Rung(frozenset(), False, VERIFIED_ONLY, ctx.max_travel_min, apply_env=True),
-            Rung(frozenset(), False, VERIFIED_ONLY, ctx.max_travel_min, apply_env=False),
-            Rung(frozenset(), False, VERIFIED_ONLY, None, apply_env=False),
-            Rung(frozenset(), False, ANY_TIER, None, apply_env=False),
+            Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
+                 allowed_tiers=VERIFIED_ONLY, travel_limit=ctx.max_travel_min, apply_env=True),
+            Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
+                 allowed_tiers=VERIFIED_ONLY, travel_limit=ctx.max_travel_min, apply_env=False),
+            Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
+                 allowed_tiers=VERIFIED_ONLY, travel_limit=None, apply_env=False),
+            Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
+                 allowed_tiers=ANY_TIER, travel_limit=None, apply_env=False),
         )
         return _first_match(candidates, rejected, ctx, rungs)
 
@@ -106,12 +110,18 @@ def best_candidate_with_diversity(
     ctx = replace(ctx, diversity_group_counts=group_counts)
     # 다양성 완화 → 환경 선호 해제 → 이동시간 상한 해제 → 확인 필요 허용 순으로 내려간다.
     rungs = (
-        Rung(blocked, True, VERIFIED_ONLY, ctx.max_travel_min, apply_env=True),
-        Rung(frozenset(), True, VERIFIED_ONLY, ctx.max_travel_min, apply_env=True),
-        Rung(frozenset(), False, VERIFIED_ONLY, ctx.max_travel_min, apply_env=True),
-        Rung(frozenset(), False, VERIFIED_ONLY, ctx.max_travel_min, apply_env=False),
-        Rung(frozenset(), False, VERIFIED_ONLY, None, apply_env=False),
-        Rung(frozenset(), False, ANY_TIER, None, apply_env=False),
+        Rung(blocked_groups=blocked, enforce_daily_limits=True,
+             allowed_tiers=VERIFIED_ONLY, travel_limit=ctx.max_travel_min, apply_env=True),
+        Rung(blocked_groups=frozenset(), enforce_daily_limits=True,
+             allowed_tiers=VERIFIED_ONLY, travel_limit=ctx.max_travel_min, apply_env=True),
+        Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
+             allowed_tiers=VERIFIED_ONLY, travel_limit=ctx.max_travel_min, apply_env=True),
+        Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
+             allowed_tiers=VERIFIED_ONLY, travel_limit=ctx.max_travel_min, apply_env=False),
+        Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
+             allowed_tiers=VERIFIED_ONLY, travel_limit=None, apply_env=False),
+        Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
+             allowed_tiers=ANY_TIER, travel_limit=None, apply_env=False),
     )
     return _first_match(candidates, rejected, ctx, rungs)
 
@@ -198,7 +208,13 @@ def top_alternatives(
     다양성 제약·이동 상한은 걸지 않는다 — "이 자리 대신 갈 곳"이라 같은 유형이어도 무방하다.
     """
     excluded = set(rejected)
-    rung = Rung(frozenset(), False, ANY_TIER, None, apply_env=False)
+    rung = Rung(
+        blocked_groups=frozenset(),
+        enforce_daily_limits=False,
+        allowed_tiers=ANY_TIER,
+        travel_limit=None,
+        apply_env=False,
+    )
     alternatives: list[ScoredCandidate] = []
     for _ in range(limit):
         alternative = _best_candidate(candidates, excluded, ctx, rung)

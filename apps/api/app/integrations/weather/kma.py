@@ -131,7 +131,8 @@ def get_daily_forecasts(
                 tmin[forecast_date] = float(value)
             elif category == "TMP":
                 hour = int(item["fcstTime"][:2])
-                hourly.setdefault(forecast_date, {})[hour] = float(value)
+                if 0 <= hour <= 23:
+                    hourly.setdefault(forecast_date, {})[hour] = float(value)
         except (KeyError, TypeError, ValueError):
             continue
 
@@ -223,6 +224,15 @@ def _latest_base(now: datetime) -> tuple[date, int]:
     if available:
         return current.date(), available[-1]
     return current.date() - timedelta(days=1), BASE_HOURS[-1]
+
+
+def region_key(latitude: float, longitude: float) -> str:
+    """좌표를 기상청 격자 기반 지역 키 `kma:{nx},{ny}` 로 바꾼다.
+
+    weather_snapshots.region(UNIQUE(region, forecast_at))에 쓰는 좌표 유래 키다.
+    """
+    nx, ny = _to_grid(latitude, longitude)
+    return f"kma:{nx},{ny}"
 
 
 def _to_grid(latitude: float, longitude: float) -> tuple[int, int]:

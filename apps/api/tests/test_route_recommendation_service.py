@@ -51,8 +51,9 @@ from app.services.route_recommendation import (
     _cascade_item_times,
     _day_anchors,
     _fit_edited_item_visit,
+    _linked_pets,
     _paired_stay_anchor,
-    _pet_profiles,
+    _pet_profiles_from,
     _slot_status_of,
     generate_route,
     resolve_location,
@@ -475,7 +476,7 @@ def test_pet_profiles_merges_pet_traits_and_trip_energy(db: Session, owner) -> N
     )
     db.flush()
 
-    profiles = _pet_profiles(db, request)
+    profiles = _pet_profiles_from(_linked_pets(db, request))
 
     assert len(profiles) == 1
     profile = profiles[0]
@@ -501,7 +502,7 @@ def test_pet_profiles_empty_when_no_pets_linked(db: Session, owner) -> None:
     db.add(request)
     db.flush()
 
-    assert _pet_profiles(db, request) == ()
+    assert _pet_profiles_from(_linked_pets(db, request)) == ()
 
 
 class _StopBuild(Exception):

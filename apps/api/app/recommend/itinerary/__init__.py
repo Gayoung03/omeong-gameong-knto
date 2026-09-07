@@ -1,7 +1,9 @@
 """점수화된 장소를 일자별 일정으로 조립하는 패키지.
 
-기존 단일 모듈(app.recommend.itinerary)과 같은 공개 이름을 그대로 노출한다.
-서비스·테스트의 import 경로는 바뀌지 않는다.
+기존 단일 모듈(app.recommend.itinerary)의 공개 이름(build·BuildRequest·RouteAnchor·
+Scheduled*/Itinerary*·UnfilledSlot·시간 상수·MAX_*)을 그대로 노출해 서비스·테스트의
+import 경로를 유지하고, Phase 5 에서 추가한 SlotSearchContext·top_alternatives 도 함께
+노출한다. plan_day·DaySlot 등 내부 구성 요소는 하위 모듈에서 직접 import 한다.
 """
 
 from .build import build

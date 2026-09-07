@@ -17,6 +17,7 @@
 import math
 from dataclasses import dataclass
 from datetime import datetime, time
+from typing import Literal
 
 from app.db.models.enums import PlaceEnvironment, ScheduleItemType
 from app.integrations.weather.kma import DayForecast
@@ -24,19 +25,23 @@ from app.recommend.config.pace import PaceRule
 
 from .types import DINNER_START, DINNER_START_BY, LUNCH_START, LUNCH_START_BY
 
-#: 강수확률(%): 이 값 이상이면 활동 과반을 실내 선호로.
+#: 강수확률(%): 이 값 이상이면 흐림으로 본다(스냅샷 condition).
+CLOUDY_POP = 30
+#: 강수확률(%): 이 값 이상이면 활동 과반을 실내 선호로(스냅샷 condition 에선 비).
 RAIN_POP = 60
 #: 강수확률(%): 이 값 이상이면 활동 전부를 실내 선호로.
 HEAVY_RAIN_POP = 80
 #: 최고기온(℃): 이 값 이상이면 정오~15시 실외 방문 회피.
 HEAT_TMAX = 30.0
 
+SlotKind = Literal["activity", "lunch", "dinner"]
+
 
 @dataclass(frozen=True)
 class DaySlot:
     """하루 안의 한 자리. build 가 순서대로(식사는 시각 트리거로) 채운다."""
 
-    kind: str  # "activity" | "lunch" | "dinner"
+    kind: SlotKind
     required_type: ScheduleItemType | None = None
     earliest: time | None = None  # 방문 시작 하한(not_before)
     latest: time | None = None  # 방문 시작 상한(start_by)

@@ -40,8 +40,8 @@ from app.integrations.weather.kma import (
     KST,
     DayForecast,
     WeatherForecastError,
-    _to_grid,
     get_daily_forecasts,
+    region_key,
 )
 from app.recommend.common.geo import haversine_m
 from app.recommend.config.pace import PACE, effective_rule
@@ -54,6 +54,7 @@ from app.recommend.itinerary import (
     RouteAnchor,
     build,
 )
+from app.recommend.itinerary.plan import CLOUDY_POP, RAIN_POP
 from app.recommend.schemas import (
     Candidate,
     CandidateTier,
@@ -843,14 +844,6 @@ def _request_inputs(
     return linked_pets, stay_coords, _start_coord(db, request, stay_coords)
 
 
-def _pet_profiles(db: Session, request: RouteRequest) -> tuple[PetProfile, ...]:
-    """반려 점수·하루 구성에 쓰는 반려동물 프로필(요청 단독 조회 버전).
-
-    편집 경로처럼 _request_inputs 의 linked_pets 를 이미 갖고 있지 않을 때 쓴다.
-    """
-    return _pet_profiles_from(_linked_pets(db, request))
-
-
 def _start_coord(
     db: Session,
     request: RouteRequest,
@@ -880,26 +873,26 @@ def _day_forecasts(request: RouteRequest, coord: Coordinate) -> dict[date, DayFo
 
 def _weather_region(coord: Coordinate) -> str:
     """기상청 5km 격자 키. weather_snapshots UNIQUE(region, forecast_at)의 region."""
-    nx, ny = _to_grid(coord[0], coord[1])
-    return f"kma:{nx},{ny}"
+    return region_key(coord[0], coord[1])
 
 
 def _snapshot_condition(forecast: DayForecast) -> WeatherCondition:
     """일 단위 강수확률·기온으로 대표 날씨를 고른다(시간별 하늘/강수형태는 미보유).
 
-    강수확률이 높으면 비/눈(영하), 중간이면 흐림, 낮으면 맑음으로 근사한다.
+    강수확률이 높으면 비/눈(영하), 중간이면 흐림, 낮으면 맑음으로 근사한다. 임계값은
+    plan_day 의 규칙 상수(RAIN_POP·CLOUDY_POP)를 재사용한다.
     """
-    if forecast.pop_max >= 60:
+    if forecast.pop_max >= RAIN_POP:
         if forecast.tmin is not None and forecast.tmin <= 0:
             return WeatherCondition.SNOWY
         return WeatherCondition.RAINY
-    if forecast.pop_max >= 30:
+    if forecast.pop_max >= CLOUDY_POP:
         return WeatherCondition.CLOUDY
     return WeatherCondition.SUNNY
 
 
 def _representative_temp(forecast: DayForecast) -> float | None:
-    """스냅샷 대표 기온. 오후(14~15시) 기온을 우선, 없으면 최고기온."""
+    """스냅샷 대표 기온. 오후(15→14→13시 순) 기온을 우선, 없으면 최고기온."""
     for hour in (15, 14, 13):
         if hour in forecast.hourly_tmp:
             return forecast.hourly_tmp[hour]
