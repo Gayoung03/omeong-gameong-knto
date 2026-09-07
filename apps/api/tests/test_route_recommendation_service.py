@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
+    Pet,
     Place,
     PlaceBusinessHour,
     PlacePetPolicy,
@@ -19,11 +20,16 @@ from app.db.models import (
     RouteItem,
     RouteItemCandidate,
     RouteRequest,
+    RouteRequestPet,
     RouteRequestStay,
 )
 from app.db.models.enums import (
     DataProvider,
+    PetActivityLevel,
+    PetEnergyLevel,
     PetPolicyType,
+    PetSize,
+    PetSpecies,
     RouteCreationType,
     RouteItemSlotStatus,
     RouteStatus,
@@ -34,6 +40,7 @@ from app.db.models.enums import (
 from app.integrations.maps.kakao import GeocodedAddress
 from app.recommend.schemas import CandidateTier
 from app.recommend.tmap import RouteLeg, TMapError
+from app.schemas.pet import calculate_age
 from app.schemas.route import RouteRequestCreate, RouteRequestStayCreate
 from app.services import route_recommendation as rr
 from app.services.route_recommendation import (
@@ -41,6 +48,7 @@ from app.services.route_recommendation import (
     _day_anchors,
     _fit_edited_item_visit,
     _paired_stay_anchor,
+    _pet_profiles,
     _slot_status_of,
     generate_route,
     resolve_location,
@@ -423,3 +431,70 @@ def test_generate_route_saves_alternatives_and_unfilled_candidates(
     assert all(row.recommendation_score is not None for row in alternatives)
     assert unfilled_candidates
     assert all(row.recommendation_score is None for row in unfilled_candidates)
+
+
+def test_pet_profiles_merges_pet_traits_and_trip_energy(db: Session, owner) -> None:
+    """_pet_profiles 가 반려동물 여행 특성과 이번 여행 컨디션(energy_level)을 합친다."""
+    birth = datetime(2018, 5, 1, tzinfo=KST).date()
+    pet = Pet(
+        id=uuid.uuid4(),
+        user_id=owner.id,
+        name="몽이",
+        species=PetSpecies.DOG,
+        size=PetSize.LARGE,
+        weight_kg=Decimal("28.50"),
+        birth_date=birth,
+        activity_level=PetActivityLevel.LOW,
+        car_sickness=True,
+    )
+    db.add(pet)
+    db.flush()
+
+    start = datetime(2026, 9, 20, 9, tzinfo=KST)
+    request = RouteRequest(
+        id=uuid.uuid4(),
+        user_id=owner.id,
+        start_at=start,
+        end_at=start + timedelta(hours=10),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        companion_count=1,
+    )
+    db.add(request)
+    db.flush()
+    db.add(
+        RouteRequestPet(
+            route_request_id=request.id,
+            pet_id=pet.id,
+            energy_level=PetEnergyLevel.HIGH,
+        )
+    )
+    db.flush()
+
+    profiles = _pet_profiles(db, request)
+
+    assert len(profiles) == 1
+    profile = profiles[0]
+    assert profile.size == PetSize.LARGE
+    assert profile.weight_kg == 28.5
+    assert profile.age_years == calculate_age(birth)
+    assert profile.activity_level == PetActivityLevel.LOW
+    assert profile.car_sickness is True
+    assert profile.energy_level == PetEnergyLevel.HIGH
+
+
+def test_pet_profiles_empty_when_no_pets_linked(db: Session, owner) -> None:
+    start = datetime(2026, 9, 20, 9, tzinfo=KST)
+    request = RouteRequest(
+        id=uuid.uuid4(),
+        user_id=owner.id,
+        start_at=start,
+        end_at=start + timedelta(hours=10),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        companion_count=1,
+    )
+    db.add(request)
+    db.flush()
+
+    assert _pet_profiles(db, request) == ()

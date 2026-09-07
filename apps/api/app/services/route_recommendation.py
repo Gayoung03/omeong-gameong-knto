@@ -37,7 +37,7 @@ from app.integrations.weather.kma import (
     get_precipitation_probabilities,
 )
 from app.recommend.common.geo import haversine_m
-from app.recommend.config.pace import PACE
+from app.recommend.config.pace import PACE, effective_rule
 from app.recommend.config.tags import normalize_preferred_tags
 from app.recommend.filters import filter_candidates
 from app.recommend.itinerary import (
@@ -47,10 +47,17 @@ from app.recommend.itinerary import (
     RouteAnchor,
     build,
 )
-from app.recommend.schemas import Candidate, CandidateTier, ScoredCandidate, Weights
+from app.recommend.schemas import (
+    Candidate,
+    CandidateTier,
+    PetProfile,
+    ScoredCandidate,
+    Weights,
+)
 from app.recommend.scoring import ScoringContext, score_candidates
 from app.recommend.tmap import TMapError, get_route
 from app.recommend.weights import resolve_weights
+from app.schemas.pet import calculate_age
 from app.services.notifications import add_notification, send_pushes
 
 logger = logging.getLogger(__name__)
@@ -104,6 +111,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
         raise RecommendationGenerationError("추천 요청을 찾지 못했습니다")
 
     pets, stay_coords, start_coord = _request_inputs(db, request)
+    pet_profiles = _pet_profiles(db, request)
     precipitation_probability = _precipitation_probability(request, start_coord)
 
     # request_text 자유문에서 표준 태그를 보충한다(routes.md·설계 8.3-3). **로컬 변수로만**
@@ -151,6 +159,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
             additional_base_coords=tuple(dict.fromkeys(coord for _, coord in stay_coords)),
             preferred_tags=merged_tags,
             precipitation_probability=precipitation_probability,
+            pets=pet_profiles,
         ),
     )
     if not scored:
@@ -174,6 +183,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
             restaurant_preferred="category:restaurant" in merged_tags,
             day_start_anchors=day_start_anchors,
             day_end_anchors=day_end_anchors,
+            pace_rule=effective_rule(request.pace, pet_profiles),
         ),
         lambda origin, destination, transport, depart_at: get_route(
             db, origin, destination, transport, depart_at
@@ -342,6 +352,7 @@ def suggest_replacements(
             additional_base_coords=tuple(dict.fromkeys(coord for _, coord in stay_coords)),
             preferred_tags=preferred_tags,
             precipitation_probability=precipitation_probability,
+            pets=_pet_profiles(db, request),
         ),
     )[:limit]
 
@@ -440,6 +451,7 @@ def replace_route_item(
             additional_base_coords=tuple(dict.fromkeys(coord for _, coord in stay_coords)),
             preferred_tags=frozenset(normalize_preferred_tags(request.preferred_tags or [])),
             precipitation_probability=_precipitation_probability(request, start_coord),
+            pets=_pet_profiles(db, request),
         ),
     )
     scored_by_id = {candidate.place_id: candidate for candidate in scored}
@@ -782,6 +794,29 @@ def _request_inputs(
         request.departure_latitude = Decimal(str(departure_coord[0]))
         request.departure_longitude = Decimal(str(departure_coord[1]))
     return pets, stay_coords, _start_coord(db, request, stay_coords)
+
+
+def _pet_profiles(db: Session, request: RouteRequest) -> tuple[PetProfile, ...]:
+    """반려 점수·하루 구성에 쓰는 반려동물 프로필. 요청에 연결된 반려동물의 여행
+    특성(pets)과 이번 여행 컨디션(route_request_pets.energy_level)을 합쳐 만든다.
+    """
+    rows = db.execute(
+        select(Pet, RouteRequestPet.energy_level)
+        .join(RouteRequestPet, RouteRequestPet.pet_id == Pet.id)
+        .where(RouteRequestPet.route_request_id == request.id)
+        .order_by(Pet.id)
+    ).all()
+    return tuple(
+        PetProfile(
+            size=pet.size,
+            weight_kg=float(pet.weight_kg) if pet.weight_kg is not None else None,
+            age_years=calculate_age(pet.birth_date),
+            activity_level=pet.activity_level,
+            car_sickness=pet.car_sickness,
+            energy_level=energy_level,
+        )
+        for pet, energy_level in rows
+    )
 
 
 def _start_coord(
