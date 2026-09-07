@@ -432,14 +432,15 @@ def _diversity_group(candidate: ScoredCandidate) -> str:
     category_group = DIVERSITY_GROUP_BY_CATEGORY.get(candidate.source_category or "")
     if category_group is not None:
         return category_group
+    # candidate.tags 는 place_tags.code(영문)다.
     tags = set(candidate.tags)
-    if "바다" in tags:
+    if "sea" in tags:
         return "coast"
-    if tags & {"산책", "휴식"}:
+    if tags & {"walk", "rest"}:
         return "nature"
-    if "실내관광" in tags:
+    if "indoor_tourism" in tags:
         return "culture"
-    if "체험" in tags:
+    if "experience" in tags:
         return "experience"
     return candidate.item_type.value
 

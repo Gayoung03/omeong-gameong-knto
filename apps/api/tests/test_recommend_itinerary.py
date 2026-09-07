@@ -143,7 +143,7 @@ def test_a_day_contains_at_most_one_cafe() -> None:
 def test_similar_coastal_places_are_not_recommended_consecutively() -> None:
     first_beach = _candidate(0.99, source_category="beach", lat=33.501)
     second_beach = _candidate(0.98, source_category="beach", lat=33.502)
-    museum = _candidate(0.7, source_category="attraction", tags=["실내관광"], lat=33.503)
+    museum = _candidate(0.7, source_category="attraction", tags=["indoor_tourism"], lat=33.503)
     dinner = _candidate(
         0.6,
         item_type=ScheduleItemType.RESTAURANT,
