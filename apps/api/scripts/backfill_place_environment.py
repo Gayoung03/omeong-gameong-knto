@@ -3,15 +3,17 @@
 `environment` 는 날씨 적합도 점수(weather_score)와 실내외 추천에 쓰는데 810곳이
 비어 있어 그 축이 중립(0.5)으로만 계산된다. 카테고리와 설명·정책으로 추정해 채운다.
 
-규칙 (설명 키워드가 카테고리보다 **우선**):
-1. 설명에 실내/박물관/전시 → indoor
-2. 설명에 해변/오름/숲/공원 → outdoor
-3. beach/oreum/walking_trail → outdoor
-4. attraction: 정책 outdoor_only → outdoor, 그 외(indoor_allowed·미확인 등) → mixed
-5. 그 외 카테고리(cafe/restaurant/accommodation/pet_service/etc …) → indoor
+규칙 (설명 키워드는 **attraction 에만** 적용):
+1. beach/oreum/walking_trail → outdoor (설명 무시)
+2. cafe/restaurant/restaurant_cafe/accommodation/pet_service/etc … → indoor (설명 무시)
+3. attraction:
+   a. 설명에 실내/박물관/전시/미술관/기념관/체험관 → indoor
+   b. 설명에 해변/오름/숲/공원/정원/목장/해안 → outdoor
+   c. 정책 outdoor_only → outdoor, 그 외(indoor_allowed·미확인 등) → mixed
 
-설명이 카테고리보다 강한 신호라 먼저 본다(박물관은 실내, 해변은 실외로 확실). 애매한
-attraction 만 mixed 로 남기고, 정책이 야외 전용이면 outdoor 로 좁힌다.
+카테고리로 실내/실외가 이미 확실한 곳(공원 옆 카페는 실내, 실내 전시관이 딸린 해변은
+실외)에는 설명 키워드를 적용하지 않는다 — environment 는 비 오는 날 실내 우선 규칙에
+쓰이므로 카테고리 신호를 뒤집으면 안 된다. 유형이 다양한 attraction 만 설명으로 좁힌다.
 
     cd apps/api && uv run python -m scripts.backfill_place_environment          # 조회만
     cd apps/api && uv run python -m scripts.backfill_place_environment --apply
@@ -33,36 +35,47 @@ from app.db.models.enums import PetPolicyType, PlaceEnvironment
 from app.db.session import SessionLocal
 from scripts.activate_kakao_places import confirm, describe_target, is_shared_db
 
-INDOOR_DESC_KEYWORDS = ("실내", "박물관", "전시")
-OUTDOOR_DESC_KEYWORDS = ("해변", "오름", "숲", "공원")
+INDOOR_DESC_KEYWORDS = ("실내", "박물관", "전시", "미술관", "기념관", "체험관")
+OUTDOOR_DESC_KEYWORDS = ("해변", "오름", "숲", "공원", "정원", "목장", "해안")
 OUTDOOR_CATEGORIES = {"beach", "oreum", "walking_trail"}
 
 
 def classify(
     category: str, description: str | None, policy_type: PetPolicyType | None
 ) -> tuple[PlaceEnvironment, str]:
-    """(환경, 적용 규칙 이름). 규칙 이름은 리포트 집계용이다."""
+    """(환경, 적용 규칙 이름). 규칙 이름은 리포트 집계용이다.
+
+    설명 키워드는 유형이 다양한 attraction 에만 적용한다 — 카테고리로 실내/실외가
+    이미 확실한 곳은 뒤집지 않는다.
+    """
+
+    if category in OUTDOOR_CATEGORIES:
+        return PlaceEnvironment.OUTDOOR, "category_outdoor"
+    if category != "attraction":
+        return PlaceEnvironment.INDOOR, "category_indoor"
 
     text = description or ""
     if any(keyword in text for keyword in INDOOR_DESC_KEYWORDS):
-        return PlaceEnvironment.INDOOR, "desc_indoor"
+        return PlaceEnvironment.INDOOR, "attraction_desc_indoor"
     if any(keyword in text for keyword in OUTDOOR_DESC_KEYWORDS):
-        return PlaceEnvironment.OUTDOOR, "desc_outdoor"
-    if category in OUTDOOR_CATEGORIES:
-        return PlaceEnvironment.OUTDOOR, "category_outdoor"
-    if category == "attraction":
-        if policy_type == PetPolicyType.OUTDOOR_ONLY:
-            return PlaceEnvironment.OUTDOOR, "attraction_outdoor_only"
-        return PlaceEnvironment.MIXED, "attraction_mixed"
-    return PlaceEnvironment.INDOOR, "category_indoor"
+        return PlaceEnvironment.OUTDOOR, "attraction_desc_outdoor"
+    if policy_type == PetPolicyType.OUTDOOR_ONLY:
+        return PlaceEnvironment.OUTDOOR, "attraction_outdoor_only"
+    return PlaceEnvironment.MIXED, "attraction_mixed"
 
 
-def target_places(db: Session) -> list[Place]:
-    """environment 가 아직 비어 있는 활성/비활성 모든 장소."""
+def target_rows(db: Session) -> list[tuple[uuid.UUID, str, str | None]]:
+    """environment 가 비어 있는 장소의 (id, category, description).
+
+    전체 Place ORM 이 아니라 필요한 컬럼만 읽어, 아직 마이그레이션 안 된 컬럼이 있어도
+    조회가 돌아가게 한다.
+    """
     return list(
-        db.scalars(
-            select(Place).where(Place.environment.is_(None)).order_by(Place.id)
-        )
+        db.execute(
+            select(Place.id, Place.category, Place.description)
+            .where(Place.environment.is_(None))
+            .order_by(Place.id)
+        ).all()
     )
 
 
@@ -82,12 +95,12 @@ def policy_types(db: Session, place_ids: list[uuid.UUID]) -> dict[uuid.UUID, Pet
 
 
 def plan(
-    places: list[Place], policies: dict[uuid.UUID, PetPolicyType]
+    rows: list[tuple[uuid.UUID, str, str | None]], policies: dict[uuid.UUID, PetPolicyType]
 ) -> list[tuple[uuid.UUID, PlaceEnvironment, str]]:
     """(장소 id, 채울 환경, 적용 규칙)."""
     return [
-        (place.id, *classify(place.category, place.description, policies.get(place.id)))
-        for place in places
+        (place_id, *classify(category, description, policies.get(place_id)))
+        for place_id, category, description in rows
     ]
 
 
@@ -141,9 +154,9 @@ def run_fill(db: Session, *, apply: bool) -> int:
     print(f"대상 DB : {target}", flush=True)
     print("조회 중...", flush=True)
 
-    places = target_places(db)
-    policies = policy_types(db, [place.id for place in places])
-    filled = plan(places, policies)
+    rows = target_rows(db)
+    policies = policy_types(db, [row[0] for row in rows])
+    filled = plan(rows, policies)
 
     print(f"환경을 채울 장소 : {len(filled)}곳 (environment IS NULL)")
     for rule, environment, count in summarize(filled):
