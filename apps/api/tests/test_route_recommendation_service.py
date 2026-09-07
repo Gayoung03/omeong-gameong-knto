@@ -40,6 +40,7 @@ from app.db.models.enums import (
 from app.integrations.maps.kakao import GeocodedAddress
 from app.recommend.schemas import CandidateTier
 from app.recommend.tmap import RouteLeg, TMapError
+from app.recommend.weights import resolve_weights
 from app.schemas.pet import calculate_age
 from app.schemas.route import RouteRequestCreate, RouteRequestStayCreate
 from app.services import route_recommendation as rr
@@ -498,3 +499,96 @@ def test_pet_profiles_empty_when_no_pets_linked(db: Session, owner) -> None:
     db.flush()
 
     assert _pet_profiles(db, request) == ()
+
+
+class _StopBuild(Exception):
+    """indoor_bias 캡처 후 generate_route 를 조기에 멈추는 신호."""
+
+
+def _seed_active_attraction(db: Session) -> None:
+    place = Place(
+        id=uuid.uuid4(),
+        name="확실 관광지",
+        category="attraction",
+        latitude=Decimal("33.4996000"),
+        longitude=Decimal("126.5312000"),
+        average_stay_minutes=60,
+        is_active=True,
+    )
+    db.add(place)
+    db.flush()
+    db.add(
+        PlacePetPolicy(
+            place_id=place.id,
+            policy_type=PetPolicyType.INDOOR_ALLOWED,
+            source=DataProvider.INTERNAL,
+        )
+    )
+    db.flush()
+
+
+def _weather_signal_route(db: Session, owner, applied_weights: dict) -> Route:
+    start = datetime(2026, 9, 20, 9, tzinfo=KST)
+    request = RouteRequest(
+        id=uuid.uuid4(),
+        user_id=owner.id,
+        start_at=start,
+        end_at=start + timedelta(hours=10),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        companion_count=1,
+        departure_latitude=Decimal("33.4900000"),
+        departure_longitude=Decimal("126.5300000"),
+        applied_weights=applied_weights,
+    )
+    db.add(request)
+    db.flush()
+    route = Route(
+        id=uuid.uuid4(),
+        route_request_id=request.id,
+        user_id=owner.id,
+        title="indoor_bias 검증",
+        status=RouteStatus.GENERATING,
+        creation_type=RouteCreationType.RECOMMENDED,
+        version=1,
+        start_at=request.start_at,
+        end_at=request.end_at,
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+    )
+    db.add(route)
+    db.flush()
+    return route
+
+
+def _capture_indoor_bias(db: Session, owner, applied_weights: dict, monkeypatch) -> bool:
+    monkeypatch.setattr(rr, "_tour_api_places", lambda *_a, **_k: [])
+    monkeypatch.setattr(rr, "get_precipitation_probabilities", lambda *_a, **_k: {})
+    captured: dict[str, bool] = {}
+
+    def fake_build(_scored, request, _get_route):
+        captured["indoor_bias"] = request.indoor_bias
+        raise _StopBuild
+
+    monkeypatch.setattr(rr, "build", fake_build)
+    _seed_active_attraction(db)
+    route = _weather_signal_route(db, owner, applied_weights)
+    with pytest.raises(_StopBuild):
+        generate_route(db, route.id)
+    return captured["indoor_bias"]
+
+
+def test_generate_route_sets_indoor_bias_when_weather_signal_present(
+    db: Session, owner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    applied = resolve_weights("healing").model_dump()
+    assert applied["weather"] > 0
+    assert _capture_indoor_bias(db, owner, applied, monkeypatch) is True
+
+
+def test_generate_route_leaves_indoor_bias_off_without_weather_signal(
+    db: Session, owner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    applied = resolve_weights("balanced").model_dump()
+    assert applied["weather"] == 0
+    assert _capture_indoor_bias(db, owner, applied, monkeypatch) is False

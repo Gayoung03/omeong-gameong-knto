@@ -184,6 +184,8 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
             day_start_anchors=day_start_anchors,
             day_end_anchors=day_end_anchors,
             pace_rule=effective_rule(request.pace, pet_profiles),
+            # healing 프리셋·weather 기준 신호. 예보와 무관하게 실내 우선 규칙을 켠다.
+            indoor_bias=weights.weather > 0,
         ),
         lambda origin, destination, transport, depart_at: get_route(
             db, origin, destination, transport, depart_at

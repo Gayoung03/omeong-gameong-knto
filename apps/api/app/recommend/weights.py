@@ -6,6 +6,9 @@ from app.recommend.config.weights import (
     INITIAL_WEIGHTS,
     PRESET_MULTIPLIERS,
     USER_CRITERIA_BOOST,
+    WEATHER_SIGNAL_CRITERION,
+    WEATHER_SIGNAL_PRESETS,
+    WEATHER_SIGNAL_WEIGHT,
 )
 from app.recommend.schemas import Weights
 
@@ -37,6 +40,11 @@ def resolve_weights(
 
     for criterion in selected_criteria:
         resolved[criterion] *= USER_CRITERIA_BOOST
+
+    # weather 는 점수 축에서 빠졌지만(0), healing 프리셋·weather 기준은 스냅샷에 고정
+    # 신호를 남겨 생성기가 실내 우선 규칙을 켜게 한다(배수로는 0×2=0 이라 못 살린다).
+    if selected_preset in WEATHER_SIGNAL_PRESETS or WEATHER_SIGNAL_CRITERION in selected_criteria:
+        resolved["weather"] = WEATHER_SIGNAL_WEIGHT
 
     total = sum(resolved.values())
     return Weights(**{criterion: value / total for criterion, value in resolved.items()})
