@@ -476,6 +476,9 @@ class RouteRequestCreate(APISchema):
         has_departure = self.departure_place_id or (self.departure_location or "").strip()
         if not has_departure and not self.stays:
             raise ValueError("출발 장소나 숙소가 하나 이상 필요합니다")
+        pet_ids = [pet.pet_id for pet in self.pets]
+        if len(pet_ids) != len(set(pet_ids)):
+            raise ValueError("pets에 중복된 petId가 있습니다")
         return self
 
 

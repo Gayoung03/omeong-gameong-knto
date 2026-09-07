@@ -4,10 +4,12 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.v1.endpoints import routes
-from app.db.models import Place, Route, RouteRequest
+from app.db.models import Pet, Place, Route, RouteRequest, RouteRequestPet
+from app.db.models.enums import PetEnergyLevel
 from app.integrations.tour_api.kto import TourPlace
 from app.recommend.tmap import RouteLeg
 from app.recommend.weights import resolve_weights
@@ -342,11 +344,6 @@ def _seed_departure(db: Session) -> Place:
 def test_route_request_pets_saves_energy_level_snapshot(
     client: TestClient, db: Session
 ) -> None:
-    from sqlalchemy import select
-
-    from app.db.models import RouteRequestPet
-    from app.db.models.enums import PetEnergyLevel
-
     place = _seed_departure(db)
     pet = client.post("/api/v1/pets", json={"name": "몽이", "species": "dog"}).json()
 
@@ -367,10 +364,6 @@ def test_route_request_pets_saves_energy_level_snapshot(
 
 
 def test_route_request_prefers_pets_over_pet_ids(client: TestClient, db: Session) -> None:
-    from sqlalchemy import select
-
-    from app.db.models import RouteRequestPet
-
     place = _seed_departure(db)
     chosen = client.post("/api/v1/pets", json={"name": "몽이", "species": "dog"}).json()
     ignored = client.post("/api/v1/pets", json={"name": "코코", "species": "cat"}).json()
@@ -395,8 +388,6 @@ def test_route_request_prefers_pets_over_pet_ids(client: TestClient, db: Session
 def test_route_request_rejects_other_users_pet_in_pets(
     client: TestClient, db: Session, stranger
 ) -> None:
-    from app.db.models import Pet
-
     place = _seed_departure(db)
     stranger_pet = Pet(id=uuid.uuid4(), user_id=stranger.id, name="남의개", species="dog")
     db.add(stranger_pet)
@@ -407,3 +398,42 @@ def test_route_request_rejects_other_users_pet_in_pets(
     response = client.post("/api/v1/route-requests", json=payload)
 
     assert response.status_code == 403
+
+
+def test_route_request_empty_pets_means_no_pets_ignoring_pet_ids(
+    client: TestClient, db: Session
+) -> None:
+    # pets:[] 를 명시하면 "반려동물 없음". petIds 로 폴백하지 않는다(생략과 구분).
+    place = _seed_departure(db)
+    pet = client.post("/api/v1/pets", json={"name": "몽이", "species": "dog"}).json()
+
+    payload = _payload(place.id)
+    payload["petIds"] = [pet["id"]]
+    payload["pets"] = []
+    response = client.post("/api/v1/route-requests", json=payload)
+
+    assert response.status_code == 202
+    request_id = uuid.UUID(response.json()["routeRequestId"])
+    rows = list(
+        db.scalars(
+            select(RouteRequestPet).where(RouteRequestPet.route_request_id == request_id)
+        )
+    )
+    assert rows == []
+
+
+def test_route_request_rejects_duplicate_pet_id_in_pets(
+    client: TestClient, db: Session
+) -> None:
+    place = _seed_departure(db)
+    pet = client.post("/api/v1/pets", json={"name": "몽이", "species": "dog"}).json()
+
+    payload = _payload(place.id)
+    payload["pets"] = [
+        {"petId": pet["id"], "energyLevel": "high"},
+        {"petId": pet["id"], "energyLevel": "low"},
+    ]
+    response = client.post("/api/v1/route-requests", json=payload)
+
+    assert response.status_code == 422
+    assert "중복된 petId" in response.text

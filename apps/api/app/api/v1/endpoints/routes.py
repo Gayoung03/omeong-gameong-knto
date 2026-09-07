@@ -120,10 +120,13 @@ def create_route_request(
             detail=f"현재 루트 추천에서 지원하지 않는 이동수단입니다: {payload.transport.value}",
         )
 
-    # pets(이번 여행 컨디션 포함)가 오면 우선, 없으면 petIds. 둘 다 본인 소유 검증.
-    pet_inputs = payload.pets or [
-        RouteRequestPetInput(pet_id=pet_id) for pet_id in payload.pet_ids
-    ]
+    # pets(이번 여행 컨디션 포함)를 보냈으면 우선(빈 배열이면 반려동물 없음), 안 보냈으면
+    # petIds. "pets" 를 보냈는지(model_fields_set)로 빈 배열과 생략을 구분한다.
+    pet_inputs = (
+        payload.pets
+        if "pets" in payload.model_fields_set
+        else [RouteRequestPetInput(pet_id=pet_id) for pet_id in payload.pet_ids]
+    )
     pet_id_list = [pet_input.pet_id for pet_input in pet_inputs]
     energy_by_pet = {pet_input.pet_id: pet_input.energy_level for pet_input in pet_inputs}
     pets = []
