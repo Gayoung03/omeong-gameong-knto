@@ -2,7 +2,12 @@ import httpx
 import pytest
 
 from app.core.config import settings
-from app.integrations.visitjeju import VisitJejuAPIError, fetch_all_contents, parse_contents
+from app.integrations.visitjeju import (
+    VisitJejuAPIError,
+    fetch_all_contents,
+    fetch_content_detail,
+    parse_contents,
+)
 
 
 def _item(content_id: str, *, title: str = "성산일출봉") -> dict:
@@ -79,3 +84,45 @@ def test_html_block_page_becomes_explicit_error(monkeypatch: pytest.MonkeyPatch)
 
     with client, pytest.raises(VisitJejuAPIError, match="차단 페이지"):
         fetch_all_contents(client=client)
+
+
+def test_fetch_content_detail_reads_body_and_gallery(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "visitjeju_api_key", "secret-key")
+    content, _ = parse_contents({"result": "00", "items": [_item("CONT_1")]})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/contents/read"):
+            return httpx.Response(
+                200,
+                json={
+                    "result": "200",
+                    "item": {
+                        "photo": [
+                            {
+                                "photoid": {
+                                    "imgpath": "https://api.cdn.visitjeju.net/gallery.webp"
+                                }
+                            }
+                        ]
+                    },
+                },
+            )
+        return httpx.Response(
+            200,
+            text=(
+                '<section class="detail_contents"><h5>상세정보</h5>'
+                '<p>원문의 긴 첫 번째 문단입니다.</p>'
+                '<img src="//api.cdn.visitjeju.net/body.webp">'
+                "</section>"
+            ),
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        detail = fetch_content_detail(content[0], client=client)
+
+    assert detail.body == "원문의 긴 첫 번째 문단입니다."
+    assert detail.image_urls == (
+        content[0].image_url,
+        "https://api.cdn.visitjeju.net/body.webp",
+        "https://api.cdn.visitjeju.net/gallery.webp",
+    )

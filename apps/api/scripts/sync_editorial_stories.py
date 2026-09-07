@@ -11,6 +11,7 @@
 import argparse
 import re
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime, time, timedelta, timezone
 
 from sqlalchemy import select, update
@@ -18,7 +19,11 @@ from sqlalchemy import select, update
 from app.db.models import EditorialStory, EditorialStorySource
 from app.db.models.enums import EditorialStoryKind, EditorialStoryStatus
 from app.db.session import SessionLocal
-from app.integrations.visitjeju import VisitJejuAPIError, fetch_all_contents
+from app.integrations.visitjeju import (
+    VisitJejuAPIError,
+    fetch_all_contents,
+    fetch_content_detail,
+)
 from app.integrations.weather.kma import WeatherForecastError, get_current_weather
 from app.services.editorial_drafting import create_story_draft, select_daily_candidates
 
@@ -32,8 +37,8 @@ def _slug(value: str) -> str:
 def _weather() -> tuple[str, str]:
     try:
         current = get_current_weather(33.4996, 126.5312)
-        return current.condition.value, (
-            f"제주 현재 {current.condition.value}, {current.temperature:.0f}도, "
+        return current.condition, (
+            f"제주 현재 {current.condition}, {current.temperature:.0f}도, "
             f"강수확률 {current.precipitation_probability}%, 풍속 {current.wind_speed:.1f}m/s"
         )
     except WeatherForecastError:
@@ -104,6 +109,14 @@ def main() -> None:
     candidates = select_daily_candidates(contents, day=now.date(), weather_condition=condition)
     if len(candidates) < 4:
         raise SystemExit(f"공식 이미지와 소개가 있는 콘텐츠가 부족합니다({len(candidates)}/4)")
+    enriched_candidates = []
+    for candidate in candidates:
+        try:
+            candidate = replace(candidate, source=fetch_content_detail(candidate.source))
+        except VisitJejuAPIError as error:
+            print(f"상세 정보 생략: {candidate.source.title} ({error})")
+        enriched_candidates.append(candidate)
+    candidates = enriched_candidates
 
     with SessionLocal() as db:
         for candidate in candidates:

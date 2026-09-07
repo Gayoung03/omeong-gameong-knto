@@ -1,12 +1,15 @@
 """비짓제주 관광정보 Open API 클라이언트."""
 
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, replace
+from html.parser import HTMLParser
 
 import httpx
 
 from app.core.config import settings
 
 SEARCH_URL = "https://api.visitjeju.net/vsjApi/contents/searchList"
+READ_URL = "https://api.visitjeju.net/vsjApi/contents/read"
 DETAIL_URL = "https://www.visitjeju.net/kr/detail/view?contentsid={}"
 REQUEST_TIMEOUT_SECONDS = 20.0
 
@@ -25,6 +28,8 @@ class VisitJejuContent:
     address: str | None
     image_url: str
     source_url: str
+    body: str = ""
+    image_urls: tuple[str, ...] = ()
 
     @property
     def searchable_text(self) -> str:
@@ -51,6 +56,71 @@ def _image_url(item: dict) -> str:
             photo = nested
         return _text(photo.get("imgpath") or photo.get("thumbnailpath"))
     return ""
+
+
+def _photo_urls(item: dict) -> list[str]:
+    result: list[str] = []
+    for photo in item.get("photo") or []:
+        if not isinstance(photo, dict):
+            continue
+        nested = photo.get("photoid")
+        if not isinstance(nested, dict):
+            continue
+        url = _text(nested.get("imgpath") or nested.get("thumbnailpath"))
+        if url and url not in result:
+            result.append(url)
+    return result
+
+
+class _DetailPageParser(HTMLParser):
+    """상세 페이지의 본문 영역만 텍스트와 이미지로 읽는다."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.in_detail = False
+        self.detail_section_depth = 0
+        self.text: list[str] = []
+        self.images: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        classes = set((attributes.get("class") or "").split())
+        if tag == "section" and "detail_contents" in classes:
+            self.in_detail = True
+            self.detail_section_depth = 1
+            return
+        if not self.in_detail:
+            return
+        if tag == "section":
+            self.detail_section_depth += 1
+        if tag == "img":
+            url = _text(attributes.get("src"))
+            if url.startswith("//"):
+                url = f"https:{url}"
+            if url and url not in self.images:
+                self.images.append(url)
+        if tag in {"br", "div", "h1", "h2", "h3", "h4", "h5", "li", "p"}:
+            self.text.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self.in_detail:
+            return
+        if tag in {"div", "h1", "h2", "h3", "h4", "h5", "li", "p"}:
+            self.text.append("\n")
+        if tag == "section":
+            self.detail_section_depth -= 1
+            if self.detail_section_depth == 0:
+                self.in_detail = False
+
+    def handle_data(self, data: str) -> None:
+        if self.in_detail:
+            self.text.append(data)
+
+    def body(self) -> str:
+        lines = [re.sub(r"\s+", " ", line).strip() for line in "".join(self.text).splitlines()]
+        return "\n".join(
+            line for line in lines if line and line not in {"상세정보", "펼치기 +"}
+        )[:12_000]
 
 
 def parse_contents(payload: object) -> tuple[list[VisitJejuContent], int]:
@@ -138,3 +208,51 @@ def fetch_all_contents(
         ) from None
     except (httpx.HTTPError, TypeError, ValueError):
         raise VisitJejuAPIError("비짓제주 관광정보 조회에 실패했습니다") from None
+
+
+def fetch_content_detail(
+    content: VisitJejuContent, *, client: httpx.Client | None = None
+) -> VisitJejuContent:
+    """선택된 콘텐츠의 상세 본문과 사진을 보강한다."""
+
+    def fetch(http: httpx.Client) -> VisitJejuContent:
+        response = http.get(
+            READ_URL,
+            params={
+                "apiKey": settings.visitjeju_api_key,
+                "locale": "kr",
+                "contentsid": content.content_id,
+            },
+            headers={"Accept": "application/json", "User-Agent": "OmeongGameong/1.0"},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        container = payload.get("result") if isinstance(payload.get("result"), dict) else payload
+        if container.get("result") not in (None, "00", 0, 200, "200", "success"):
+            raise VisitJejuAPIError("비짓제주 상세 API 오류")
+        item = container.get("item") or {}
+
+        page = http.get(content.source_url, headers={"User-Agent": "OmeongGameong/1.0"})
+        page.raise_for_status()
+        parser = _DetailPageParser()
+        parser.feed(page.text)
+
+        images = []
+        for url in (content.image_url, *parser.images, *_photo_urls(item)):
+            if url and url not in images:
+                images.append(url)
+        return replace(
+            content,
+            body=parser.body() or content.introduction,
+            image_urls=tuple(images),
+        )
+
+    try:
+        if client is not None:
+            return fetch(client)
+        with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as owned_client:
+            return fetch(owned_client)
+    except VisitJejuAPIError:
+        raise
+    except (httpx.HTTPError, TypeError, ValueError):
+        raise VisitJejuAPIError("비짓제주 상세 관광정보 조회에 실패했습니다") from None
