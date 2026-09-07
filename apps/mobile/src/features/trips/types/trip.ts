@@ -149,7 +149,7 @@ export type TripMemo = {
 export type TripListItem = Pick<
   Trip,
   'id' | 'title' | 'startDate' | 'endDate' | 'nights' | 'days' | 'coverEmoji'
->;
+> & { startAt: string };
 
 /** 내 여행 상세 화면의 상단 탭 */
 export type TripDetailTab = 'schedule' | 'map' | 'checklist' | 'memo';

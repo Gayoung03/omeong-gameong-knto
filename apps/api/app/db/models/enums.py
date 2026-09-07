@@ -156,6 +156,23 @@ class GuideCategory(StrEnum):
     PREPARATION = "preparation"
 
 
+class EditorialStoryKind(StrEnum):
+    """홈의 제주 여행 이야기 카드 종류."""
+
+    EVENT = "event"
+    WEATHER = "weather"
+    STORY = "story"
+    GUIDE = "guide"
+
+
+class EditorialStoryStatus(StrEnum):
+    """관리자 화면이 붙기 전에도 승인 경계를 지키는 게시 상태."""
+
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+
 class CarrierType(StrEnum):
     """반려동물 규정을 가진 운송사의 종류.
 

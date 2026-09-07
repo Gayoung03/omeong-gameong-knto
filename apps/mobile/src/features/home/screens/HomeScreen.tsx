@@ -1,27 +1,36 @@
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppHeader } from '@/src/components/layout/AppHeader';
 import { useUserProfile } from '@/src/features/profile/hooks/useUserProfile';
+import { useTrips } from '@/src/features/trips/hooks/useTrips';
 import { colors, spacing } from '@/src/theme';
 
 import { ContentRecommendation } from '../components/ContentRecommendation';
 import { QuickMenu } from '../components/QuickMenu';
 import { RegionalRecommendation } from '../components/RegionalRecommendation';
 import { WeatherHero } from '../components/WeatherHero';
+import { fetchEditorialStories } from '../api/editorialApi';
 import { fetchJejuWeather } from '../api/weatherApi';
 import { quickMenuItems } from '../constants/quickMenu';
-import { mockEditorialStories } from '../mocks/home.mock';
 import type { EditorialStory, QuickMenuItem } from '../types/home';
 import type { PlaceRegion } from '@/src/features/places/types/place';
 
 export function HomeScreen() {
+  const [openedAt] = useState(Date.now);
   const { data: user } = useUserProfile();
+  const { data: trips = [] } = useTrips();
   const weather = useQuery({
     queryKey: ['home', 'weather'],
     queryFn: fetchJejuWeather,
     staleTime: 10 * 60 * 1000,
+  });
+  const editorial = useQuery({
+    queryKey: ['home', 'editorial-stories'],
+    queryFn: fetchEditorialStories,
+    staleTime: 5 * 60 * 1000,
   });
   const openPlaceExplorer = (region?: PlaceRegion) => {
     router.push({
@@ -59,6 +68,7 @@ export function HomeScreen() {
   const openStory = (story: EditorialStory) => {
     router.push(`/stories/${story.id}`);
   };
+  const hasUpcomingTrip = trips.some((trip) => new Date(trip.startAt).getTime() > openedAt);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -85,7 +95,12 @@ export function HomeScreen() {
         </View>
 
         <View style={styles.section}>
-          <ContentRecommendation onPressStory={openStory} stories={mockEditorialStories} />
+          <ContentRecommendation
+            onPressPreparation={() => router.push('/travel-guides/preparation')}
+            onPressStory={openStory}
+            showPreparation={hasUpcomingTrip}
+            stories={editorial.data ?? []}
+          />
         </View>
       </ScrollView>
     </SafeAreaView>

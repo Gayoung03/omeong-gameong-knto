@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     kakao_rest_api_key: str = ""
     weather_api_key: str = ""
     tour_api_key: str = ""
+    visitjeju_api_key: str = ""
     web_push_vapid_public_key: str = ""
     web_push_vapid_private_key: str = ""
     web_push_vapid_subject: str = ""
@@ -54,6 +55,8 @@ class Settings(BaseSettings):
     #: 모델은 설정값이라 코드를 고치지 않고 바꾼다. 저렴한 소형부터 시작하고
     #: 품질이 모자라면 올린다(설계 결정 C1).
     openai_model: str = "gpt-4o-mini"
+    #: 제주 여행 이야기 초안은 일반 챗봇과 별도로 모델을 바꿀 수 있다.
+    editorial_openai_model: str = ""
     #: 첫 응답까지 20초, 전체 60초(설계 결정 E2).
     chat_connect_timeout_seconds: float = 20.0
     chat_timeout_seconds: float = 60.0
