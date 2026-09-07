@@ -165,6 +165,23 @@ def test_fit_factor_size_exclusion_zeroes() -> None:
     assert _fit_factor(policy, PetProfile(size=PetSize.LARGE)) == 0.0
 
 
+def test_fit_factor_unknown_size_skips_carrier_and_exclusion() -> None:
+    # size 미상이면 이동장·허용 크기 조건을 걸 수 없어 감점·제외하지 않는다.
+    policy = PetPolicy(
+        policy_type=PetPolicyType.INDOOR_ALLOWED,
+        carrier_required=True,
+        muzzle_required=True,
+        allowed_sizes=["small"],
+    )
+    assert _fit_factor(policy, PetProfile(size=None)) == pytest.approx(1.0)
+
+
+def test_fit_factor_unknown_weight_skips_overweight_penalty() -> None:
+    # 체중 미상이면 최대 허용 체중 대비 초과를 판단할 수 없어 감점하지 않는다.
+    policy = PetPolicy(policy_type=PetPolicyType.INDOOR_ALLOWED, max_weight_kg=10)
+    assert _fit_factor(policy, PetProfile(size=PetSize.SMALL, weight_kg=None)) == pytest.approx(1.0)
+
+
 def test_pet_score_applies_min_fit_across_pets() -> None:
     # 정책: INDOOR_ALLOWED·carrier_required·reliability 100 → base 0.85.
     candidate = _candidate(

@@ -27,6 +27,17 @@ SCORE_LABELS = {
     "popularity": "인기",
 }
 
+# 반려 적합도 계수(_fit_factor). 값 자체가 아니라 근거를 이름으로 남긴다.
+#: 최대 허용 체중의 몇 % 를 넘으면 감점하는가(100% 초과는 필터에서 이미 제외).
+WEIGHT_WARNING_RATIO = 0.7
+#: 체중이 경고 구간(70~100%)일 때 곱하는 계수.
+OVERWEIGHT_FIT = 0.85
+#: 이동장 필수인데 대형/중형이라 현실성이 떨어질 때의 계수.
+CARRIER_LARGE_FIT = 0.6
+CARRIER_MEDIUM_FIT = 0.8
+#: 입마개 필수가 대형에게 주는 부담 계수(소형은 영향 없음).
+MUZZLE_LARGE_FIT = 0.9
+
 
 class ScoringContext(RecommendationSchema):
     weights: Weights
@@ -85,16 +96,16 @@ def _fit_factor(policy: PetPolicy, pet: PetProfile) -> float:
     if (
         policy.max_weight_kg is not None
         and pet.weight_kg is not None
-        and pet.weight_kg > policy.max_weight_kg * 0.7  # 70~100% (100% 초과는 필터에서 제외됨)
+        and pet.weight_kg > policy.max_weight_kg * WEIGHT_WARNING_RATIO
     ):
-        factor *= 0.85
+        factor *= OVERWEIGHT_FIT
     if policy.carrier_required:
         if pet.size == PetSize.LARGE:
-            factor *= 0.6  # 대형견을 안고 이동은 비현실적
+            factor *= CARRIER_LARGE_FIT  # 대형견을 안고 이동은 비현실적
         elif pet.size == PetSize.MEDIUM:
-            factor *= 0.8
+            factor *= CARRIER_MEDIUM_FIT
     if policy.muzzle_required and pet.size == PetSize.LARGE:
-        factor *= 0.9  # 소형은 영향 없음
+        factor *= MUZZLE_LARGE_FIT  # 소형은 영향 없음
     return factor
 
 
