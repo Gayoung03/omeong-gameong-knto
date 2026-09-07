@@ -10,7 +10,7 @@ from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from app.db.models.enums import ScheduleItemType, TransportType, TripPace
-from app.recommend.config.pace import PACE
+from app.recommend.config.pace import PACE, PaceRule
 from app.recommend.schemas import BusinessHour, CandidateTier, ScoredCandidate
 from app.recommend.tmap import RouteLeg, TMapError
 from app.recommend.travel_estimate import SUPPORTED_TRANSPORTS, estimate_leg
@@ -62,6 +62,8 @@ class BuildRequest:
     restaurant_preferred: bool = False
     day_start_anchors: dict[date, "RouteAnchor"] = field(default_factory=dict)
     day_end_anchors: dict[date, "RouteAnchor"] = field(default_factory=dict)
+    # 반려동물 특성 반영 하루 구성 규칙. None 이면 PACE 표를 쓴다.
+    pace_rule: PaceRule | None = None
 
 
 @dataclass(frozen=True)
@@ -131,7 +133,7 @@ def build(
     if request.transport not in SUPPORTED_TRANSPORTS:
         raise ValueError(f"일정 조립에서 지원하지 않는 이동수단입니다: {request.transport.value}")
 
-    rule = PACE[request.pace.value]
+    rule = request.pace_rule or PACE[request.pace.value]
     remaining = list(scored)
     days: list[ItineraryDay] = []
     # TMAP 이 한 번 오류를 내면 여행 전체에 대해 실제 호출을 끈다. 타임아웃 10초짜리
@@ -252,6 +254,7 @@ def build(
                 end_anchor.coord if end_anchor else None,
                 items,
                 enforce_diversity=not meal_slot,
+                max_travel_min=rule["max_travel_min"],
             )
             # 낮 일정이 부족하거나 식사 시간이 오면 필요한 식사를 우선 배치한다.
             if (
@@ -281,6 +284,7 @@ def build(
                     end_anchor.coord if end_anchor else None,
                     items,
                     enforce_diversity=False,
+                    max_travel_min=rule["max_travel_min"],
                 )
             if choice is None:
                 # 필요한 식사를 확실·확인 필요 후보로도 못 채우면 빈 슬롯으로 남기되,
@@ -388,11 +392,17 @@ def _best_candidate_with_diversity(
     items: list[ScheduledItem],
     *,
     enforce_diversity: bool,
+    max_travel_min: int | None = None,
 ) -> ScoredCandidate | None:
     """다양성 규칙을 우선하되 후보 부족이 전체 일정 실패로 이어지지 않게 완화한다."""
 
     if not enforce_diversity:
-        for allowed_tiers in (_VERIFIED_ONLY, _ANY_TIER):
+        # 이동 상한 준수 → 상한 해제 → 확인 필요 허용 순으로 완화한다.
+        for allowed_tiers, travel_limit in (
+            (_VERIFIED_ONLY, max_travel_min),
+            (_VERIFIED_ONLY, None),
+            (_ANY_TIER, None),
+        ):
             choice = _best_candidate(
                 candidates,
                 rejected,
@@ -410,6 +420,7 @@ def _best_candidate_with_diversity(
                 Counter(),
                 False,
                 allowed_tiers,
+                travel_limit,
             )
             if choice is not None:
                 return choice
@@ -417,14 +428,15 @@ def _best_candidate_with_diversity(
 
     group_counts = Counter(_diversity_group(item.candidate) for item in items)
     blocked_groups = {_diversity_group(items[-1].candidate)} if items else set()
-    # 확실(VERIFIED) 후보로 다양성을 지키며 채우고, 끝내 없으면 마지막에 확인 필요까지 허용한다.
+    # 다양성 완화 → 이동시간 상한 해제 → 확인 필요 허용 순으로 사다리를 내려간다.
     attempts = (
-        (blocked_groups, True, _VERIFIED_ONLY),
-        (set(), True, _VERIFIED_ONLY),
-        (set(), False, _VERIFIED_ONLY),
-        (set(), False, _ANY_TIER),
+        (blocked_groups, True, _VERIFIED_ONLY, max_travel_min),
+        (set(), True, _VERIFIED_ONLY, max_travel_min),
+        (set(), False, _VERIFIED_ONLY, max_travel_min),
+        (set(), False, _VERIFIED_ONLY, None),
+        (set(), False, _ANY_TIER, None),
     )
-    for groups, enforce_daily_limits, allowed_tiers in attempts:
+    for groups, enforce_daily_limits, allowed_tiers, travel_limit in attempts:
         choice = _best_candidate(
             candidates,
             rejected,
@@ -442,6 +454,7 @@ def _best_candidate_with_diversity(
             group_counts,
             enforce_daily_limits,
             allowed_tiers,
+            travel_limit,
         )
         if choice is not None:
             return choice
@@ -465,6 +478,7 @@ def _best_candidate(
     diversity_group_counts: Counter[str],
     enforce_daily_diversity_limits: bool,
     allowed_tiers: frozenset[CandidateTier] = _VERIFIED_ONLY,
+    max_travel_min: int | None = None,
 ) -> ScoredCandidate | None:
     choices: list[tuple[float, float, ScoredCandidate]] = []
     for candidate in candidates:
@@ -485,6 +499,9 @@ def _best_candidate(
         travel_min = estimate_leg(
             current_coord, (candidate.lat, candidate.lng), transport
         ).duration_min
+        # 차멀미 반려동물이 있으면 긴 구간을 뺀다. 완화 사다리가 상한을 풀 수 있다.
+        if max_travel_min is not None and travel_min > max_travel_min:
+            continue
         return_min = (
             estimate_leg((candidate.lat, candidate.lng), end_coord, transport).duration_min
             if end_coord is not None
