@@ -12,12 +12,10 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser
-from app.db.models import RouteDay, RouteItem, RouteMove
-from app.db.models.enums import TransportType
+from app.db.models import RouteDay, RouteItem
 from app.db.session import get_db
 from app.recommend.config.stay import default_stay_minutes
 from app.recommend.tmap import TMapError
@@ -33,6 +31,7 @@ from app.services.route_access import load_owned_day, load_owned_item
 from app.services.route_recommendation import (
     RecommendationGenerationError,
     clear_day_candidates,
+    rebuild_moves,
     replace_route_item,
     resync_item_times,
     resync_items_after,
@@ -66,41 +65,6 @@ def _renumber(db: Session, ordered_items: list[RouteItem]) -> None:
 
     for order, item in enumerate(ordered_items):
         item.sort_order = order
-    db.flush()
-
-
-def _rebuild_moves(
-    db: Session, ordered_items: list[RouteItem], default_transport: TransportType
-) -> None:
-    """route_moves 를 이 날짜 기준으로 다시 잇는다.
-
-    route_moves 에는 "어디에서 어디로, 무엇을 타고"만 남는다. 거리·시간·polyline 은
-    route_calculation_cache 가 최대 24시간만 들고 있어서(docs/api/routes.md)
-    여기서 계산하지 않는다.
-
-    이동수단은 **원래 그 항목에서 출발하던 이동수단을 물려준다.** 추천이 구간마다
-    다른 수단을 골라둘 수 있는데, 순서만 바꿨다고 전부 여행 기본값으로 되돌리면
-    그 정보가 사라진다. 물려받을 것이 없을 때만 여행의 기본 이동수단을 쓴다.
-    """
-    item_ids = [item.id for item in ordered_items]
-    if not item_ids:
-        return
-
-    previous = {
-        move.from_item_id: move.transport
-        for move in db.scalars(select(RouteMove).where(RouteMove.from_item_id.in_(item_ids)))
-    }
-    db.execute(delete(RouteMove).where(RouteMove.from_item_id.in_(item_ids)))
-    db.flush()
-
-    for current, following in zip(ordered_items, ordered_items[1:], strict=False):
-        db.add(
-            RouteMove(
-                from_item_id=current.id,
-                to_item_id=following.id,
-                transport=previous.get(current.id, default_transport),
-            )
-        )
     db.flush()
 
 
@@ -167,7 +131,7 @@ def create_route_item(
     ordered = existing[:position] + [item] + existing[position:]
     anchor = existing[0].starts_at if existing else payload.starts_at
     _renumber(db, ordered)
-    _rebuild_moves(db, ordered, route.transport)
+    rebuild_moves(db, ordered, route.transport)
     resync_item_times(db, route, ordered, anchor)
     clear_day_candidates(db, day.id)
     db.commit()
@@ -260,7 +224,7 @@ def reorder_route_items(
     anchor = _sorted_items(day)[0].starts_at if day.items else None
     ordered = [by_id[item_id] for item_id in payload.item_ids]
     _renumber(db, ordered)
-    _rebuild_moves(db, ordered, route.transport)
+    rebuild_moves(db, ordered, route.transport)
     resync_item_times(db, route, ordered, anchor)
     clear_day_candidates(db, day.id)
     db.commit()
@@ -294,7 +258,7 @@ def delete_route_item(
     # 지운 자리를 비워두면 sortOrder 에 구멍이 남는다. 앱의 순번 배지가
     # index + 1 로 그려지므로 화면과 서버 값이 어긋나게 된다.
     _renumber(db, remaining)
-    _rebuild_moves(db, remaining, route.transport)
+    rebuild_moves(db, remaining, route.transport)
     resync_item_times(db, route, remaining, anchor)
     clear_day_candidates(db, day.id)
     db.commit()

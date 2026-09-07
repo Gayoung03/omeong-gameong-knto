@@ -145,6 +145,7 @@ class RouteItemCandidateResponse(APISchema):
     category: str
     address: str | None
     primary_image_url: str | None
+    phone: str | None
     recommendation_score: float | None
     recommendation_reason: str | None
     requires_verification: bool

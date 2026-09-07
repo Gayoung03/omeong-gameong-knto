@@ -22,7 +22,12 @@ from app.db.models import (
     RouteRequestPet,
     RouteRequestStay,
 )
-from app.db.models.enums import RouteItemSlotStatus, RouteStatus, ScheduleItemType
+from app.db.models.enums import (
+    RouteItemSlotStatus,
+    RouteStatus,
+    ScheduleItemType,
+    TransportType,
+)
 from app.integrations.llm.request_intent import extract_request_intent, merge_preferred_tags
 from app.integrations.llm.route_edit import RouteEditIntent
 from app.integrations.maps.kakao import GeocodedAddress, geocode_address
@@ -35,7 +40,13 @@ from app.recommend.common.geo import haversine_m
 from app.recommend.config.pace import PACE
 from app.recommend.config.tags import normalize_preferred_tags
 from app.recommend.filters import filter_candidates
-from app.recommend.itinerary import BuildRequest, Itinerary, RouteAnchor, build
+from app.recommend.itinerary import (
+    MAX_ALTERNATIVES,
+    BuildRequest,
+    Itinerary,
+    RouteAnchor,
+    build,
+)
 from app.recommend.schemas import Candidate, CandidateTier, ScoredCandidate, Weights
 from app.recommend.scoring import ScoringContext, score_candidates
 from app.recommend.tmap import TMapError, get_route
@@ -349,18 +360,22 @@ def clear_day_candidates(db: Session, day_id: uuid.UUID) -> None:
     )
 
 
-def _rebuild_day_moves(db: Session, day: RouteDay, default_transport) -> None:
-    """빈 슬롯을 채운 뒤 그 날짜의 이동을 다시 잇는다(빈 슬롯은 여전히 제외).
+def rebuild_moves(
+    db: Session, ordered_items: list[RouteItem], default_transport: TransportType
+) -> None:
+    """편집 후 route_moves 를 다시 잇는다. **빈 슬롯(unfilled)은 잇지 않는다.**
 
-    기존 이동수단은 물려주고, 물려받을 게 없으면 여행 기본값을 쓴다.
+    기존 이동수단은 물려주고, 물려받을 게 없으면 여행 기본값을 쓴다. 추가·삭제·순서
+    변경(엔드포인트)과 빈 슬롯 채우기(서비스)가 같은 로직을 쓰도록 공용화한다.
     """
-    ordered = sorted(day.items, key=lambda route_item: route_item.sort_order)
     connectable = [
         route_item
-        for route_item in ordered
+        for route_item in ordered_items
         if route_item.slot_status != RouteItemSlotStatus.UNFILLED
     ]
-    ids = [route_item.id for route_item in ordered]
+    ids = [route_item.id for route_item in ordered_items]
+    if not ids:
+        return
     previous = {
         move.from_item_id: move.transport
         for move in db.scalars(select(RouteMove).where(RouteMove.from_item_id.in_(ids)))
@@ -376,6 +391,20 @@ def _rebuild_day_moves(db: Session, day: RouteDay, default_transport) -> None:
             )
         )
     db.flush()
+
+
+def _resync_anchor_time(route: Route, day: RouteDay, ordered: list[RouteItem]) -> datetime:
+    """그날 시각 재계산의 기준 시각. 첫 채워진 항목의 시각, 없으면 그날 시작 기준."""
+    first_filled = next(
+        (item for item in ordered if item.slot_status != RouteItemSlotStatus.UNFILLED), None
+    )
+    if first_filled is not None and first_filled.starts_at is not None:
+        return first_filled.starts_at
+    window_start = time.fromisoformat(PACE[route.pace.value]["window"][0])
+    return max(
+        route.start_at,
+        datetime.combine(day.route_date, window_start, route.start_at.tzinfo),
+    )
 
 
 def replace_route_item(
@@ -454,6 +483,10 @@ def replace_route_item(
             if replacing_stay
             else _slot_status_of(replacement.tier)
         )
+        # 숙소 앵커는 stay_minutes 0 을 유지(집계·시각에서 앵커로 취급). 그 외에는 후보의
+        # 평균 체류시간으로 채운다 — 빈 슬롯(None)뿐 아니라 일반 교체의 기존 결함도 고친다.
+        if not replacing_stay:
+            changed_item.stay_minutes = replacement.average_stay_minutes
         changed_item.recommendation_score = (
             None if replacing_stay else Decimal(str(round(replacement.total_score * 100, 2)))
         )
@@ -463,11 +496,11 @@ def replace_route_item(
     db.flush()
 
     for changed_day, _changed_item in changed_items:
+        ordered = sorted(changed_day.items, key=lambda route_item: route_item.sort_order)
         # 빈 슬롯을 채웠으면 그 항목엔 인접 이동이 없었으므로 그 날짜의 이동을 다시 잇는다.
         if was_unfilled:
-            _rebuild_day_moves(db, changed_day, route.transport)
-        ordered = sorted(changed_day.items, key=lambda route_item: route_item.sort_order)
-        resync_item_times(db, route, ordered, ordered[0].starts_at if ordered else None)
+            rebuild_moves(db, ordered, route.transport)
+        resync_item_times(db, route, ordered, _resync_anchor_time(route, changed_day, ordered))
         clear_day_candidates(db, changed_day.id)
 
     route_items = list(
@@ -848,7 +881,7 @@ def _save_alternatives(
     db: Session, route_item_id: uuid.UUID, candidates: tuple[ScoredCandidate, ...]
 ) -> None:
     """채워진 항목의 "대신 갈 곳" 대안. 실제 점수·근거를 그대로 담는다."""
-    for rank, candidate in enumerate(candidates[:3], start=1):
+    for rank, candidate in enumerate(candidates[:MAX_ALTERNATIVES], start=1):
         db.add(
             RouteItemCandidate(
                 route_item_id=route_item_id,
@@ -864,18 +897,15 @@ def _save_alternatives(
 def _save_unfilled_candidates(
     db: Session, route_item_id: uuid.UUID, candidates: tuple[ScoredCandidate, ...]
 ) -> None:
-    """빈 슬롯의 "확인 필요 후보". 점수 대신 확인 안내와 전화번호를 담는다."""
-    for rank, candidate in enumerate(candidates[:3], start=1):
-        reason = "동반 여부 확인 필요"
-        if candidate.phone:
-            reason = f"{reason} · 전화 {candidate.phone}"
+    """빈 슬롯의 "확인 필요 후보". 전화번호는 응답의 phone 필드로 내리고 근거엔 안내만."""
+    for rank, candidate in enumerate(candidates[:MAX_ALTERNATIVES], start=1):
         db.add(
             RouteItemCandidate(
                 route_item_id=route_item_id,
                 place_id=candidate.place_id,
                 rank=rank,
                 recommendation_score=None,
-                recommendation_reason=reason,
+                recommendation_reason="동반 여부 확인 필요",
                 requires_verification=True,
             )
         )

@@ -612,6 +612,7 @@ def _fill_computed(
                 category=place.category,
                 address=place.address,
                 primary_image_url=place.primary_image_url,
+                phone=place.phone,
                 recommendation_score=(
                     float(candidate.recommendation_score)
                     if candidate.recommendation_score is not None
