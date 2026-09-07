@@ -2,6 +2,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 
+import { useChatSessionsStore } from '@/src/features/chatbot/stores/useChatSessionsStore';
+
 import { signOut } from '../services/authStorage';
 
 /**
@@ -33,6 +35,10 @@ export function useLogout() {
       .then(() => {
         // 다음 사용자가 이전 사용자의 캐시된 데이터를 잠깐 보게 되는 것을 막는다.
         queryClient.clear();
+        // 챗봇 대화창은 TanStack Query 가 아니라 모듈 스코프 스토어에 있어
+        // `clear()` 로 지워지지 않는다. 답변을 만드는 중인 스트림까지 끊어야
+        // 다음 계정 화면에 이전 사용자의 대화가 남지 않는다.
+        useChatSessionsStore.getState().reset();
         router.replace('/login');
       })
       .catch((error: unknown) => {

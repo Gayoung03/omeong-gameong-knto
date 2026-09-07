@@ -44,6 +44,7 @@ from app.db.models.routes import (
 )
 from app.db.models.users import (
     PasswordResetCode,
+    PasswordResetRequest,
     Pet,
     User,
     UserConsent,
@@ -63,6 +64,7 @@ __all__ = [
     "Notice",
     "Notification",
     "PasswordResetCode",
+    "PasswordResetRequest",
     "PushToken",
     "Pet",
     "Place",

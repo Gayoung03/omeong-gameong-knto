@@ -7,7 +7,12 @@
 
 import type { ServerPetPolicy } from '@/src/types/place';
 
-/** 대화 목록·상세. 생성 직후 응답에는 계산값 두 개가 없다. */
+/**
+ * 대화 목록·상세. 생성 직후 응답에는 계산값 두 개가 없다.
+ *
+ * `deletedAt` 은 **휴지통(`deleted=true`)에서만 값이 있다.** 일반 목록은 살아
+ * 있는 대화만 주므로 항상 `null` 이다.
+ */
 export type ConversationResponse = {
   id: string;
   title: string | null;
@@ -16,6 +21,7 @@ export type ConversationResponse = {
   messageCount: number;
   createdAt: string;
   updatedAt: string;
+  deletedAt: string | null;
 };
 
 export type ConversationCreatedResponse = {

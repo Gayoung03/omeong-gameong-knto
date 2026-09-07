@@ -206,6 +206,7 @@ def to_conversation_item(
         message_count=count,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
+        deleted_at=conversation.deleted_at,
     )
 
 

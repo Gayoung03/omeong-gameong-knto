@@ -150,6 +150,42 @@ def test_메시지_목록은_오래된_순이고_장소를_펼쳐서_내려준�
     assert question["referencedPlaces"] == []
 
 
+def test_order_desc_는_끝에서_고르고_응답은_오래된_순_그대로다(
+    client: TestClient, db: Session
+) -> None:
+    """대화를 다시 열 때 쓰는 정렬이다.
+
+    `asc` 만 있으면 메시지가 많은 대화를 열었을 때 **가장 오래된 것들**이 뜨고
+    방금 나눈 이야기가 안 보인다. `desc` 는 고르는 쪽 끝만 바꾸고, 화면이 그대로
+    이어 붙일 수 있도록 응답은 여전히 오래된 순이다.
+    """
+    conversation = _create(client)
+    conversation_id = uuid.UUID(conversation["id"])
+
+    for index in range(5):
+        _add_message(db, conversation_id, f"{index}번째 말", minutes=index)
+
+    path = f"/api/v1/chat/conversations/{conversation_id}/messages"
+
+    oldest = client.get(path, params={"limit": 2}).json()
+    assert [item["content"] for item in oldest["items"]] == ["0번째 말", "1번째 말"]
+
+    newest = client.get(path, params={"limit": 2, "order": "desc"}).json()
+    # 끝의 두 개를 골랐지만 순서는 뒤집어 돌려준다.
+    assert [item["content"] for item in newest["items"]] == ["3번째 말", "4번째 말"]
+    # total 은 자른 것과 무관하게 대화 전체 개수다 — 앱이 "더 있다"를 판단한다.
+    assert newest["total"] == 5
+
+
+def test_모르는_order_값은_거부한다(client: TestClient) -> None:
+    conversation = _create(client)
+    response = client.get(
+        f"/api/v1/chat/conversations/{conversation['id']}/messages",
+        params={"order": "newest"},
+    )
+    assert response.status_code == 422
+
+
 def test_사라진_장소는_referenced_places_에서_빠진다(
     client: TestClient, db: Session, place: Place
 ) -> None:
@@ -207,6 +243,10 @@ def test_지운_대화는_휴지통에서_볼_수_있다(client: TestClient) -> 
     assert trash["total"] == 1
     assert trash["items"][0]["id"] == trashed["id"]
     assert trash["items"][0]["title"] == "지울 대화"
+    # 휴지통은 지운 순서로 정렬된다. 시각이 함께 가야 앱이 "언제 지웠는지"를 그린다.
+    assert trash["items"][0]["deletedAt"] is not None
+    # 살아 있는 대화에는 값이 없다.
+    assert listed["items"][0]["deletedAt"] is None
 
 
 def test_복구하면_목록의_원래_자리로_돌아온다(client: TestClient, db: Session) -> None:

@@ -25,7 +25,7 @@ import json
 import uuid
 from collections.abc import Generator
 from datetime import datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
@@ -301,23 +301,45 @@ def list_messages(
     db: DbSession,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    order: Annotated[Literal["asc", "desc"], Query()] = "asc",
 ) -> MessageListResponse:
-    """**오래된 순**으로 준다.
+    """**응답은 항상 오래된 순**이다. `order` 는 *어느 쪽 끝을* 자를지를 정한다.
 
-    채팅 화면이 위에서 아래로 읽히기 때문에 다른 목록과 정렬이 반대다.
+    채팅 화면이 위에서 아래로 읽히기 때문에, 어느 쪽을 골랐든 화면이 그대로
+    이어 붙일 수 있도록 오래된 순으로 돌려준다.
+
+    - `asc`(기본) — 대화의 **처음부터** `limit` 개. 지금까지의 동작 그대로다.
+    - `desc` — 대화의 **끝에서** `limit` 개를 고른 뒤 뒤집어서 준다.
+
+    `desc` 가 필요한 이유는, 대화를 다시 열 때 사용자가 보고 싶은 것이 첫
+    메시지가 아니라 **마지막에 나눈 이야기**이기 때문이다. `asc` 뿐이면 메시지가
+    51개인 대화를 열었을 때 가장 오래된 50개가 뜨고 최근 대화가 안 보인다.
+
+    (`recent_history` 가 모델에게 최근 20개를 넘길 때 쓰는 기법과 같다.)
     """
     load_owned_conversation(db, conversation_id, current_user)
 
     condition = ChatMessage.conversation_id == conversation_id
     total = db.scalar(select(func.count(ChatMessage.id)).where(condition)) or 0
 
-    messages = db.scalars(
-        select(ChatMessage)
-        .where(condition)
-        .order_by(ChatMessage.created_at)
-        .limit(limit)
-        .offset(offset)
-    ).all()
+    # id 는 동점 처리용이다. 질문·답변은 서로 1ms 이상 벌려 저장하지만, 그건 이
+    # 엔드포인트가 보장하는 값이 아니다. 시각이 같은 두 행의 순서가 매번 달라지면
+    # 페이지를 넘길 때 어떤 메시지는 두 번 나오고 어떤 메시지는 아예 안 나온다.
+    newest_first = order == "desc"
+    ordering = (
+        (ChatMessage.created_at.desc(), ChatMessage.id.desc())
+        if newest_first
+        else (ChatMessage.created_at, ChatMessage.id)
+    )
+
+    messages = list(
+        db.scalars(
+            select(ChatMessage).where(condition).order_by(*ordering).limit(limit).offset(offset)
+        ).all()
+    )
+    # 고른 것은 끝에서부터지만, 화면에 그릴 순서는 언제나 오래된 순이다.
+    if newest_first:
+        messages.reverse()
 
     summaries = places_of(db, messages)
 

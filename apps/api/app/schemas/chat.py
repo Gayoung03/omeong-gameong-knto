@@ -62,6 +62,10 @@ class ConversationItem(APISchema):
 
     `routeId` 가 있으면 특정 여행에 대한 대화다. `ON DELETE SET NULL` 이라
     여행을 지워도 대화는 남는다.
+
+    `deletedAt` 은 **휴지통(`deleted=true`)에서만 값이 있다.** 일반 목록은 살아
+    있는 대화만 주므로 항상 `null` 이다. 휴지통이 지운 순서로 정렬되는데 시각이
+    함께 가지 않으면, 앱은 "왜 이 순서인지"를 화면에 보여줄 방법이 없다.
     """
 
     id: uuid.UUID
@@ -71,6 +75,7 @@ class ConversationItem(APISchema):
     message_count: int
     created_at: datetime
     updated_at: datetime
+    deleted_at: datetime | None = None
 
 
 class ConversationListResponse(APISchema):
