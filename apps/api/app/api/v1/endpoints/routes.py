@@ -17,13 +17,14 @@ from app.db.models import (
     Route,
     RouteDay,
     RouteItem,
+    RouteItemCandidate,
     RouteMove,
     RoutePet,
     RouteRequest,
     RouteRequestPet,
     RouteRequestStay,
 )
-from app.db.models.enums import RouteCreationType, RouteStatus
+from app.db.models.enums import RouteCreationType, RouteItemSlotStatus, RouteStatus
 from app.db.session import BackgroundSessionFactory, get_background_session, get_db
 from app.integrations.llm.route_edit import (
     RouteEditError,
@@ -43,6 +44,7 @@ from app.schemas.route import (
     RouteEditSuggestionRequest,
     RouteEditSuggestionResponse,
     RouteGenerationStatus,
+    RouteItemCandidateResponse,
     RouteListItem,
     RouteListResponse,
     RouteMoveResponse,
@@ -50,6 +52,7 @@ from app.schemas.route import (
     RouteRequestAccepted,
     RouteRequestCreate,
     RouteShareResponse,
+    RouteSlotSummary,
     RouteUpdate,
     SharedRouteDetail,
     TourAPIPlaceResponse,
@@ -336,6 +339,7 @@ def get_route_status(
     db: DbSession,
 ) -> RouteGenerationStatus:
     route = load_owned_route(db, route_id, current_user)
+    still_running = route.status in (RouteStatus.GENERATING, RouteStatus.FAILED)
     return RouteGenerationStatus(
         route_id=route.id,
         status=route.status,
@@ -343,6 +347,8 @@ def get_route_status(
         failure_reason=(
             "추천 루트를 생성하지 못했습니다" if route.status == RouteStatus.FAILED else None
         ),
+        # 생성 완료 뒤에만 완성도를 채운다(생성 중·실패는 null).
+        slot_summary=None if still_running else _slot_summary(db, route.id),
     )
 
 
@@ -582,6 +588,40 @@ def _fill_computed(
         total_distance_meters=total_distance_meters,
         total_duration_minutes=total_duration_minutes,
     )
+    detail.slot_summary = _slot_summary(db, route.id)
+
+    # 슬롯별 대안 후보(route_item_candidates). 같은 날짜 편집 시 삭제되어 빈 배열이 된다.
+    candidate_rows = (
+        db.execute(
+            select(RouteItemCandidate, Place)
+            .join(Place, Place.id == RouteItemCandidate.place_id)
+            .where(RouteItemCandidate.route_item_id.in_(item_ids))
+            .order_by(RouteItemCandidate.route_item_id, RouteItemCandidate.rank)
+        ).all()
+        if item_ids
+        else []
+    )
+    for candidate, place in candidate_rows:
+        response_item = response_items.get(candidate.route_item_id)
+        if response_item is None:
+            continue
+        response_item.candidates.append(
+            RouteItemCandidateResponse(
+                place_id=place.id,
+                name=place.name,
+                category=place.category,
+                address=place.address,
+                primary_image_url=place.primary_image_url,
+                recommendation_score=(
+                    float(candidate.recommendation_score)
+                    if candidate.recommendation_score is not None
+                    else None
+                ),
+                recommendation_reason=candidate.recommendation_reason,
+                requires_verification=candidate.requires_verification,
+            )
+        )
+
     center = next(
         (
             coord
@@ -608,6 +648,26 @@ def _fill_computed(
             logger.warning("TourAPI route highlights lookup failed: %s", error)
 
     return detail
+
+
+def _slot_summary(db: Session, route_id: uuid.UUID) -> RouteSlotSummary:
+    """route_items.slot_status 집계(계산값). 앵커 포함 모든 항목을 센다."""
+    rows = db.execute(
+        select(RouteItem.slot_status, func.count())
+        .join(RouteDay, RouteDay.id == RouteItem.route_day_id)
+        .where(RouteDay.route_id == route_id)
+        .group_by(RouteItem.slot_status)
+    ).all()
+    counts = {status: count for status, count in rows}
+    filled = counts.get(RouteItemSlotStatus.FILLED, 0)
+    needs_verification = counts.get(RouteItemSlotStatus.NEEDS_VERIFICATION, 0)
+    unfilled = counts.get(RouteItemSlotStatus.UNFILLED, 0)
+    return RouteSlotSummary(
+        total=filled + needs_verification + unfilled,
+        filled=filled,
+        needs_verification=needs_verification,
+        unfilled=unfilled,
+    )
 
 
 def _item_coord(item: RouteItem) -> tuple[float, float] | None:

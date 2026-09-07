@@ -16,12 +16,13 @@ from app.db.models import (
     Route,
     RouteDay,
     RouteItem,
+    RouteItemCandidate,
     RouteMove,
     RouteRequest,
     RouteRequestPet,
     RouteRequestStay,
 )
-from app.db.models.enums import RouteStatus, ScheduleItemType
+from app.db.models.enums import RouteItemSlotStatus, RouteStatus, ScheduleItemType
 from app.integrations.llm.request_intent import extract_request_intent, merge_preferred_tags
 from app.integrations.llm.route_edit import RouteEditIntent
 from app.integrations.maps.kakao import GeocodedAddress, geocode_address
@@ -35,7 +36,7 @@ from app.recommend.config.pace import PACE
 from app.recommend.config.tags import normalize_preferred_tags
 from app.recommend.filters import filter_candidates
 from app.recommend.itinerary import BuildRequest, Itinerary, RouteAnchor, build
-from app.recommend.schemas import Candidate, ScoredCandidate, Weights
+from app.recommend.schemas import Candidate, CandidateTier, ScoredCandidate, Weights
 from app.recommend.scoring import ScoringContext, score_candidates
 from app.recommend.tmap import TMapError, get_route
 from app.recommend.weights import resolve_weights
@@ -167,28 +168,10 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
             db, origin, destination, transport, depart_at
         ),
     )
+    # 부분 성공(route-redesign): 식당·저녁이 부족해도 실패하지 않고 빈 슬롯으로 남긴다.
+    # 채울 수 있는 장소가 하나도 없을 때(모든 날이 비었음)만 실패로 처리한다.
     if not any(day.items for day in itinerary.days):
         raise RecommendationGenerationError("일정에 배치할 수 있는 장소가 없습니다")
-    if any(
-        day.dinner_required
-        and (
-            not day.items or day.items[-1].candidate.item_type != ScheduleItemType.RESTAURANT
-        )
-        for day in itinerary.days
-    ):
-        raise RecommendationGenerationError(
-            "저녁 식사가 필요한 날짜에 배치할 수 있는 반려동물 동반 식당이 부족합니다"
-        )
-    if "category:restaurant" in merged_tags and any(
-        day.restaurant_required
-        and not any(
-            item.candidate.item_type == ScheduleItemType.RESTAURANT for item in day.items
-        )
-        for day in itinerary.days
-    ):
-        raise RecommendationGenerationError(
-            "맛집 선호를 반영할 수 있는 반려동물 동반 식당이 부족합니다"
-        )
 
     _save_itinerary(db, route, itinerary)
     selected = [item.candidate for day in itinerary.days for item in day.items]
@@ -566,6 +549,11 @@ def _cascade_item_times(
 
     rest_min = PACE[route.pace.value]["rest_min"]
     for index, item in enumerate(items):
+        # 빈 슬롯은 시각 없이 건너뛰고, 이어지는 항목은 이전 채워진 위치에서 계속 잇는다.
+        if item.slot_status == RouteItemSlotStatus.UNFILLED:
+            item.starts_at = None
+            item.ends_at = None
+            continue
         coord = _route_item_coord(db, item)
         if coord is None or current_coord is None:
             _clear_estimated_times(items[index:])
@@ -782,6 +770,51 @@ def _departure_anchor(db: Session, request: RouteRequest) -> RouteAnchor:
     )
 
 
+def _slot_status_of(tier: CandidateTier) -> RouteItemSlotStatus:
+    return (
+        RouteItemSlotStatus.NEEDS_VERIFICATION
+        if tier == CandidateTier.NEEDS_CHECK
+        else RouteItemSlotStatus.FILLED
+    )
+
+
+def _save_alternatives(
+    db: Session, route_item_id: uuid.UUID, candidates: tuple[ScoredCandidate, ...]
+) -> None:
+    """채워진 항목의 "대신 갈 곳" 대안. 실제 점수·근거를 그대로 담는다."""
+    for rank, candidate in enumerate(candidates[:3], start=1):
+        db.add(
+            RouteItemCandidate(
+                route_item_id=route_item_id,
+                place_id=candidate.place_id,
+                rank=rank,
+                recommendation_score=Decimal(str(round(candidate.total_score * 100, 2))),
+                recommendation_reason=candidate.reason,
+                requires_verification=candidate.tier == CandidateTier.NEEDS_CHECK,
+            )
+        )
+
+
+def _save_unfilled_candidates(
+    db: Session, route_item_id: uuid.UUID, candidates: tuple[ScoredCandidate, ...]
+) -> None:
+    """빈 슬롯의 "확인 필요 후보". 점수 대신 확인 안내와 전화번호를 담는다."""
+    for rank, candidate in enumerate(candidates[:3], start=1):
+        reason = "동반 여부 확인 필요"
+        if candidate.phone:
+            reason = f"{reason} · 전화 {candidate.phone}"
+        db.add(
+            RouteItemCandidate(
+                route_item_id=route_item_id,
+                place_id=candidate.place_id,
+                rank=rank,
+                recommendation_score=None,
+                recommendation_reason=reason,
+                requires_verification=True,
+            )
+        )
+
+
 def _save_itinerary(db: Session, route: Route, itinerary: Itinerary) -> None:
     for day_number, day in enumerate(itinerary.days, start=1):
         route_day = RouteDay(
@@ -791,10 +824,11 @@ def _save_itinerary(db: Session, route: Route, itinerary: Itinerary) -> None:
         )
         db.add(route_day)
         db.flush()
-        item_ids: list[uuid.UUID] = []
+        # 이동(move)은 채워진 항목·앵커만 잇는다. 빈 슬롯은 체인에서 제외한다.
+        chain_ids: list[uuid.UUID] = []
         sort_order = 0
         if day.start_anchor is not None:
-            item_ids.append(
+            chain_ids.append(
                 _save_anchor(db, route_day.id, day.start_anchor, sort_order, day.day_start)
             )
             sort_order += 1
@@ -812,17 +846,37 @@ def _save_itinerary(db: Session, route: Route, itinerary: Itinerary) -> None:
                 stay_minutes=candidate.average_stay_minutes,
                 recommendation_score=Decimal(str(round(candidate.total_score * 100, 2))),
                 recommendation_reason=candidate.reason,
+                slot_status=_slot_status_of(candidate.tier),
             )
             db.add(item)
             db.flush()
-            item_ids.append(item.id)
+            chain_ids.append(item.id)
             sort_order += 1
+            _save_alternatives(db, item.id, day.alternatives.get(candidate.place_id, ()))
+        for slot in day.unfilled:
+            item = RouteItem(
+                route_day_id=route_day.id,
+                place_id=None,
+                item_type=slot.item_type,
+                sort_order=sort_order,
+                starts_at=None,
+                ends_at=None,
+                stay_minutes=None,
+                recommendation_score=None,
+                recommendation_reason=slot.reason,
+                slot_status=RouteItemSlotStatus.UNFILLED,
+            )
+            db.add(item)
+            db.flush()
+            sort_order += 1
+            _save_unfilled_candidates(db, item.id, slot.candidates)
         if day.end_anchor is not None:
-            item_ids.append(
+            chain_ids.append(
                 _save_anchor(db, route_day.id, day.end_anchor, sort_order, day.end_arrival)
             )
+            sort_order += 1
         for (from_item_id, to_item_id), move in zip(
-            zip(item_ids, item_ids[1:], strict=False), day.moves, strict=True
+            zip(chain_ids, chain_ids[1:], strict=False), day.moves, strict=True
         ):
             db.add(
                 RouteMove(

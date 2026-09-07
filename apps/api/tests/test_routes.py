@@ -26,6 +26,7 @@ from app.db.models import (
     Route,
     RouteCalculationCache,
     RouteDay,
+    RouteItemCandidate,
     RouteMove,
     TravelLog,
     User,
@@ -34,7 +35,9 @@ from app.db.models.enums import (
     DataProvider,
     PetPolicyType,
     PetSpecies,
+    RouteItemSlotStatus,
     RouteStatus,
+    ScheduleItemType,
     TransportType,
 )
 from app.integrations.llm.route_edit import RouteEditIntent
@@ -216,6 +219,61 @@ def test_여행_상세_이동정보_캐시없으면_추정값으로_내려준다
     assert body["distanceSummary"] == {
         "totalDistanceMeters": expected.distance_m,
         "totalDurationMinutes": expected.duration_min,
+    }
+
+
+def test_여행_상세에_빈_슬롯과_후보_슬롯요약을_내려준다(
+    client: TestClient, db: Session, trip: Route
+) -> None:
+    items = sorted(_day_of(trip).items, key=lambda route_item: route_item.sort_order)
+    # 마지막 항목을 빈 저녁 슬롯으로 바꾼다(place·시각 NULL, slot_status unfilled).
+    unfilled = items[-1]
+    unfilled.place_id = None
+    unfilled.custom_place_name = None
+    unfilled.item_type = ScheduleItemType.RESTAURANT
+    unfilled.slot_status = RouteItemSlotStatus.UNFILLED
+    unfilled.recommendation_reason = "확실히 동반 가능한 식당을 찾지 못했어요."
+    candidate_place = Place(
+        id=uuid.uuid4(),
+        name="확인 필요 식당",
+        category="restaurant",
+        latitude=Decimal("33.5000000"),
+        longitude=Decimal("126.5000000"),
+        phone="064-000-0000",
+    )
+    db.add(candidate_place)
+    db.flush()
+    db.add(
+        RouteItemCandidate(
+            id=uuid.uuid4(),
+            route_item_id=unfilled.id,
+            place_id=candidate_place.id,
+            rank=1,
+            recommendation_score=None,
+            recommendation_reason="동반 여부 확인 필요 · 전화 064-000-0000",
+            requires_verification=True,
+        )
+    )
+    db.flush()
+
+    body = client.get(f"/api/v1/routes/{trip.id}").json()
+    response_items = body["routeDays"][0]["items"]
+
+    assert response_items[0]["slotStatus"] == "filled"
+    last = response_items[-1]
+    assert last["slotStatus"] == "unfilled"
+    assert last["place"] is None
+    assert last["moveToNext"] is None
+    assert len(last["candidates"]) == 1
+    candidate = last["candidates"][0]
+    assert candidate["name"] == "확인 필요 식당"
+    assert candidate["requiresVerification"] is True
+    assert candidate["recommendationScore"] is None
+    assert body["slotSummary"] == {
+        "total": 3,
+        "filled": 2,
+        "needsVerification": 0,
+        "unfilled": 1,
     }
 
 

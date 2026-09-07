@@ -10,8 +10,14 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.db.models import Route, RouteDay, RouteItem, RouteRequest, RouteRequestStay
-from app.db.models.enums import ScheduleItemType, TransportType, TripPace
+from app.db.models.enums import (
+    RouteItemSlotStatus,
+    ScheduleItemType,
+    TransportType,
+    TripPace,
+)
 from app.integrations.maps.kakao import GeocodedAddress
+from app.recommend.schemas import CandidateTier
 from app.recommend.tmap import RouteLeg, TMapError
 from app.schemas.route import RouteRequestCreate, RouteRequestStayCreate
 from app.services.route_recommendation import (
@@ -19,10 +25,16 @@ from app.services.route_recommendation import (
     _day_anchors,
     _fit_edited_item_visit,
     _paired_stay_anchor,
+    _slot_status_of,
     resolve_location,
 )
 
 KST = timezone(timedelta(hours=9))
+
+
+def test_slot_status_maps_tier() -> None:
+    assert _slot_status_of(CandidateTier.VERIFIED) == RouteItemSlotStatus.FILLED
+    assert _slot_status_of(CandidateTier.NEEDS_CHECK) == RouteItemSlotStatus.NEEDS_VERIFICATION
 
 
 class FakeSession:
@@ -168,6 +180,7 @@ def test_cascade_uses_departure_after_rest_for_route_lookup(
         stay_minutes=60,
         starts_at=None,
         ends_at=None,
+        slot_status=RouteItemSlotStatus.FILLED,
     )
 
     _cascade_item_times(
@@ -204,6 +217,7 @@ def test_cascade_clears_remaining_times_when_tmap_fails(
             stay_minutes=60,
             starts_at=datetime(2026, 9, 10, 12, tzinfo=KST),
             ends_at=datetime(2026, 9, 10, 13, tzinfo=KST),
+            slot_status=RouteItemSlotStatus.FILLED,
         ),
         SimpleNamespace(
             place_id=None,
@@ -212,6 +226,7 @@ def test_cascade_clears_remaining_times_when_tmap_fails(
             stay_minutes=30,
             starts_at=datetime(2026, 9, 10, 14, tzinfo=KST),
             ends_at=datetime(2026, 9, 10, 14, 30, tzinfo=KST),
+            slot_status=RouteItemSlotStatus.FILLED,
         ),
     ]
 
