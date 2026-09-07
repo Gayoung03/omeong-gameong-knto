@@ -136,7 +136,7 @@
 | `public/kakao-map-frame.html` (신규)                                   | **웹 지도 프레임 신설.** 지도 HTML 을 담을 빈 문서. `srcDoc` 을 쓰면 문서 주소가 `about:srcdoc` 이라 카카오 SDK 가 지도 스크립트를 http 로 불러 HTTPS 배포에서 차단된다 | #177   |
 | `src/components/web/HtmlFrame.web.tsx` (신규)                          | 위 문서에 지도 HTML 을 써 넣는 공통 컴포넌트. 장소 지도·내 여행 지도가 함께 쓴다                                                                                        | #177   |
 | `apps/mobile/.gitignore`                                              | `.vercel` 추가 (Vercel 연결 정보 커밋 방지)                                                                                                                             | #177   |
-| `src/features/notifications/services/pushNotifications.ts`            | `openNotification()` 의 `chat_answer_ready` 가 챗봇 탭이 아니라 **그 대화**로 간다(`/chatbot?conversationId=…`). 이 함수는 **알림 목록 화면과 푸시 진입이 함께 쓴다** — 한 줄로 두 경로가 같이 바뀌고 다른 알림 타입에는 영향이 없다. 서버는 이미 대화 id 를 싣고 있어 백엔드 변경은 없다 | 예정   |
+| `src/features/notifications/services/pushNotifications.ts`            | `openNotification()` 의 `chat_answer_ready` 가 챗봇 탭이 아니라 **그 대화**로 간다(`/chatbot?conversationId=…`). 이 함수는 **알림 목록 화면과 푸시 진입이 함께 쓴다** — 한 줄로 두 경로가 같이 바뀌고 다른 알림 타입에는 영향이 없다. 서버는 이미 대화 id 를 싣고 있어 백엔드 변경은 없다 | #252   |
 | `src/utils/relativeTime.ts` (신규)                                    | "3시간 전" 표기를 공용으로. 알림(`notificationApi.ts`)이 들고 있던 사본을 걷어내고 챗봇 대화 목록과 함께 쓴다. 두 곳이 같은 규칙을 따라야 "3시간 전"이 화면마다 다른 뜻이 되지 않는다 | #251   |
 
 > **`app/_layout.tsx`는 충돌 위험이 큰 파일이다.** 다른 팀원도 라우트를 추가하면서 건드리게 된다.
@@ -354,88 +354,58 @@ git add package-lock.json
 ## 5. main PR 본문에 옮길 내용
 
 > **이 블록은 "아직 main 에 안 올라간 것"만 담는다.** main PR 을 낼 때마다 비우고 다시 쓴다.
-> 직전 내용(챗봇 대화 저장·복원 백엔드, PR #241·#242)은 **이미 main 에 반영되었다**(PR #245).
-> 2026-09-06 에 `git log --oneline --no-merges origin/main..origin/dev/yulim-main` 으로 확인하고 다시 썼다.
+> 직전 내용(챗봇 이전 대화 목록 프론트 4~7단계, PR #246·#251·#252)은 **이미 main 에 반영되었다**(PR #254).
+> 2026-09-07 에 `git rev-list --left-right --count origin/main...dev/yulim-main` 이 `6 0` 인 것을
+> 확인하고 비웠다 — `dev/yulim-main` 에만 있는 커밋이 하나도 없다는 뜻이다.
 >
-> 현재 대상: **챗봇 이전 대화 목록 — 프론트 전체(4~7단계) + 백엔드 마무리**
-> PR #246 · #251 · (6·7단계 PR 예정)
+> **골격은 `.github/pull_request_template.md` 를 그대로 따른다.** 이전에는 `## 신규 설치 라이브러리`
+> 처럼 임의로 잡은 절을 썼는데, 그대로 붙여넣으면 팀 컨벤션에서 벗어난다. 새 작업을 시작하면
+> 아래 빈 칸을 채워 나가고, main PR 본문에는 이 블록을 통째로 붙여넣는다.
 >
-> **신규 라이브러리 없음. 마이그레이션 없음. 공통 파일은 한 줄뿐이다.**
+> **현재 대상: 없음.**
 
 ````markdown
-## 신규 설치 라이브러리
+## 작업 내용
 
-없습니다.
+-
 
-## 마이그레이션
+## 변경 사항
 
-없습니다. 이 기능이 쓰는 `chat_conversations.deleted_at` 은 지난 main PR(#245)의
-`b5e07c19af23` 로 이미 적용돼 있습니다.
+-
 
-## 이번 PR 내용
+## 확인 사항
 
-챗봇에 **이전 대화 목록**이 생겼습니다. 지금까지는 챗봇 탭을 떠나면 대화가 사라졌고,
-지난 대화를 다시 볼 방법이 없었습니다.
-
-### 사이드바에서 지난 대화를 열 수 있습니다
-
-챗봇 화면 상단 왼쪽 ☰ 로 대화 목록이 열립니다. 한 줄을 누르면 지난 메시지가
-**지도 카드까지** 그대로 돌아옵니다 — 서버가 메시지마다 장소를 다시 펼쳐 주기 때문에
-따로 저장해 둔 것이 없습니다.
-
-목록에서 대화 이름을 바꾸거나 지울 수 있고, 지운 대화는 목록 맨 아래 **휴지통**에서
-되살립니다. **삭제해도 대화 내용은 한 줄도 지워지지 않습니다.**
-
-### 대화가 화면보다 오래 삽니다
-
-대화 상태를 화면이 아니라 모듈 스코프 스토어(Zustand)가 들고 있습니다. 그래서
-
-- 챗봇 탭을 떠났다 돌아와도 대화가 남아 있습니다
-- **A 대화가 답변을 만드는 중에 B 대화로 옮겨도 A 는 계속 만듭니다.** 사이드바 그 줄에
-  주황 점이 떠 있어 눈으로 확인됩니다
-- A 가 답변 중이어도 B 에서는 바로 질문을 보낼 수 있습니다
-
-앱을 백그라운드로 보냈다 돌아오면 **서버 기록과 맞춥니다** — 답변이 저장돼 있으면
-그것을 보여주고, 끊겼으면 질문을 남긴 채 "다시 시도"를 붙입니다.
-(iOS 가 백그라운드에서 네트워크를 멈추기 때문에, 유실 자체를 앱에서 막을 수는 없습니다.)
-
-### 알림에서 그 대화로 바로 들어갑니다
-
-"혼디의 답변이 도착했어요" 알림을 누르면 챗봇 탭이 아니라 **그 대화**가 열립니다.
+- [ ] base 브랜치가 올바릅니다. (작업 브랜치 → `dev/<이름>-main`, 개인 통합 → `main`)
+- [ ] 커밋 메시지가 `<type>: <내용>` 형식이고, 커밋당 목적이 하나입니다.
+- [ ] `npm run lint` / `npm run typecheck` 를 통과했습니다. (백엔드는 `ruff check` / `pytest`)
+- [ ] 화면 또는 API 동작을 직접 확인했습니다.
+- [ ] 충돌이 없습니다.
 
 ## 공통 파일 변경
 
-**한 줄입니다.**
+아래를 건드렸다면 체크하고, 무엇을 어떻게 바꿨는지 적어주세요.
 
-`src/features/notifications/services/pushNotifications.ts` 의 `openNotification()` 에서
-`chat_answer_ready` 가 `/chatbot` → `/chatbot?conversationId=…` 로 바뀝니다.
-이 함수는 **알림 목록 화면과 푸시 진입이 함께 쓰므로** 한 줄로 두 경로가 같이 바뀌고,
-다른 알림 타입에는 영향이 없습니다.
+- [ ] `src/theme/`, `src/components/`
+- [ ] `app/_layout.tsx`, `app/(tabs)/_layout.tsx`
+- [ ] `app.config.ts`, `package.json`, `package-lock.json`
+- [ ] `.gitignore`, `.env.example`
+- [ ] 새 라이브러리 설치 / 환경변수 추가 / 네이티브 권한 추가
+- [ ] 해당 없음
 
-그 외에 `src/utils/relativeTime.ts` 가 새로 생겼습니다("3시간 전" 표기).
-알림 쪽이 들고 있던 같은 함수를 걷어내고 공용으로 올린 것이라 **동작은 그대로**입니다.
+<!-- 체크한 항목이 있으면 팀원이 해야 할 일(npm ci, .env 추가 등)을 적어주세요 -->
 
-`src/theme/` · `src/components/` · `app/_layout.tsx` · `app.config.ts` ·
-`package.json` · `package-lock.json` 은 건드리지 않았습니다.
+## 관련 이슈
 
-## 팀원 확인 사항
-
-- **`npm ci` 는 필요 없습니다.** 새 라이브러리가 없습니다
-- **챗봇 파트 파일이 겹칩니다** — 행운님이 보시는 `features/chatbot/screens/ChatbotScreen.tsx`
-  와 `stores/useChatSessionsStore.ts` 가 크게 바뀌었습니다. 챗봇 작업 중이시면
-  `git pull` 후 확인 부탁드립니다
-- 백엔드 `GET /chat/conversations/{id}/messages` 에 `order` 쿼리가 생겼습니다.
-  **기본값이 `asc` 라 기존 호출부는 그대로 동작합니다**
-
-## 협의가 필요한 사항
-
-- **대화 삭제에 확인 창이 없습니다.** 휴지통으로 가고 되살릴 수 있어 확인 창의 무게가
-  맞지 않는다고 판단했습니다. 필요하면 넣습니다
-- 휴지통에 **영구 삭제 버튼은 만들지 않았습니다.** 설계 결정 D3("지우지 않음")에 따라
-  계속 쌓이기만 하는 것이 의도된 동작입니다. 보관 기간 정책은 별도 안건입니다
-- **탈퇴 회원의 대화가 남습니다** — 회원 탈퇴가 소프트 삭제라 그렇습니다. 이번 변경이
-  만든 문제는 아니지만 개인정보 관점에서 함께 볼 만합니다
+close #
 ````
+
+> **채울 때 메모**
+>
+> - `## 작업 내용` 은 "무엇을 왜", `## 변경 사항` 은 "어디를 어떻게" 다.
+> - 팀원이 받아야 할 안내(신규 라이브러리 설치, 마이그레이션, `.env` 추가)는 **절을 새로 만들지 말고
+>   `## 공통 파일 변경` 아래에** 적는다. 체크박스를 체크하고 그 밑에 풀어 쓰는 자리가 이미 있다.
+> - 이슈·PR 초안은 **템플릿을 먼저 열어 보고** 쓴다
+>   (`.github/ISSUE_TEMPLATE/1-feature.md` — 제목 `feat: `, 라벨 `feat`).
 
 ---
 
@@ -493,3 +463,4 @@ git add package-lock.json
 | 2026-09-01 | **임시 저장해둔 여행가이드 API 작업을 최신 main 위로 복원.** 8/30 stash 를 `work/yulim/feat/travel-guide-api` 에 `stash apply` 로 올렸고 **충돌은 없었다** — `router.py` 만 3-way 병합됐다(main 이 넣은 `weather` 등록줄은 그대로 두고 그 아래에 `guides` 가 붙었다). 백엔드는 `endpoints/guides.py`·`schemas/guide.py`·`tests/test_guides.py` 신설이고, 초기 구조 커밋(`e03ab28`)이 만들어둔 **한 줄짜리 껍데기 `guides.py`** 위에 얹혔다(중복 아님). 프론트는 `travel-guides/api/guidesApi.ts`(어댑터)와 `hooks/useTravelGuides.ts` 신설이고, 여행 준비 가이드·가이드 상세 두 화면이 `useTravelGuideOverview()` 로 실서버를 부른다 — 로딩은 `ActivityIndicator`, 실패는 공용 `ErrorState`. **`constants/travelGuideContent.ts` 에서 하드코딩 콘텐츠 379줄을 걷어내고 타입과 `checklistSections` 만 남겼다** — 체크리스트는 대응 테이블이 없는 화면 설정값이라 `constants/` 에 남는 것이 맞다(`mocks/` 가 아니다). **공통 파일 변경·신규 라이브러리·마이그레이션이 모두 없어 3번 표에 추가할 것이 없다.** `.vercel` 은 `apps/mobile/.gitignore` 가 이미 무시하고 있어 루트 `.gitignore` 는 건드리지 않았다. 대신 **3번 표에 '예정' 으로 남아 있던 9칸을 실제 PR 번호로 갱신했다**(#37·#177·#51) — 머지된 지 오래된 항목들이었다. **타입체크에서 이번 작업과 무관한 기존 오류 2건을 발견했다** — `features/chatbot/components/` 에 `AnswerMarkdown.tsx`(컴포넌트)와 `answerMarkdown.ts`(파서)가 **대소문자만 다르게 공존**해 `ChatbotScreen` 의 `import { AnswerMarkdown } from '../components/AnswerMarkdown'` 이 파서 파일로 잡힌다(`d269c16`). macOS 파일시스템이 대소문자를 구분하지 않아 로컬에서는 드러나지 않는다. **이번 브랜치와 목적이 달라 고치지 않았다** — 챗봇 파트와 별도로 정리해야 한다 |
 | 2026-09-01 | **최신 main 을 받아와 합치고 5번 항목을 다시 썼다.** 여행가이드 작업(PR #212)이 `dev/yulim-main` 에 머지된 뒤, 가영님 웹 푸시 알림 PR #211 이 들어간 main 을 합쳤다. **충돌은 없었고** `router.py` 만 3-way 병합됐다. **합친 뒤에 설치·마이그레이션이 필요했다** — `expo-notifications`(프론트), `pywebpush`(백엔드), Alembic revision 2개. 이건 main 에서 온 것이라 **이번 main PR 의 안내에는 넣지 않았다**(팀원은 main 에서 이미 받는다). 합친 결과로 검사를 다시 돌렸다 — lint·typecheck·ruff 통과, pytest 456개 통과. **`npm ci` 직후 lint 가 옛 오류를 그대로 재생했다** — `expo lint` 가 `.expo/cache/eslint` 에 결과를 저장하고 파일 내용이 그대로면 다시 검사하지 않는다. 오늘 이걸로 두 번 헤맸고 협의 사항에 올렸다. **pytest 1건이 개발 DB 에서만 깨졌다** — 씨앗 사용자 ID 가 `DEV_USER_ID` 와 같은 값이라 `test_auth_guard` 의 폴백 테스트가 `duplicate key` 를 만든다. 테스트 전용 DB(`omeong_test`)를 만들어 돌리니 전부 통과했고, 이것도 협의 사항에 올렸다. 5번 직전 내용(PR #125·#126)은 이미 main 에 반영돼 비우고 다시 썼다 |
 | 2026-09-06 | **챗봇 이전 대화 목록 완성(4~7단계).** 대화 상태를 화면 훅에서 모듈 스코프 스토어로 옮기고(#246), 사이드바·복원·휴지통·이름변경을 얹었으며(#251), 백그라운드 복귀 정리와 알림 딥링크로 마감했다. **공통 파일은 `pushNotifications.ts` 한 줄** — `chat_answer_ready` 가 챗봇 탭이 아니라 그 대화로 간다. 알림 목록 화면과 푸시 진입이 같은 함수를 쓰므로 한 줄로 두 경로가 해결된다. `src/utils/relativeTime.ts` 를 신설해 알림이 들고 있던 사본을 걷어냈다(동작 동일). **신규 라이브러리·마이그레이션 없음.** 설계안과 다르게 간 곳 넷 — 휴지통을 바텀시트가 아니라 서랍 안 화면으로(사이드바가 RN `Modal` 이라 `@gorhom/bottom-sheet` 가 그 아래 깔린다), `hydrated: boolean` 을 4상태로(실패를 빈 대화로 그리면 기록이 사라진 줄 안다), 열기·새 대화 버튼을 `AppHeader` 가 아니라 챗봇 전용 줄에(탭 5개 공통 파일을 흔들지 않으려고), 삭제 확인 창 없음(되돌릴 수 있는 동작이다). **`react-hooks/refs` 에 걸렸다** — `useRef(...).current` 를 렌더 중에 읽으면 `Animated.Value` 처럼 안전한 경우에도 에러다. `useState(() => new Animated.Value(0))` 로 바꿨다. 5번 항목 직전 내용(PR #241·#242)은 이미 main 에 반영돼(#245) 비우고 다시 썼다 |
+| 2026-09-07 | **`dev/yulim-main` 에 main 반영(#255 비짓제주 여행 이야기 포함) 후 5번 항목을 비웠다.** 직전 내용(PR #246·#251·#252)은 #254 로 이미 main 에 올라가 있었다 — 두면 다음 main PR 때 반영된 안내를 팀원에게 또 보내게 된다. **5번 골격을 `.github/pull_request_template.md` 그대로로 다시 잡았다**(`작업 내용`·`변경 사항`·`확인 사항`·`공통 파일 변경`·`관련 이슈`). 이전에는 `## 신규 설치 라이브러리` 처럼 임의 절을 썼는데 붙여넣으면 컨벤션에서 벗어난다 — 팀원 안내는 `## 공통 파일 변경` 아래에 쓰기로 자리를 정했다. 3번 표에 '예정' 으로 남아 있던 `pushNotifications.ts` 행을 #252 로 갱신했다. **품질 안건 1번(여객선 무게 판정)은 이미 닫혀 있었다** — 마이그레이션 `91540737bf42`(`cabin_weight_unlimited`·`cargo_weight_unlimited`·`cabin_conditions`)와 `_verdict()` 의 `weight_unlimited` 분기가 main 에 있고, `scripts/backfill_transport_rules.py` dry-run 이 "바꿀 행이 없습니다" 로 끝나 DB 백필도 반영돼 있다. 남은 것은 5번(모델 합의)이고, #255 가 `EDITORIAL_OPENAI_MODEL` (비우면 `OPENAI_MODEL` 을 따라감)을 추가해 **`OPENAI_MODEL` 을 비워두는 비용이 챗봇 하나에서 둘로 늘었다** |
