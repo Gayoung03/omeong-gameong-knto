@@ -1,0 +1,842 @@
+[
+  {
+    "name": "한라산국립공원 성판악탐방로",
+    "category": "attraction",
+    "region": "함덕/김녕/세화",
+    "address": "제주특별자치도 제주시 조천읍 516로 1865",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 300,
+    "description": "한라산 정상(백록담)으로 오르는 동쪽 주 탐방로 입구. 사전 예약제로 운영된다.",
+    "homepage_url": "https://www.jeju.go.kr/hallasan/",
+    "business_hours_raw": "계절별 입산 통제 시각 상이",
+    "tags": [
+      "walk"
+    ],
+    "pet_policy": {
+      "policy_type": "not_allowed",
+      "leash_required": null,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "자연공원법 제29조 제한행위: 개·고양이 등 동물을 데리고 입장하는 행위 금지(200만원 이하 과태료). 한라산국립공원 전 구간",
+      "caution_note": "반려동물 출입 금지",
+      "source_url": "https://www.jeju.go.kr/hallasan/info/safety/plan/plan04.htm",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.38497,
+    "longitude": 126.619154
+  },
+  {
+    "name": "한라산국립공원 관음사탐방로",
+    "category": "attraction",
+    "region": "제주시/제주국제공항",
+    "address": "제주특별자치도 제주시 산록북로 588",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 300,
+    "description": "한라산 정상으로 오르는 북쪽 탐방로 입구. 사전 예약제로 운영된다.",
+    "homepage_url": "https://www.jeju.go.kr/hallasan/",
+    "business_hours_raw": "계절별 입산 통제 시각 상이",
+    "tags": [
+      "walk"
+    ],
+    "pet_policy": {
+      "policy_type": "not_allowed",
+      "leash_required": null,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "자연공원법 제29조 제한행위: 개·고양이 등 동물을 데리고 입장하는 행위 금지(200만원 이하 과태료). 한라산국립공원 전 구간",
+      "caution_note": "반려동물 출입 금지",
+      "source_url": "https://www.jeju.go.kr/hallasan/info/safety/plan/plan04.htm",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.421622,
+    "longitude": 126.549752
+  },
+  {
+    "name": "한라산국립공원 어리목탐방로",
+    "category": "attraction",
+    "region": "제주시/제주국제공항",
+    "address": "제주특별자치도 제주시 1100로 2070-61",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 240,
+    "description": "윗세오름으로 오르는 서북쪽 탐방로 입구. 어승생악 탐방로도 여기서 시작한다.",
+    "homepage_url": "https://www.jeju.go.kr/hallasan/",
+    "business_hours_raw": "계절별 입산 통제 시각 상이",
+    "tags": [
+      "walk"
+    ],
+    "pet_policy": {
+      "policy_type": "not_allowed",
+      "leash_required": null,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "자연공원법 제29조 제한행위: 개·고양이 등 동물을 데리고 입장하는 행위 금지(200만원 이하 과태료). 한라산국립공원 전 구간",
+      "caution_note": "반려동물 출입 금지",
+      "source_url": "https://www.jeju.go.kr/hallasan/info/safety/plan/plan04.htm",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.392653,
+    "longitude": 126.495068
+  },
+  {
+    "name": "한라산국립공원 영실탐방로",
+    "category": "attraction",
+    "region": "중문",
+    "address": "제주특별자치도 서귀포시 영실로 246",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 240,
+    "description": "영실기암을 지나 윗세오름으로 오르는 남서쪽 탐방로 입구.",
+    "homepage_url": "https://www.jeju.go.kr/hallasan/",
+    "business_hours_raw": "계절별 입산 통제 시각 상이",
+    "tags": [
+      "walk"
+    ],
+    "pet_policy": {
+      "policy_type": "not_allowed",
+      "leash_required": null,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "자연공원법 제29조 제한행위: 개·고양이 등 동물을 데리고 입장하는 행위 금지(200만원 이하 과태료). 한라산국립공원 전 구간",
+      "caution_note": "반려동물 출입 금지",
+      "source_url": "https://www.jeju.go.kr/hallasan/info/safety/plan/plan04.htm",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.340135,
+    "longitude": 126.480668
+  },
+  {
+    "name": "1100고지 습지",
+    "category": "attraction",
+    "region": "중문",
+    "address": "제주특별자치도 서귀포시 색달동 산 1-2",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 40,
+    "description": "1100도로 정상부의 람사르 습지. 한라산국립공원 안에 있어 짧은 데크 탐방로가 있다.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "walk",
+      "photo_spot"
+    ],
+    "pet_policy": {
+      "policy_type": "not_allowed",
+      "leash_required": null,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "자연공원법 제29조 제한행위: 개·고양이 등 동물을 데리고 입장하는 행위 금지(200만원 이하 과태료). 한라산국립공원 전 구간 안의 습지",
+      "caution_note": "반려동물 출입 금지",
+      "source_url": "https://www.jeju.go.kr/hallasan/info/safety/plan/plan04.htm",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.358019,
+    "longitude": 126.46363
+  },
+  {
+    "name": "거문오름",
+    "category": "oreum",
+    "region": "함덕/김녕/세화",
+    "address": "제주특별자치도 제주시 조천읍 선흘리 산 102-1",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 150,
+    "description": "세계자연유산 거문오름 용암동굴계의 발원지. 예약제·해설사 동반 탐방으로만 오를 수 있다.",
+    "homepage_url": "https://www.jeju.go.kr/wnhcenter/black/visit.htm",
+    "business_hours_raw": "09:00~14:00 출발, 화요일 휴무",
+    "tags": [
+      "walk"
+    ],
+    "pet_policy": {
+      "policy_type": "not_allowed",
+      "leash_required": null,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "탐방 안내: 애완동물 동반 불가. 사전 예약제(화요일 휴무)",
+      "caution_note": "반려동물 출입 금지",
+      "source_url": "https://www.jeju.go.kr/wnhcenter/black/visit.htm",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.457184,
+    "longitude": 126.714669
+  },
+  {
+    "name": "비자림",
+    "category": "attraction",
+    "region": "함덕/김녕/세화",
+    "address": "제주특별자치도 제주시 구좌읍 비자숲길 55",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 60,
+    "description": "수백 년 된 비자나무 수천 그루가 모인 숲. 평탄한 산책로가 있다.",
+    "homepage_url": null,
+    "business_hours_raw": "09:00~18:00 (입장 마감 17:00)",
+    "tags": [
+      "walk",
+      "rest"
+    ],
+    "pet_policy": {
+      "policy_type": "not_allowed",
+      "leash_required": null,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "비짓제주 안내: 반려동물 및 생수를 제외한 음식물 반입 금지",
+      "caution_note": "반려동물 출입 금지",
+      "source_url": "https://www.visitjeju.net/kr/detail/view?contentsid=CONT_000000000500270",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.490408,
+    "longitude": 126.809988
+  },
+  {
+    "name": "용머리해안",
+    "category": "attraction",
+    "region": "서귀포시/모슬포",
+    "address": "제주특별자치도 서귀포시 안덕면 사계리 112-3",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 40,
+    "description": "산방산 아래 바다로 뻗은 해안 절벽. 만조·기상에 따라 출입이 통제된다.",
+    "homepage_url": null,
+    "business_hours_raw": "09:00~17:00 (입장 마감 16:30), 만조·기상 시 통제",
+    "tags": [
+      "sea",
+      "photo_spot"
+    ],
+    "pet_policy": {
+      "policy_type": "not_allowed",
+      "leash_required": null,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "비짓제주 안내: 이곳은 반려동물이 출입할 수 없으니 많은 양해 바랍니다",
+      "caution_note": "반려동물 출입 금지",
+      "source_url": "https://www.visitjeju.net/kr/detail/view?contentsid=CONT_000000000500471",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.23166,
+    "longitude": 126.314724
+  },
+  {
+    "name": "산방산",
+    "category": "attraction",
+    "region": "서귀포시/모슬포",
+    "address": "제주특별자치도 서귀포시 안덕면 사계리 산 16",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 40,
+    "description": "종 모양의 용암돔. 산방굴사까지의 산책로만 개방되며 정상부는 출입 통제 구역이다.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "photo_spot"
+    ],
+    "pet_policy": {
+      "policy_type": "not_allowed",
+      "leash_required": null,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "비짓제주 안내: 반려동물은 출입할 수 없으니 많은 양해바랍니다",
+      "caution_note": "반려동물 출입 금지",
+      "source_url": "https://www.visitjeju.net/kr/detail/view?contentsid=CONT_000000000500285",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.242,
+    "longitude": 126.3132
+  },
+  {
+    "name": "월정리해수욕장",
+    "category": "beach",
+    "region": "함덕/김녕/세화",
+    "address": "제주특별자치도 제주시 구좌읍 월정리",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 60,
+    "description": "에메랄드빛 바다로 알려진 동부 해변. 마을회 관리 지침에 따라 반려동물은 백사장 산책도 할 수 없다.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "sea",
+      "cafe"
+    ],
+    "pet_policy": {
+      "policy_type": "not_allowed",
+      "leash_required": null,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "제주관광공사 답변(2024-06-30): 지정 해수욕장 12곳 중 월정리만 백사장 산책도 불가",
+      "caution_note": "반려동물 출입 금지",
+      "source_url": "https://ijto.or.kr/korean/Bd/view.php?bno=1515&btable=qna&lcate=&p=5",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.556469,
+    "longitude": 126.795805
+  },
+  {
+    "name": "섭지코지",
+    "category": "attraction",
+    "region": "표선/성산",
+    "address": "제주특별자치도 서귀포시 성산읍 섭지코지로 107",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 90,
+    "description": "성산일출봉을 바라보는 해안 곶. 등대까지 이어지는 야외 산책로가 있다.",
+    "homepage_url": null,
+    "business_hours_raw": "상시 개방",
+    "tags": [
+      "sea",
+      "walk",
+      "photo_spot"
+    ],
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "한국관광공사 반려동물 동반여행(2024-05): 목줄 착용 권장. TourAPI 반려동물 정보: 일부구역 동반가능, 목줄 착용",
+      "caution_note": "목줄 착용·배변봉투 지참",
+      "source_url": "https://korean.visitkorea.or.kr/detail/rem_detail.do?cotid=5bf42aa9-c0dd-4456-a34b-478f953766df",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.423938,
+    "longitude": 126.930609
+  },
+  {
+    "name": "사계해안",
+    "category": "walking_trail",
+    "region": "서귀포시/모슬포",
+    "address": "제주특별자치도 서귀포시 안덕면 사계리",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 60,
+    "description": "산방산과 형제섬을 바라보는 해안 산책로. 모든 견종 동반 가능.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "sea",
+      "walk",
+      "photo_spot"
+    ],
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "한국관광공사(2023-12): 모든 견종 가능, 맹견은 입마개, 목줄·배변봉투 필수, 전체 지역 동반 가능",
+      "caution_note": "목줄 착용·배변봉투 지참",
+      "source_url": "https://korean.visitkorea.or.kr/detail/rem_detail.do?cotid=c4d29c40-df9e-48a7-b662-0bb137e38135",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.216754,
+    "longitude": 126.293353
+  },
+  {
+    "name": "용눈이오름",
+    "category": "oreum",
+    "region": "함덕/김녕/세화",
+    "address": "제주특별자치도 제주시 구좌읍 종달리 산 28",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 90,
+    "description": "부드러운 능선이 이어지는 동부 오름. 자연휴식년제로 탐방로 개방 구간이 바뀔 수 있다.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "walk",
+      "photo_spot"
+    ],
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "한국관광공사 반려동물 동반여행 등록. 정상부 탐방로는 일부 구간만 개방될 수 있음",
+      "caution_note": "목줄 착용·배변봉투 지참. 휴식년제 개방 구간 확인",
+      "source_url": "https://korean.visitkorea.or.kr/detail/ms_detail.do?cotid=5429c4dc-e53a-4f15-a02d-061927bdf791",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.45988,
+    "longitude": 126.832683
+  },
+  {
+    "name": "다랑쉬오름",
+    "category": "oreum",
+    "region": "함덕/김녕/세화",
+    "address": "제주특별자치도 제주시 구좌읍 세화리 산 6",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 90,
+    "description": "동부 오름의 여왕으로 불리는 큰 오름. 둘레 3.4km, 정상까지 경사가 가파르다.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "walk",
+      "photo_spot"
+    ],
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "한국관광공사 반려동물 동반여행 등록. 2026-05-08부터 차마 출입·취사·야영 금지(오름 27곳)",
+      "caution_note": "목줄 착용·배변봉투 지참",
+      "source_url": "https://korean.visitkorea.or.kr/detail/ms_detail.do?cotid=951e2041-3348-4244-b468-827205d00296",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.477686,
+    "longitude": 126.821536
+  },
+  {
+    "name": "갑선이오름",
+    "category": "oreum",
+    "region": "표선/성산",
+    "address": "제주특별자치도 서귀포시 표선면 가시리",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 60,
+    "description": "가시리의 말굽형 오름. 가시천이 서쪽을 흐른다.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "walk",
+      "rest"
+    ],
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "한국관광공사 반려동물 동반여행 등록. TourAPI: 전구역 동반가능, 목줄 착용",
+      "caution_note": "목줄 착용·배변봉투 지참",
+      "source_url": "https://korean.visitkorea.or.kr/detail/ms_detail.do?cotid=e07448fb-88d6-4dc9-a4ea-0a2af32b071e",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.360856,
+    "longitude": 126.781664
+  },
+  {
+    "name": "거슨새미오름",
+    "category": "oreum",
+    "region": "함덕/김녕/세화",
+    "address": "제주특별자치도 제주시 구좌읍 송당리",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 60,
+    "description": "송당리의 오름. 샘이 한라산 쪽으로 거슬러 흐른다 하여 붙은 이름이다.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "walk",
+      "rest"
+    ],
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "한국관광공사 반려동물 동반여행 등록(TourAPI KorPetTourService2). 전구역 동반가능, 목줄 착용",
+      "caution_note": "목줄 착용·배변봉투 지참",
+      "source_url": "https://korean.visitkorea.or.kr/other/other_list.do?otdid=22dd6a3f-9d71-42f8-9163-295a7ac62fb8&choiceTag=%EB%B0%98%EB%A0%A4%EB%8F%99%EB%AC%BC%ED%8A%B9%EC%A7%91%EA%B4%80%EB%AA%A8%EC%95%84%EB%B3%B4%EA%B8%B0&choiceTagId=ea3e3647-65a8-11ef-95cd-0050569dc2b9",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.450229,
+    "longitude": 126.760131
+  },
+  {
+    "name": "녹산로 유채꽃도로",
+    "category": "walking_trail",
+    "region": "표선/성산",
+    "address": "제주특별자치도 서귀포시 표선면 가시로565번길 20",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 40,
+    "description": "가시리 진입로부터 10km 이어지는 유채꽃·벚꽃 길. 한국의 아름다운 길 100선.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "photo_spot",
+      "walk"
+    ],
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "한국관광공사 반려동물 동반여행 등록. TourAPI: 전구역 동반가능, 목줄 착용",
+      "caution_note": "목줄 착용·배변봉투 지참",
+      "source_url": "https://korean.visitkorea.or.kr/detail/ms_detail.do?cotid=57d16fc1-42ec-4f4c-bc4e-7a15e88c0be6",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.384128,
+    "longitude": 126.737872
+  },
+  {
+    "name": "돈내코 원앙폭포",
+    "category": "attraction",
+    "region": "서귀포시/모슬포",
+    "address": "제주특별자치도 서귀포시 돈내코로 137",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 60,
+    "description": "돈내코 입구에서 상록수림 산책로를 20분 걸으면 만나는 폭포. 여름 물맞이로 알려졌다.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "walk",
+      "rest"
+    ],
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "한국관광공사 반려동물 동반여행 등록(TourAPI KorPetTourService2). 전구역 동반가능, 목줄 착용",
+      "caution_note": "목줄 착용·배변봉투 지참",
+      "source_url": "https://korean.visitkorea.or.kr/other/other_list.do?otdid=22dd6a3f-9d71-42f8-9163-295a7ac62fb8&choiceTag=%EB%B0%98%EB%A0%A4%EB%8F%99%EB%AC%BC%ED%8A%B9%EC%A7%91%EA%B4%80%EB%AA%A8%EC%95%84%EB%B3%B4%EA%B8%B0&choiceTagId=ea3e3647-65a8-11ef-95cd-0050569dc2b9",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.300177,
+    "longitude": 126.58133
+  },
+  {
+    "name": "돌하르방미술관",
+    "category": "attraction",
+    "region": "함덕/김녕/세화",
+    "address": "제주특별자치도 제주시 조천읍 북촌서1길 70",
+    "road_address": null,
+    "environment": "mixed",
+    "average_stay_minutes": 60,
+    "description": "돌하르방 48기 원형과 현대 조형물을 숲속 산책로에 배치한 야외 미술관.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "photo_spot",
+      "walk"
+    ],
+    "pet_policy": {
+      "policy_type": "partial_allowed",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "한국관광공사(2023-12): 대형견 가능(목줄 필수), 맹견 불가, 야외만 동반 가능, 이동 가방 지참 시 실내 동반 가능. 반려동물 입장 무료",
+      "caution_note": "실내는 이동 가방 지참 시만",
+      "source_url": "https://korean.visitkorea.or.kr/detail/rem_detail.do?cotid=2fd0ce38-52cf-4ed7-9968-68c8ecdb3aa4",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.538843,
+    "longitude": 126.688811
+  },
+  {
+    "name": "동백포레스트",
+    "category": "attraction",
+    "region": "서귀포시/모슬포",
+    "address": "제주특별자치도 서귀포시 남원읍 생기악로 53-38",
+    "road_address": null,
+    "environment": "mixed",
+    "average_stay_minutes": 60,
+    "description": "11~2월 동백꽃이 피는 농원. 야외 정원과 카페가 있다.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "photo_spot",
+      "cafe"
+    ],
+    "pet_policy": {
+      "policy_type": "partial_allowed",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "한국관광공사 반려동물 동반여행 등록. TourAPI: 일부구역 동반가능, 목줄 착용",
+      "caution_note": "목줄 착용·배변봉투 지참",
+      "source_url": "https://korean.visitkorea.or.kr/detail/ms_detail.do?cotid=10301f56-cc9d-4d90-88a4-5e9fbae4942d",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.300308,
+    "longitude": 126.636198
+  },
+  {
+    "name": "마라도",
+    "category": "attraction",
+    "region": "서귀포시/모슬포",
+    "address": "제주특별자치도 서귀포시 대정읍 마라로101번길 46",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 180,
+    "description": "국토 최남단 섬. 완만한 길을 따라 1~2시간이면 한 바퀴 돈다. 여객선 반려동물 규정은 별도.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "sea",
+      "walk",
+      "photo_spot"
+    ],
+    "pet_policy": {
+      "policy_type": "partial_allowed",
+      "leash_required": true,
+      "carrier_required": true,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "한국관광공사 반려동물 동반여행 등록. TourAPI: 일부구역 동반가능, 목줄 착용·유모차·이동장 사용. 여객선 탑승 규정은 선사 확인",
+      "caution_note": "여객선 반려동물 규정 확인(케이지 등)",
+      "source_url": "https://korean.visitkorea.or.kr/detail/ms_detail.do?cotid=19b4ad99-2045-4fea-8614-7d9a82d44a91",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.118487,
+    "longitude": 126.267168
+  },
+  {
+    "name": "산양큰엉곶",
+    "category": "walking_trail",
+    "region": "애월/한림/협재",
+    "address": "제주특별자치도 제주시 한경면 연명로 179",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 60,
+    "description": "한경·안덕 곶자왈의 일부. 달구지길과 숲길로 나뉜 산책 코스.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "walk",
+      "rest",
+      "photo_spot"
+    ],
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "비짓제주(2025-11): 리드줄 착용·배변봉투 지참 필수(매표소 확인 후 입장), 동물보호법상 입마개 착용 견종은 입마개 필수",
+      "caution_note": "목줄 착용·배변봉투 지참",
+      "source_url": "https://www.visitjeju.net/kr/detail/view?contentsid=CNTS_300000000013876",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.290923,
+    "longitude": 126.250631
+  },
+  {
+    "name": "성읍민속마을",
+    "category": "attraction",
+    "region": "표선/성산",
+    "address": "제주특별자치도 서귀포시 표선면 성읍리",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 60,
+    "description": "제주 전통 초가와 돌담이 보존된 민속 마을. 주민이 실제로 거주한다.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "walk",
+      "experience"
+    ],
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "한국관광공사 반려동물 동반여행 등록(TourAPI KorPetTourService2). 전구역 동반가능, 목줄 착용",
+      "caution_note": "목줄 착용·배변봉투 지참",
+      "source_url": "https://korean.visitkorea.or.kr/other/other_list.do?otdid=22dd6a3f-9d71-42f8-9163-295a7ac62fb8&choiceTag=%EB%B0%98%EB%A0%A4%EB%8F%99%EB%AC%BC%ED%8A%B9%EC%A7%91%EA%B4%80%EB%AA%A8%EC%95%84%EB%B3%B4%EA%B8%B0&choiceTagId=ea3e3647-65a8-11ef-95cd-0050569dc2b9",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.38496,
+    "longitude": 126.801499
+  },
+  {
+    "name": "함도그비치",
+    "category": "beach",
+    "region": "함덕/김녕/세화",
+    "address": "제주특별자치도 제주시 조천읍 조함해안로 525",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 60,
+    "description": "함덕해수욕장 곁의 반려견 전용 해변. 보호자 1인당 1마리.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "sea",
+      "walk"
+    ],
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "비짓제주(2025-11): 보호자 1인당 반려견 1마리, 리드줄·배설물 수거 필수, 인식표 부착·동물등록 필수, 법정 맹견 5종·전염성 질병견·앉은 키 1m 이상 대형견 제한",
+      "caution_note": "동물등록·인식표 필수, 1인 1마리",
+      "source_url": "https://www.visitjeju.net/kr/detail/view?contentsid=CNTS_300000000013876",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.544575,
+    "longitude": 126.674218
+  },
+  {
+    "name": "닭머르해안길",
+    "category": "walking_trail",
+    "region": "함덕/김녕/세화",
+    "address": "제주특별자치도 제주시 조천읍 신촌리",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 40,
+    "description": "신촌리 해안도로에서 정자까지 이어지는 짧은 해안 산책로. 동부 대표 일몰 명소.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "sea",
+      "walk",
+      "photo_spot"
+    ],
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "비짓제주 '반려동물과 함께하는 지속가능 여행지' 등록",
+      "caution_note": "목줄 착용·배변봉투 지참",
+      "source_url": "https://www.visitjeju.net/kr/detail/view?contentsid=CNTS_200000000009901",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.537167,
+    "longitude": 126.616124
+  },
+  {
+    "name": "신산공원",
+    "category": "attraction",
+    "region": "제주시/제주국제공항",
+    "address": "제주특별자치도 제주시 일도2동",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 40,
+    "description": "제주 시내의 넓은 도시공원. 반려동물이 뛸 공간이 넉넉하다.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "walk",
+      "rest"
+    ],
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "비짓제주 '반려동물과 함께하는 지속가능 여행지' 등록",
+      "caution_note": "목줄 착용·배변봉투 지참",
+      "source_url": "https://www.visitjeju.net/kr/detail/view?contentsid=CNTS_200000000009901",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.50702,
+    "longitude": 126.533161
+  },
+  {
+    "name": "조천스위스마을",
+    "category": "attraction",
+    "region": "함덕/김녕/세화",
+    "address": "제주특별자치도 제주시 조천읍 함와로 566-27",
+    "road_address": null,
+    "environment": "mixed",
+    "average_stay_minutes": 40,
+    "description": "알록달록한 건물이 늘어선 마을형 상가 거리. 야외 산책과 사진 촬영 위주.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "photo_spot",
+      "cafe"
+    ],
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "비짓제주 '반려동물과 함께하는 지속가능 여행지' 등록. 실내 매장은 매장별 확인",
+      "caution_note": "목줄 착용·배변봉투 지참",
+      "source_url": "https://www.visitjeju.net/kr/detail/view?contentsid=CNTS_200000000009901",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.493939,
+    "longitude": 126.676775
+  },
+  {
+    "name": "성이시돌목장",
+    "category": "attraction",
+    "region": "애월/한림/협재",
+    "address": "제주특별자치도 제주시 한림읍 산록남로 53",
+    "road_address": null,
+    "environment": "outdoor",
+    "average_stay_minutes": 60,
+    "description": "한림 중산간의 목장. 테쉬폰 건물과 초지가 넓게 펼쳐진다.",
+    "homepage_url": null,
+    "business_hours_raw": null,
+    "tags": [
+      "photo_spot",
+      "rest",
+      "walk"
+    ],
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [],
+      "max_weight_kg": null,
+      "food_area_allowed": null,
+      "notes": "비짓제주 '반려동물과 함께하는 지속가능 여행지' 등록",
+      "caution_note": "목줄 착용·배변봉투 지참",
+      "source_url": "https://www.visitjeju.net/kr/detail/view?contentsid=CNTS_200000000009901",
+      "verified_at": "2026-09-08"
+    },
+    "latitude": 33.34777,
+    "longitude": 126.327321
+  }
+]
