@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 from app.db.models.enums import ScheduleItemType, TransportType, TripPace
 from app.recommend.config.pace import PACE
-from app.recommend.schemas import BusinessHour, ScoredCandidate
+from app.recommend.schemas import BusinessHour, CandidateTier, ScoredCandidate
 from app.recommend.tmap import RouteLeg, TMapError
 from app.recommend.travel_estimate import SUPPORTED_TRANSPORTS, estimate_leg
 
@@ -24,6 +24,15 @@ LUNCH_START = time(11, 30)
 LUNCH_START_BY = time(14)
 Coordinate = tuple[float, float]
 RouteProvider = Callable[[Coordinate, Coordinate, TransportType, datetime | None], RouteLeg]
+
+# 후보 등급 사다리: 먼저 확실(VERIFIED)만, 끝내 못 채우면 확인 필요(NEEDS_CHECK)까지 허용.
+_VERIFIED_ONLY = frozenset({CandidateTier.VERIFIED})
+_ANY_TIER = frozenset({CandidateTier.VERIFIED, CandidateTier.NEEDS_CHECK})
+# 못 채운 식사 슬롯의 안내 문구(응답 recommendation_reason).
+UNFILLED_MEAL_REASON = (
+    "확실히 동반 가능한 식당을 찾지 못했어요. 아래 후보는 동반 여부 확인이 필요해요."
+)
+MAX_ALTERNATIVES = 3
 
 # 후보가 계속 시간 제약에 안 맞으면 후보 수만큼 TMAP(타임아웃 10초)을 부를 수 있어
 # 폴링 한도(3분)를 넘긴다. 하루당 호출을 이 상한으로 묶고, 초과분은 직선거리 추정으로
@@ -80,6 +89,16 @@ class ScheduledMove:
 
 
 @dataclass(frozen=True)
+class UnfilledSlot:
+    """못 채운 슬롯. item_type 은 의도한 유형(예: restaurant), candidates 는 확인 필요 후보."""
+
+    item_type: ScheduleItemType
+    position: int
+    reason: str
+    candidates: tuple[ScoredCandidate, ...] = ()
+
+
+@dataclass(frozen=True)
 class ItineraryDay:
     route_date: date
     items: tuple[ScheduledItem, ...]
@@ -90,6 +109,9 @@ class ItineraryDay:
     end_anchor: RouteAnchor | None = None
     day_start: datetime | None = None
     end_arrival: datetime | None = None
+    unfilled: tuple[UnfilledSlot, ...] = ()
+    # 채워진 항목별 대안 후보(최대 3). key 는 chosen place_id.
+    alternatives: dict[uuid.UUID, tuple[ScoredCandidate, ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -122,6 +144,8 @@ def build(
         day_end = min(datetime.combine(route_date, window_end, KST), end_at)
         items: list[ScheduledItem] = []
         moves: list[ScheduledMove] = []
+        unfilled: list[UnfilledSlot] = []
+        alternatives: dict[uuid.UUID, tuple[ScoredCandidate, ...]] = {}
         rejected_today: set[uuid.UUID] = set()
         route_calls = 0
         cap_logged = False
@@ -237,6 +261,18 @@ def build(
                     enforce_diversity=False,
                 )
             if choice is None:
+                # 필요한 식사 슬롯을 확실·확인 필요 후보로도 못 채우면 빈 슬롯으로 남긴다.
+                if meal_slot and not restaurant_scheduled:
+                    unfilled.append(
+                        UnfilledSlot(
+                            item_type=ScheduleItemType.RESTAURANT,
+                            position=len(items),
+                            reason=UNFILLED_MEAL_REASON,
+                            candidates=tuple(
+                                _unfilled_candidates(remaining, ScheduleItemType.RESTAURANT)
+                            ),
+                        )
+                    )
                 break
 
             rest_min = rule["rest_min"] if items else 0
@@ -260,8 +296,25 @@ def build(
                         route=route,
                     )
                 )
-            items.append(ScheduledItem(candidate=choice, starts_at=starts_at, ends_at=ends_at))
             remaining.remove(choice)
+            # 같은 슬롯 제약으로 다른 후보 최대 3개(확인 필요 포함)를 대안으로 남긴다.
+            alternatives[choice.place_id] = tuple(
+                _top_alternatives(
+                    remaining,
+                    rejected_today,
+                    blocked_types,
+                    ScheduleItemType.RESTAURANT if meal_slot else None,
+                    not_before,
+                    start_by,
+                    current_coord,
+                    current_time,
+                    visit_deadline,
+                    request.transport,
+                    rest_min,
+                    end_anchor.coord if end_anchor else None,
+                )
+            )
+            items.append(ScheduledItem(candidate=choice, starts_at=starts_at, ends_at=ends_at))
             current_coord = (choice.lat, choice.lng)
             current_time = ends_at
             restaurant_scheduled = restaurant_scheduled or (
@@ -287,6 +340,8 @@ def build(
                 end_anchor=end_anchor if items else None,
                 day_start=day_start if items and start_anchor else None,
                 end_arrival=end_arrival,
+                unfilled=tuple(unfilled),
+                alternatives=alternatives,
             )
         )
 
@@ -313,32 +368,39 @@ def _best_candidate_with_diversity(
     """다양성 규칙을 우선하되 후보 부족이 전체 일정 실패로 이어지지 않게 완화한다."""
 
     if not enforce_diversity:
-        return _best_candidate(
-            candidates,
-            rejected,
-            blocked_types,
-            required_type,
-            not_before,
-            start_by,
-            current_coord,
-            current_time,
-            day_end,
-            transport,
-            rest_min,
-            end_coord,
-            set(),
-            Counter(),
-            False,
-        )
+        for allowed_tiers in (_VERIFIED_ONLY, _ANY_TIER):
+            choice = _best_candidate(
+                candidates,
+                rejected,
+                blocked_types,
+                required_type,
+                not_before,
+                start_by,
+                current_coord,
+                current_time,
+                day_end,
+                transport,
+                rest_min,
+                end_coord,
+                set(),
+                Counter(),
+                False,
+                allowed_tiers,
+            )
+            if choice is not None:
+                return choice
+        return None
 
     group_counts = Counter(_diversity_group(item.candidate) for item in items)
     blocked_groups = {_diversity_group(items[-1].candidate)} if items else set()
+    # 확실(VERIFIED) 후보로 다양성을 지키며 채우고, 끝내 없으면 마지막에 확인 필요까지 허용한다.
     attempts = (
-        (blocked_groups, True),
-        (set(), True),
-        (set(), False),
+        (blocked_groups, True, _VERIFIED_ONLY),
+        (set(), True, _VERIFIED_ONLY),
+        (set(), False, _VERIFIED_ONLY),
+        (set(), False, _ANY_TIER),
     )
-    for groups, enforce_daily_limits in attempts:
+    for groups, enforce_daily_limits, allowed_tiers in attempts:
         choice = _best_candidate(
             candidates,
             rejected,
@@ -355,6 +417,7 @@ def _best_candidate_with_diversity(
             groups,
             group_counts,
             enforce_daily_limits,
+            allowed_tiers,
         )
         if choice is not None:
             return choice
@@ -377,12 +440,14 @@ def _best_candidate(
     blocked_diversity_groups: set[str],
     diversity_group_counts: Counter[str],
     enforce_daily_diversity_limits: bool,
+    allowed_tiers: frozenset[CandidateTier] = _VERIFIED_ONLY,
 ) -> ScoredCandidate | None:
     choices: list[tuple[float, float, ScoredCandidate]] = []
     for candidate in candidates:
         diversity_group = _diversity_group(candidate)
         if (
             candidate.place_id in rejected
+            or candidate.tier not in allowed_tiers
             or candidate.item_type in blocked_types
             or (required_type is not None and candidate.item_type != required_type)
             or diversity_group in blocked_diversity_groups
@@ -416,6 +481,69 @@ def _best_candidate(
         choices.append((candidate.total_score / max(cost, 1), candidate.total_score, candidate))
 
     return max(choices, key=lambda choice: choice[:2])[2] if choices else None
+
+
+def _top_alternatives(
+    candidates: list[ScoredCandidate],
+    rejected: set[uuid.UUID],
+    blocked_types: set[ScheduleItemType],
+    required_type: ScheduleItemType | None,
+    not_before: datetime | None,
+    start_by: datetime | None,
+    current_coord: Coordinate,
+    current_time: datetime,
+    day_end: datetime,
+    transport: TransportType,
+    rest_min: int,
+    end_coord: Coordinate | None,
+    limit: int = MAX_ALTERNATIVES,
+) -> list[ScoredCandidate]:
+    """선택된 항목과 같은 슬롯 제약으로 갈 만한 다른 후보(확인 필요 포함) 최대 limit개.
+
+    이미 쓰인 곳은 candidates(remaining)에서 빠져 있고, 선택된 것도 호출 전에 제거된다.
+    다양성 제약은 걸지 않는다 — "이 자리 대신 갈 곳"이라 같은 유형이어도 무방하다.
+    """
+    excluded = set(rejected)
+    alternatives: list[ScoredCandidate] = []
+    for _ in range(limit):
+        alternative = _best_candidate(
+            candidates,
+            excluded,
+            blocked_types,
+            required_type,
+            not_before,
+            start_by,
+            current_coord,
+            current_time,
+            day_end,
+            transport,
+            rest_min,
+            end_coord,
+            set(),
+            Counter(),
+            False,
+            _ANY_TIER,
+        )
+        if alternative is None:
+            break
+        alternatives.append(alternative)
+        excluded.add(alternative.place_id)
+    return alternatives
+
+
+def _unfilled_candidates(
+    candidates: list[ScoredCandidate],
+    required_type: ScheduleItemType,
+    limit: int = MAX_ALTERNATIVES,
+) -> list[ScoredCandidate]:
+    """빈 슬롯에 붙일 "확인 필요" 후보. 시간·동선 적합과 무관하게 점수순 상위 limit개."""
+    matches = [
+        candidate
+        for candidate in candidates
+        if candidate.item_type == required_type and candidate.tier == CandidateTier.NEEDS_CHECK
+    ]
+    matches.sort(key=lambda candidate: (-candidate.total_score, candidate.place_id.int))
+    return matches[:limit]
 
 
 def _diversity_group(candidate: ScoredCandidate) -> str:

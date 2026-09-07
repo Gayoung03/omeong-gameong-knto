@@ -14,7 +14,7 @@ from app.recommend.itinerary import (
     RouteAnchor,
     build,
 )
-from app.recommend.schemas import BusinessHour, ScoredCandidate
+from app.recommend.schemas import BusinessHour, CandidateTier, ScoredCandidate
 from app.recommend.tmap import RouteLeg, TMapError
 
 KST = ZoneInfo("Asia/Seoul")
@@ -30,6 +30,7 @@ def _candidate(
     business_hours: list[BusinessHour] | None = None,
     source_category: str | None = None,
     tags: list[str] | None = None,
+    tier: CandidateTier = CandidateTier.VERIFIED,
 ) -> ScoredCandidate:
     return ScoredCandidate(
         place_id=uuid.uuid4(),
@@ -41,6 +42,7 @@ def _candidate(
         average_stay_minutes=stay_minutes,
         business_hours=business_hours or [],
         tags=tags or [],
+        tier=tier,
         total_score=score,
         sub_scores={
             "preference": score,
@@ -485,3 +487,71 @@ def test_last_day_can_start_at_stay_without_forcing_return() -> None:
     assert result.days[0].start_anchor == stay
     assert result.days[0].end_anchor is None
     assert len(result.days[0].moves) == 1
+
+
+# ---------------------------------------------------------------------------
+# 부분 성공: 빈 슬롯 · 확인 필요 폴백 · 대안 후보
+# ---------------------------------------------------------------------------
+
+
+def _fast_route(*_args):
+    return RouteLeg(distance_m=1000, duration_min=10, polyline=None)
+
+
+def test_no_restaurant_leaves_unfilled_dinner_slot() -> None:
+    # 저녁이 필요한데 식당 후보가 하나도 없으면 실패가 아니라 빈 저녁 슬롯으로 남긴다.
+    attractions = [_candidate(0.9 - index / 100, lat=33.5 + index / 1000) for index in range(5)]
+
+    result = build(attractions, _request(TripPace.NORMAL), _fast_route)
+    day = result.days[0]
+
+    assert day.dinner_required is True
+    assert day.items  # 관광 일정은 정상 배치
+    assert all(item.candidate.item_type == ScheduleItemType.ATTRACTION for item in day.items)
+    assert len(day.unfilled) == 1
+    assert day.unfilled[0].item_type == ScheduleItemType.RESTAURANT
+
+
+def test_needs_check_taken_only_when_no_verified() -> None:
+    request = BuildRequest(
+        start_at=datetime(2026, 8, 31, 9, tzinfo=KST),
+        end_at=datetime(2026, 8, 31, 15, tzinfo=KST),  # 저녁 없음
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        start_coord=(33.5, 126.53),
+    )
+    verified = _candidate(0.5, lat=33.501, tier=CandidateTier.VERIFIED)
+    needs_check = _candidate(0.9, lat=33.502, tier=CandidateTier.NEEDS_CHECK)
+
+    result = build([needs_check, verified], request, _fast_route)
+    day = result.days[0]
+
+    # 점수는 needs_check 가 높지만 확실 후보를 먼저 쓴다.
+    assert day.items[0].candidate.tier == CandidateTier.VERIFIED
+
+    # 확실 후보가 아예 없으면 확인 필요 후보를 채택한다.
+    only_needs_check = build(
+        [_candidate(0.9, lat=33.503, tier=CandidateTier.NEEDS_CHECK)], request, _fast_route
+    )
+    assert only_needs_check.days[0].items[0].candidate.tier == CandidateTier.NEEDS_CHECK
+
+
+def test_alternatives_capped_at_three_and_unique() -> None:
+    request = BuildRequest(
+        start_at=datetime(2026, 8, 31, 9, tzinfo=KST),
+        end_at=datetime(2026, 8, 31, 15, tzinfo=KST),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        start_coord=(33.5, 126.53),
+    )
+    attractions = [_candidate(0.9 - index / 100, lat=33.5 + index / 2000) for index in range(6)]
+
+    result = build(attractions, request, _fast_route)
+    day = result.days[0]
+    first = day.items[0]
+    alternatives = day.alternatives[first.candidate.place_id]
+
+    assert len(alternatives) <= 3
+    ids = [candidate.place_id for candidate in alternatives]
+    assert len(ids) == len(set(ids))  # 중복 없음
+    assert first.candidate.place_id not in ids  # 자기 자신 제외
