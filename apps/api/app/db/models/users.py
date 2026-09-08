@@ -62,6 +62,11 @@ class User(Base):
     marketing_notification_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    # 관리자 API 권한의 정본. JWT claim만 믿지 않고 요청마다 DB의 현재 권한을
+    # 확인해서 권한 회수도 다음 요청부터 즉시 적용되게 한다.
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     #: 비밀번호를 마지막으로 바꾼 시각. **이 시각 이전에 발급된 access·refresh
     #: 토큰은 전부 무효**로 본다(app/api/dependencies.py · auth.refresh).
     #: NULL 이면 한 번도 바꾼 적이 없다는 뜻이라 아무 토큰도 무효화하지 않는다.

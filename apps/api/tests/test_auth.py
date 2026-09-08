@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.security import hash_password
 from app.db.models import Pet, User, UserTravelPreference
 
 
@@ -131,6 +132,28 @@ def test_로그인_성공은_토큰을_준다(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.json()["accessToken"]
     assert response.json()["user"]["email"] == "login@example.com"
+
+
+def test_로컬_시드_예약_도메인도_로그인된다(
+    client: TestClient, db: Session
+) -> None:
+    db.add(
+        User(
+            email="seed@omeong.local",
+            password_hash=hash_password("local-admin-1234"),
+            nickname="로컬 관리자",
+            is_admin=True,
+        )
+    )
+    db.flush()
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "  Seed@Omeong.Local  ", "password": "local-admin-1234"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user"]["email"] == "seed@omeong.local"
 
 
 def test_비번_불일치와_없는_이메일은_같은_401(client: TestClient) -> None:
