@@ -5,12 +5,18 @@
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import AdminInquiryAuditLog, Inquiry
 from app.services.notifications import add_notification, send_pushes
+
+_KST = timezone(timedelta(hours=9))
+
+#: 초안을 생성했을 때 남기는 감사 로그 action. 하루 한도를 세는 데도 쓴다.
+AI_DRAFT_ACTION = "ai_drafted"
 
 #: 화면에 보일 한글 라벨. API/DB 는 영문 코드로 통일한다(docs/api/notifications.md).
 INQUIRY_CATEGORY_LABELS: dict[str, str] = {
@@ -40,6 +46,32 @@ def answer_header(asker_nickname: str) -> str:
 def answer_template(asker_nickname: str) -> str:
     """답변 편집기의 초기값. 머릿말 + 빈 본문 + 꼬릿말. 관리자가 자유롭게 수정한다."""
     return f"{answer_header(asker_nickname)}\n\n\n\n{INQUIRY_ANSWER_FOOTER}"
+
+
+def ai_drafts_today(db: Session, actor_id: uuid.UUID) -> int:
+    """오늘(KST 자정 기준) 이 관리자가 만든 AI 초안 수. 하루 한도 판단용."""
+    midnight = datetime.now(_KST).replace(hour=0, minute=0, second=0, microsecond=0)
+    return (
+        db.scalar(
+            select(func.count(AdminInquiryAuditLog.id)).where(
+                AdminInquiryAuditLog.actor_user_id == actor_id,
+                AdminInquiryAuditLog.action == AI_DRAFT_ACTION,
+                AdminInquiryAuditLog.created_at >= midnight,
+            )
+        )
+        or 0
+    )
+
+
+def record_ai_draft(db: Session, inquiry: Inquiry, actor_id: uuid.UUID) -> None:
+    """AI 초안 생성을 감사 로그에 남긴다(하루 한도 계산의 근거). 저장은 호출 측이 commit."""
+    db.add(
+        AdminInquiryAuditLog(
+            inquiry_id=inquiry.id,
+            actor_user_id=actor_id,
+            action=AI_DRAFT_ACTION,
+        )
+    )
 
 
 def answer_inquiry(

@@ -62,6 +62,7 @@
 - OpenAI 를 1회 호출해(`inquiry_openai_model` 또는 `openai_model`) 답변 본문을 만든다. 응답: `{ reply, usedContext, needsHumanReview, model }`.
 - `needsHumanReview=true` 는 "맥락만으로는 확실히 답하기 어렵다"는 모델의 표시다. 관리자가 사실 확인 후 보낸다.
 - `OPENAI_API_KEY` 미설정 → **503**, LLM 호출 실패 → **502**. 초안은 어떤 것도 DB에 저장하지 않는다. 완료된 문의는 **409**.
+- **하루 한도** — 관리자 1명이 하루에 만들 수 있는 초안 수를 `INQUIRY_DRAFT_DAILY_LIMIT`(기본 10)로 제한한다(토큰 절약). 초과 시 **429**. `environment=local` 은 세지 않는다. 성공한 호출만 `admin_inquiry_audit_logs` 에 `action="ai_drafted"` 로 기록되며(KST 자정 기준으로 카운트), 이 행은 관리자 화면 이력에는 표시하지 않는다.
 
 ---
 

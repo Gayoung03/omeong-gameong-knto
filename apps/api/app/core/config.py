@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     editorial_openai_model: str = ""
     #: 1:1 문의 답변 초안 생성 모델. 비우면 openai_model 을 쓴다.
     inquiry_openai_model: str = ""
+    #: 관리자 한 명이 하루에 만들 수 있는 문의 답변 AI 초안 수(토큰 절약).
+    #: `environment` 가 local 이면 세지 않는다 — chat_daily_limit 과 같은 방식.
+    inquiry_draft_daily_limit: int = 10
     #: 첫 응답까지 20초, 전체 60초(설계 결정 E2).
     chat_connect_timeout_seconds: float = 20.0
     chat_timeout_seconds: float = 60.0

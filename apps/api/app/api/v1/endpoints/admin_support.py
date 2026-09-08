@@ -14,6 +14,7 @@ from sqlalchemy import asc, desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.dependencies import CurrentAdmin
+from app.core.config import settings
 from app.db.models import AdminInquiryAuditLog, AdminNoticeAuditLog, Inquiry, Notice
 from app.db.session import get_db
 from app.schemas.admin_inquiry import (
@@ -181,7 +182,7 @@ def answer_admin_inquiry(
     summary="문의 답변 AI 초안",
 )
 def draft_admin_inquiry_answer(
-    inquiry_id: uuid.UUID, db: DbSession, _current_admin: CurrentAdmin
+    inquiry_id: uuid.UUID, db: DbSession, current_admin: CurrentAdmin
 ) -> AdminInquiryDraftResponse:
     inquiry = _inquiry_or_404(db, inquiry_id)
     if inquiry.status == "completed":
@@ -189,6 +190,14 @@ def draft_admin_inquiry_answer(
             status_code=status.HTTP_409_CONFLICT,
             detail="이미 답변이 등록된 문의입니다",
         )
+    # 토큰 절약 — 하루 한도. local 에서는 세지 않는다(chat_daily_limit 과 같은 방식).
+    if settings.environment != "local":
+        used = inquiry_service.ai_drafts_today(db, current_admin.id)
+        if used >= settings.inquiry_draft_daily_limit:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="오늘 AI 초안 생성 한도를 다 썼어요. 내일 다시 시도해 주세요.",
+            )
     try:
         draft = inquiry_drafting.draft_answer(db, inquiry)
     except RuntimeError as error:
@@ -203,6 +212,10 @@ def draft_admin_inquiry_answer(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="AI 초안 생성에 실패했어요. 잠시 후 다시 시도해 주세요.",
         ) from error
+
+    # 성공한 호출만 한도에 센다. 감사 로그로 남겨 재시작해도 유지된다.
+    inquiry_service.record_ai_draft(db, inquiry, current_admin.id)
+    db.commit()
     return AdminInquiryDraftResponse(
         reply=draft.reply,
         used_context=draft.used_context,

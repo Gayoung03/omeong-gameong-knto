@@ -15,6 +15,8 @@ import {
 type PendingAction = 'draft' | 'answer' | null;
 
 const AUDIT_LABEL: Record<string, string> = { answered: '답변 등록' };
+// AI 초안 생성은 한도 계산용으로 남길 뿐, 이력에는 보이지 않는다.
+const HIDDEN_AUDIT_ACTIONS = new Set(['ai_drafted']);
 
 function formatDate(value: string | null): string {
   if (!value) return '—';
@@ -123,6 +125,10 @@ export function InquiryDetailPage() {
       </div>
     );
   }
+
+  const historyLogs = inquiry.auditLogs.filter(
+    (log) => !HIDDEN_AUDIT_ACTIONS.has(log.action),
+  );
 
   return (
     <div className="detail-page">
@@ -239,11 +245,11 @@ export function InquiryDetailPage() {
           <section className="content-card aside-card history-card">
             <p className="eyebrow">변경 이력</p>
             <h2>최근 운영 기록</h2>
-            {inquiry.auditLogs.length === 0 ? (
+            {historyLogs.length === 0 ? (
               <p className="muted-text">아직 이력이 없어요.</p>
             ) : (
               <ol>
-                {inquiry.auditLogs.slice(0, 8).map((log) => (
+                {historyLogs.slice(0, 8).map((log) => (
                   <li key={log.id}>
                     <span className="history-dot" />
                     <div>

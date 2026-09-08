@@ -175,3 +175,34 @@ def test_draft_answer_uses_service(
     assert body["needsHumanReview"] is False
     # 초안은 저장하지 않는다.
     assert db.get(Inquiry, inquiry.id).answer is None
+
+
+def test_draft_answer_daily_limit(
+    client: TestClient,
+    db: Session,
+    owner: User,
+    stranger: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _make_admin(db, owner)
+    from app.core.config import settings
+    from app.services import inquiry_drafting
+
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "inquiry_draft_daily_limit", 2)
+    monkeypatch.setattr(
+        inquiry_drafting,
+        "draft_answer",
+        lambda db, inq: inquiry_drafting.InquiryDraft(
+            reply="초안", used_context=[], needs_human_review=False, model="gpt-4o-mini"
+        ),
+    )
+
+    for _ in range(2):
+        inquiry = _inquiry(db, stranger)
+        assert (
+            client.post(f"/api/v1/admin/inquiries/{inquiry.id}/draft-answer").status_code == 200
+        )
+
+    blocked = _inquiry(db, stranger)
+    assert client.post(f"/api/v1/admin/inquiries/{blocked.id}/draft-answer").status_code == 429

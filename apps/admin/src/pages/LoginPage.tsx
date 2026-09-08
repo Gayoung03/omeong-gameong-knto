@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
+import brandSymbol from '../assets/brand-symbol.png';
 import { useAuth } from '../auth/useAuth';
 
 export function LoginPage() {
@@ -34,16 +35,16 @@ export function LoginPage() {
     <main className="login-page">
       <section className="login-intro">
         <div className="login-brand">
-          <span className="brand-mark">오</span>
+          <img className="brand-logo" src={brandSymbol} alt="오멍가멍" />
           <strong>오멍가멍</strong>
         </div>
         <div>
           <p className="eyebrow">OMEONG GAMEONG ADMIN</p>
-          <h1>좋은 제주 이야기를<br />안심하고 전해요.</h1>
-          <p>수집된 원문을 확인하고, 오멍가멍의 말투로 다듬어<br className="desktop-only" /> 승인하는 콘텐츠 운영 공간입니다.</p>
+          <h1>오멍가멍 운영을<br />한곳에서 돌봐요.</h1>
+          <p>여행 이야기 검수부터 고객 문의 응대, 공지 발행까지<br className="desktop-only" /> 오멍가멍 서비스 운영을 이 화면에서 관리합니다.</p>
         </div>
         <div className="login-orbit" aria-hidden="true">
-          <span>원문</span><span>검수</span><span>게시</span>
+          <span>여행 이야기</span><span>1:1 문의</span><span>공지사항</span>
         </div>
       </section>
       <section className="login-panel">

@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
+import brandSymbol from '../assets/brand-symbol.png';
 import { useAuth } from '../auth/useAuth';
 import { usePendingInquiryCount } from '../lib/usePendingInquiryCount';
 
@@ -11,7 +12,7 @@ export function AppLayout() {
     <div className="admin-shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">오</span>
+          <img className="brand-logo" src={brandSymbol} alt="" aria-hidden="true" />
           <div>
             <strong>오멍가멍</strong>
             <span>운영 센터</span>
