@@ -36,6 +36,15 @@ from app.db.session import SessionLocal
 
 ARION_CONDITIONS = "원칙적으로 불가, 부득이한 경우 케이지 동반 허용"
 
+#: 목포는 무게가 **탑승 가능 여부**가 아니라 **객실 등급**을 가른다. 그래서
+#: `cabin_weight_unlimited = True`(어떤 무게도 탈 수 있음)가 맞는데, 그것만 넣으면
+#: 결론이 "무게 제한 없음"으로 끝나 20kg 보호자가 펫코노미(4kg)를 예약한다.
+#: 등급 조건을 `cabin_conditions` 로 함께 실어 결론 옆에 붙게 한다.
+MOKPO_CONDITIONS = (
+    "객실 등급별 무게 — 펫코노미 4kg 미만, "
+    "펫스탠다드룸·퀸메리 의자석 10kg 미만, 펫스위트룸 제한 없음"
+)
+
 
 def _rows_to_change(db):
     """(설명, 매칭 조건) → 실제로 바뀔 행 목록을 만든다."""
@@ -63,6 +72,30 @@ def _rows_to_change(db):
     ).all()
     for r in seaworld:
         plans.append((r, "cabin_weight_unlimited", True))
+
+    # 씨월드 진도(산타모니카): notes 원문 "무게 제한 없음" — 목포와 달리 등급이 없다
+    jindo = db.scalars(
+        select(TransportPetRule).where(
+            TransportPetRule.carrier_name == "씨월드고속훼리",
+            TransportPetRule.route == "진도↔제주",
+            TransportPetRule.notes.like("%무게 제한 없음%"),
+            TransportPetRule.cabin_max_weight_kg.is_(None),
+            TransportPetRule.cabin_weight_unlimited.is_(None),
+        )
+    ).all()
+    for r in jindo:
+        plans.append((r, "cabin_weight_unlimited", True))
+
+    # 씨월드 목포: 등급 조건을 결론 옆에 실어 "무게 제한 없음" 오해를 막는다
+    mokpo = db.scalars(
+        select(TransportPetRule).where(
+            TransportPetRule.carrier_name == "씨월드고속훼리",
+            TransportPetRule.notes.like("%객실 등급이 무게로%"),
+            TransportPetRule.cabin_conditions.is_(None),
+        )
+    ).all()
+    for r in mokpo:
+        plans.append((r, "cabin_conditions", MOKPO_CONDITIONS))
 
     # 아리온: 조건부 사실
     arion = db.scalars(

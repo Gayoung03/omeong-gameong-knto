@@ -32,6 +32,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       EDITORIAL_OPENAI_MODEL: ${EDITORIAL_OPENAI_MODEL:-}
+      INQUIRY_OPENAI_MODEL: ${INQUIRY_OPENAI_MODEL:-}
       VISITJEJU_API_KEY: ${VISITJEJU_API_KEY:-}
       TMAP_API: ${TMAP_API:-}
       KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
@@ -42,6 +43,8 @@ services:
       OAUTH_RETURN_URL_PREFIXES: ${OAUTH_RETURN_URL_PREFIXES:-}
       WEATHER_API_KEY: ${WEATHER_API_KEY:-}
       TOUR_API_KEY: ${TOUR_API_KEY:-}
+      # 로컬 시드 계정 비밀번호. `SEED_DEV_PASSWORD=... make db-seed-local` 로 넘긴다.
+      SEED_DEV_PASSWORD: ${SEED_DEV_PASSWORD:-}
     ports:
       - "8000:8000"
     volumes:
