@@ -548,7 +548,7 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
               "address": "제주특별자치도 ...",
               "primaryImageUrl": "https://...",
               "recommendationScore": 87.5,
-              "recommendationReason": "목줄 착용 시 야외 동반 가능 · 숙소에서 12분",
+              "recommendationReason": "목줄 착용 시 야외 동반 가능 · 비짓제주 정보 기준",
               "phone": null,
               "requiresVerification": false
             }
@@ -639,7 +639,7 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
   | `muzzle_required` | 입마개 착용 |
   | `carrier_required` | 케이지 이용 |
 
-  예: 목줄만 → `목줄 착용 시` / 목줄+입마개 → `목줄·입마개 착용 시` / 목줄+케이지 → `목줄 착용, 케이지 이용 시`
+  예: 목줄만 → `목줄 착용 시` / 목줄+입마개 → `목줄·입마개 착용 시` / 목줄+케이지 → `목줄 착용, 케이지 이용 시` / 목줄+입마개+케이지 → `목줄·입마개 착용, 케이지 이용 시`
 
 - **동반 문장** — `place_pet_policies.policy_type`(= `PetPolicyType`) 값별.
 
