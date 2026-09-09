@@ -229,6 +229,19 @@ class RoutePetResponse(APISchema):
     size: PetSize | None
 
 
+class NearbyAnimalHospital(APISchema):
+    """동선·숙소 근처 동물병원 안전망 항목(계산값, 저장 안 함). `id` 는 `places.id`."""
+
+    id: uuid.UUID
+    name: str
+    address: str | None
+    phone: str | None
+    latitude: float
+    longitude: float
+    distance_meters: int
+    is_24_hours: bool
+
+
 class RouteDetail(RouteListItem):
     """목록 필드 + 상세 전용 필드."""
 
@@ -239,6 +252,7 @@ class RouteDetail(RouteListItem):
     pets: list[RoutePetResponse]
     distance_summary: RouteDistanceSummary = Field(default_factory=RouteDistanceSummary)
     slot_summary: RouteSlotSummary = Field(default_factory=RouteSlotSummary)
+    nearby_animal_hospitals: list[NearbyAnimalHospital] = Field(default_factory=list)
     tour_api_places: list[TourAPIPlaceResponse] = Field(default_factory=list)
     route_days: list[RouteDayResponse]
 
@@ -342,6 +356,7 @@ class SharedRouteDetail(RouteListItem):
     pets: list[RoutePetResponse]
     distance_summary: RouteDistanceSummary = Field(default_factory=RouteDistanceSummary)
     slot_summary: RouteSlotSummary = Field(default_factory=RouteSlotSummary)
+    nearby_animal_hospitals: list[NearbyAnimalHospital] = Field(default_factory=list)
     tour_api_places: list[TourAPIPlaceResponse] = Field(default_factory=list)
     route_days: list[RouteDayResponse]
 

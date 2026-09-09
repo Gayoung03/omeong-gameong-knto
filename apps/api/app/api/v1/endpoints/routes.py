@@ -40,6 +40,7 @@ from app.recommend.tmap import get_cached_route
 from app.recommend.travel_estimate import SUPPORTED_TRANSPORTS, estimate_leg
 from app.recommend.weights import resolve_weights
 from app.schemas.route import (
+    NearbyAnimalHospital,
     RouteCreate,
     RouteDayWeather,
     RouteDetail,
@@ -62,6 +63,7 @@ from app.schemas.route import (
     SharedRouteDetail,
     TourAPIPlaceResponse,
 )
+from app.services.animal_hospital import nearby_animal_hospitals
 from app.services.place_query import place_stats
 from app.services.route_access import (
     load_owned_route,
@@ -614,6 +616,26 @@ def _fill_computed(
     )
     detail.slot_summary = _slot_summary(db, route.id)
     _fill_day_weather(db, route, detail)
+
+    anchor_coords = [
+        coord
+        for day in route.route_days
+        for item in day.items
+        if (coord := _item_coord(item)) is not None
+    ]
+    detail.nearby_animal_hospitals = [
+        NearbyAnimalHospital(
+            id=hospital.id,
+            name=hospital.name,
+            address=hospital.address,
+            phone=hospital.phone,
+            latitude=hospital.latitude,
+            longitude=hospital.longitude,
+            distance_meters=hospital.distance_meters,
+            is_24_hours=hospital.is_24h,
+        )
+        for hospital in nearby_animal_hospitals(db, anchor_coords)
+    ]
 
     # 슬롯별 대안 후보(route_item_candidates). 같은 날짜 편집 시 삭제되어 빈 배열이 된다.
     candidate_rows = (

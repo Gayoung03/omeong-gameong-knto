@@ -916,6 +916,57 @@ def test_정책이_없는_장소는_상세에서도_unknown(
     assert added["place"]["petPolicy"] is None
 
 
+def test_동선_근처_동물병원_안전망이_24시_우선_거리순으로_붙는다(
+    client: TestClient, db: Session, trip: Route, place: Place
+) -> None:
+    """앵커(항목 좌표) 근처 동물병원을 24시 우선 → 거리순으로 최대 3곳 첨부한다 (Phase 6)."""
+    base_lng = 126.2396  # place 픽스처 좌표(위도 33.3939)
+    near_regular = Place(
+        id=uuid.uuid4(),
+        name="가까운 동물병원",
+        category="attraction",
+        category_detail="동물병원",
+        latitude=Decimal("33.3960"),  # ~0.2km
+        longitude=Decimal(str(base_lng)),
+        is_active=True,
+    )
+    farther_24h = Place(
+        id=uuid.uuid4(),
+        name="24시동물병원",
+        category="attraction",
+        category_detail="동물병원",
+        latitude=Decimal("33.4020"),  # ~0.9km
+        longitude=Decimal(str(base_lng)),
+        is_active=True,
+    )
+    out_of_range = Place(
+        id=uuid.uuid4(),
+        name="먼 동물병원",
+        category="attraction",
+        category_detail="동물병원",
+        latitude=Decimal("33.5000"),  # ~11km > 5km
+        longitude=Decimal(str(base_lng)),
+        is_active=True,
+    )
+    db.add_all([near_regular, farther_24h, out_of_range])
+    db.flush()
+
+    day_id = trip.route_days[0].id
+    client.post(
+        f"/api/v1/route-days/{day_id}/items",
+        json={"itemType": "attraction", "sortOrder": 0, "placeId": str(place.id)},
+    )
+
+    hospitals = client.get(f"/api/v1/routes/{trip.id}").json()["nearbyAnimalHospitals"]
+
+    names = [h["name"] for h in hospitals]
+    assert names == ["24시동물병원", "가까운 동물병원"]  # 24시 우선, 그 뒤 거리순
+    assert "먼 동물병원" not in names  # 5km 밖 제외
+    assert hospitals[0]["is24Hours"] is True
+    assert hospitals[1]["is24Hours"] is False
+    assert hospitals[0]["distanceMeters"] > 0
+
+
 def test_여행기록_개수가_목록과_상세에_모두_나온다(
     client: TestClient, db: Session, trip: Route, owner: User
 ) -> None:
