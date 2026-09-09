@@ -214,14 +214,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     if not any(day.items for day in itinerary.days):
         raise RecommendationGenerationError("일정에 배치할 수 있는 장소가 없습니다")
 
-    _save_itinerary(db, route, itinerary, day_forecasts, start_coord)
     selected = [item.candidate for day in itinerary.days for item in day.items]
-    route.total_score = Decimal(
-        str(round(sum(item.total_score for item in selected) / len(selected) * 100, 2))
-    )
-    route.pet_safety_score = Decimal(
-        str(round(sum(item.sub_scores["pet"] for item in selected) / len(selected) * 100, 2))
-    )
     tour_api_explanation = (
         f"한국관광공사 TourAPI 실시간 관광정보 {len(tour_places)}건을 조회해 "
         f"DB 장소 {len(tour_matched_ids)}건과 대조했습니다."
@@ -233,12 +226,23 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
         + tour_api_explanation
     )
     # 여행 전체 설명은 규칙 결과 요약으로 LLM 1회 생성하고, 실패·미설정 시 템플릿을 쓴다.
-    route.explanation = (
+    # 최대 10초 블로킹이라 일정 저장(쓰기·행 잠금) '전에' 부른다 — 커넥션·트랜잭션을
+    # 오래 점유해 풀이 고갈되는 것을 막는다(request_text 추출과 같은 시점 정책).
+    explanation = (
         generate_trip_explanation(
             _explanation_summary(request, itinerary, selected, pet_profiles, weights)
         )
         or template_explanation
     )
+
+    _save_itinerary(db, route, itinerary, day_forecasts, start_coord)
+    route.total_score = Decimal(
+        str(round(sum(item.total_score for item in selected) / len(selected) * 100, 2))
+    )
+    route.pet_safety_score = Decimal(
+        str(round(sum(item.sub_scores["pet"] for item in selected) / len(selected) * 100, 2))
+    )
+    route.explanation = explanation
     route.status = RouteStatus.GENERATED
     db.commit()
 

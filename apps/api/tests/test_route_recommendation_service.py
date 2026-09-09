@@ -860,3 +860,34 @@ def test_tour_api_note_added_for_other_sources() -> None:
     result = rr._with_tour_api_note(candidate)
 
     assert result.reason.endswith("· 한국관광공사 TourAPI 실시간 정보 확인")
+
+
+def test_llm_explanation_runs_before_itinerary_save(
+    db: Session, owner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """H1: 설명 LLM 호출이 일정 저장(쓰기·행 잠금)보다 먼저 일어나 트랜잭션 점유를 줄인다."""
+    monkeypatch.setattr(rr, "_tour_api_places", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        rr, "get_route", lambda *_a, **_k: RouteLeg(distance_m=1000, duration_min=10, polyline=None)
+    )
+    monkeypatch.setattr(rr, "get_daily_forecasts", lambda *_a, **_k: {})
+
+    order: list[str] = []
+
+    def fake_explanation(*_a: object, **_k: object) -> str:
+        order.append("llm")
+        return "설명"
+
+    real_save = rr._save_itinerary
+
+    def recording_save(*args: object, **kwargs: object) -> object:
+        order.append("save")
+        return real_save(*args, **kwargs)
+
+    monkeypatch.setattr(rr, "generate_trip_explanation", fake_explanation)
+    monkeypatch.setattr(rr, "_save_itinerary", recording_save)
+
+    route = _seed_generatable_route(db, owner)
+    generate_route(db, route.id)
+
+    assert order == ["llm", "save"]
