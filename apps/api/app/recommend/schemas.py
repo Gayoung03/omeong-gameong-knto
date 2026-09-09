@@ -5,12 +5,13 @@
 """
 
 import uuid
-from datetime import time
+from datetime import datetime, time
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.db.models.enums import (
+    DataProvider,
     PetActivityLevel,
     PetEnergyLevel,
     PetPolicyType,
@@ -73,6 +74,11 @@ class PetPolicy(RecommendationSchema):
     vaccination_required: bool | None = None
     muzzle_required: bool | None = None
     reliability_score: float | None = Field(default=None, ge=0, le=100)
+    # 근거 출처 문장(recommendationReason)에만 쓰는 스냅샷. 하드 필터·점수에는 안 쓴다.
+    source: DataProvider | None = None
+    source_url: str | None = None
+    verified_at: datetime | None = None
+    caution_note: str | None = None
 
 
 class PetProfile(RecommendationSchema):

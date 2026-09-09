@@ -163,6 +163,10 @@ def _policies_by_place(db: Session, place_ids: Sequence[uuid.UUID]) -> dict[uuid
                 reliability_score=(
                     float(row.reliability_score) if row.reliability_score is not None else None
                 ),
+                source=row.source,
+                source_url=row.source_url,
+                verified_at=row.verified_at,
+                caution_note=row.caution_note,
             ),
         )
     return result
