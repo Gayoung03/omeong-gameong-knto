@@ -76,12 +76,14 @@ def generate_trip_explanation(summary: TripExplanationInput) -> str | None:
                 {"role": "user", "content": _user_prompt(summary)},
             ],
         )
+        # 응답 파싱도 try 안에서 한다 — 빈 choices 로 인한 IndexError 가 새어 나가면
+        # "실패는 항상 None" 계약이 깨진다.
+        content = completion.choices[0].message.content
     except APITimeoutError:
         logger.warning("여행 설명 생성 시간 초과")
         return None
-    except Exception:
-        logger.warning("여행 설명 생성 실패")
+    except Exception as error:
+        logger.warning("여행 설명 생성 실패: %s", type(error).__name__)
         return None
 
-    content = completion.choices[0].message.content
     return content.strip() if content and content.strip() else None
