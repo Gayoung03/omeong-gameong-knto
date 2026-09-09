@@ -542,6 +542,13 @@ MVP에서는 첨부 이미지의 개별 메타데이터가 필요하지 않아 �
 | `is_pinned` | 상단 고정 여부 |
 | `is_active` | 노출 여부 |
 | `published_at` | 게시 시각 |
+| `announced_at` | 전 사용자 알림을 발송한 시각. `NULL`이면 아직 발송 전(초안). 한 번 채워지면 관리자가 재발행해도 다시 보내지 않습니다. |
+
+### `admin_inquiry_audit_logs` · `admin_notice_audit_logs`
+
+관리자 콘솔에서 문의에 답변하거나 공지를 만들고 발행한 이력입니다. `admin_editorial_audit_logs`와
+같은 구조(`<대상>_id`, `actor_user_id`, `action`, `previous_status`, `next_status`, `changes` JSONB,
+`created_at`)이며 각각 대상 테이블에 `ON DELETE CASCADE`로 매답니다. 상세 화면에서 최근 30건을 보여줍니다.
 
 ### `notifications`
 

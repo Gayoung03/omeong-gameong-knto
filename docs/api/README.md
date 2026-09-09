@@ -642,7 +642,8 @@ NOT NULL이라 업로드 없이는 여행기록 기능 자체가 성립하지 �
 | [`travel-logs.md`](./travel-logs.md) | `travel_logs`, `travel_log_pets` | `trips.py` |
 | [`chatbot.md`](./chatbot.md) | `chat_conversations`, `chat_messages` | `chatbot.py` |
 | [`weather.md`](./weather.md) | `weather_snapshots` | `weather.py` |
-| [`notifications.md`](./notifications.md) | `notices`, `notifications`, `inquiries` | 없음 |
+| [`notifications.md`](./notifications.md) | `notices`, `notifications`, `inquiries` | `notices.py`, `inquiries.py` (알림 목록은 미구현) |
+| [`admin-support.md`](./admin-support.md) | `inquiries`, `notices`, `admin_inquiry_audit_logs`, `admin_notice_audit_logs` | `admin_support.py` |
 | [`guides.md`](./guides.md) | 없음 — **보류 (화면 기획 대기)** | `guides.py` |
 | [`uploads.md`](./uploads.md) | 없음 (파일은 S3, DB에는 URL만) | 없음 |
 
@@ -655,7 +656,7 @@ NOT NULL이라 업로드 없이는 여행기록 기능 자체가 성립하지 �
 
 - `trips.py` — 파일명은 trips이지만 대응 테이블은 `travel_logs`입니다. 파일명을 바꿀지 정해야 합니다.
 - `guides.py` — 대응하는 테이블이 없습니다. 화면 기획 후 테이블부터 설계해야 합니다.
-- `notices` / `notifications` / `inquiries` — 테이블은 있는데 엔드포인트 스텁 파일이 없습니다.
+- `notifications` — 종 버튼 알림 목록·읽음 엔드포인트가 아직 없습니다 (`notices`·`inquiries`는 2026-09-08 구현).
 - `uploads.py` — 스텁 파일이 없습니다. 구현 시 새로 만들어야 합니다.
 
 ---

@@ -6,7 +6,7 @@
 import argparse
 
 from app.db.session import SessionLocal
-from app.services.notices import publish_notice
+from app.services.notices import create_and_publish_notice
 
 
 def main() -> None:
@@ -17,7 +17,9 @@ def main() -> None:
     args = parser.parse_args()
 
     with SessionLocal() as db:
-        notice = publish_notice(db, title=args.title, content=args.content, is_pinned=args.pinned)
+        notice = create_and_publish_notice(
+            db, title=args.title, content=args.content, is_pinned=args.pinned
+        )
         notice_id = notice.id
     print(f"공지 등록 완료: {notice_id}")
 

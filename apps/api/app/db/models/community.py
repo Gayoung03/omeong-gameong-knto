@@ -20,7 +20,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -207,6 +207,10 @@ class Inquiry(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
+    # 파이썬이 외래키를 따라가는 통로만 연다(Review.author 와 같은 방식). DB 제약은
+    # 이미 있어 마이그레이션이 필요 없다. 작성자는 탈퇴(soft delete)해도 행이 남는다.
+    asker: Mapped["User"] = relationship("User")
+
 
 class Notice(Base):
     __tablename__ = "notices"
@@ -220,11 +224,66 @@ class Notice(Base):
     is_pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    #: 전 사용자 알림을 발송한 시각. NULL 이면 아직 발송 전(초안). 한 번 채워지면
+    #: 다시 발송하지 않는다 — 관리자 `/publish` 가 이 값으로 재발송을 막는다.
+    announced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AdminInquiryAuditLog(Base):
+    """관리자의 1:1 문의 답변 이력. AdminEditorialAuditLog 와 같은 모양이다."""
+
+    __tablename__ = "admin_inquiry_audit_logs"
+    __table_args__ = (
+        Index("ix_admin_inquiry_audit_inquiry_created", "inquiry_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    inquiry_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("inquiries.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    actor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(String(30), nullable=False)
+    previous_status: Mapped[str | None] = mapped_column(String(20))
+    next_status: Mapped[str | None] = mapped_column(String(20))
+    changes: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AdminNoticeAuditLog(Base):
+    """관리자의 공지 작성·수정·발행 이력."""
+
+    __tablename__ = "admin_notice_audit_logs"
+    __table_args__ = (
+        Index("ix_admin_notice_audit_notice_created", "notice_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    notice_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("notices.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    actor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(String(30), nullable=False)
+    previous_status: Mapped[str | None] = mapped_column(String(20))
+    next_status: Mapped[str | None] = mapped_column(String(20))
+    changes: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 

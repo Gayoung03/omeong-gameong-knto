@@ -8,6 +8,9 @@ from app.db.base import Base
 from app.db.models.enums import RouteCreationType
 
 EXPECTED_TABLES = {
+    "admin_editorial_audit_logs",
+    "admin_inquiry_audit_logs",
+    "admin_notice_audit_logs",
     "chat_conversations",
     "chat_messages",
     "editorial_stories",
@@ -51,6 +54,30 @@ EXPECTED_TABLES = {
     "users",
     "weather_snapshots",
 }
+
+
+def test_admin_editorial_schema() -> None:
+    users = Base.metadata.tables["users"]
+    audit_logs = Base.metadata.tables["admin_editorial_audit_logs"]
+
+    assert users.c.is_admin.nullable is False
+    assert isinstance(audit_logs.c.changes.type, JSONB)
+    assert audit_logs.c.actor_user_id.nullable is False
+    assert audit_logs.c.story_id.nullable is False
+
+
+def test_support_console_schema() -> None:
+    notices = Base.metadata.tables["notices"]
+    assert notices.c.announced_at.nullable is True
+
+    for name, fk_column in (
+        ("admin_inquiry_audit_logs", "inquiry_id"),
+        ("admin_notice_audit_logs", "notice_id"),
+    ):
+        table = Base.metadata.tables[name]
+        assert isinstance(table.c.changes.type, JSONB)
+        assert table.c.actor_user_id.nullable is False
+        assert table.c[fk_column].nullable is False
 
 
 def test_all_documented_tables_are_registered() -> None:
