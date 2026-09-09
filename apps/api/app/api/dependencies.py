@@ -118,3 +118,20 @@ def get_optional_user(
 
 #: 엔드포인트에서 `current_user: OptionalUser` 한 줄로 쓴다. None 일 수 있다.
 OptionalUser = Annotated[User | None, Depends(get_optional_user)]
+
+
+def get_current_admin(current_user: CurrentUser) -> User:
+    """관리자 권한을 현재 DB 값으로 확인한다.
+
+    access token이 유효해도 관리자가 아니면 403이다. 권한을 token claim에
+    넣지 않아 관리자 권한 회수가 즉시 반영된다.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="관리자 권한이 필요합니다",
+        )
+    return current_user
+
+
+CurrentAdmin = Annotated[User, Depends(get_current_admin)]
