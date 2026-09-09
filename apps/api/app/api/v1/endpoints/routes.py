@@ -94,6 +94,9 @@ KST = timezone(timedelta(hours=9))
 #: 실수로 몇 년짜리를 보내면 행이 그만큼 생긴다. 제주 여행에 30일이면 충분하다.
 MAX_TRIP_DAYS = 30
 
+#: PostgreSQL unique_violation SQLSTATE. regenerate 의 version 경쟁 재시도 판정에 쓴다.
+_UNIQUE_VIOLATION_SQLSTATE = "23505"
+
 ALLOWED_STATUS_TRANSITIONS: dict[RouteStatus, set[RouteStatus]] = {
     RouteStatus.GENERATED: {RouteStatus.SAVED},
     RouteStatus.SAVED: {RouteStatus.ONGOING},
@@ -295,8 +298,11 @@ def _insert_next_version(db: Session, original: Route) -> Route:
                 db.add(route)
                 db.flush()
             return route
-        except IntegrityError:
-            continue
+        except IntegrityError as error:
+            # version 경쟁(UNIQUE 23505)만 재시도한다. 다른 무결성 오류는 그대로 올려
+            # 전역 핸들러가 처리하게 둔다(잘못된 409 로 가리지 않는다).
+            if getattr(error.orig, "sqlstate", None) != _UNIQUE_VIOLATION_SQLSTATE:
+                raise
     raise HTTPException(
         status_code=409, detail="재생성이 동시에 요청되었어요. 잠시 후 다시 시도해 주세요"
     )

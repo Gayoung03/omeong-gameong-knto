@@ -193,6 +193,20 @@ def test_regenerate_unique_conflict_gives_up_with_409(
     assert response.status_code == 409
 
 
+def test_regenerate_non_unique_integrity_error_is_not_409(
+    client: TestClient, db: Session, owner: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """version 경쟁(23505)이 아닌 무결성 오류는 재시도·409 없이 전역 핸들러(500)로 간다."""
+    route, _ = _recommended_route(db, owner)
+    # version 0 은 CHECK(version_positive, sqlstate 23514) 위반 → 23505 아님.
+    monkeypatch.setattr(routes, "_next_version", lambda _s, _rid: 0)
+
+    response = client.post(f"/api/v1/routes/{route.id}/regenerate")
+
+    assert response.status_code == 500
+    assert response.status_code != 409
+
+
 class _StopBuild(Exception):
     """indoor_bias 캡처 후 generate_route 를 조기에 멈추는 신호."""
 
