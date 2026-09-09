@@ -11,7 +11,7 @@
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from openai import APITimeoutError, OpenAI
 
@@ -29,7 +29,7 @@ class TripExplanationInput:
     unfilled_count: int
     pace_label: str
     transport_label: str
-    pet_notes: tuple[str, ...] = field(default_factory=tuple)
+    pet_notes: tuple[str, ...] = ()
     weather_note: str | None = None
 
 

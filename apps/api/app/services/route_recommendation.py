@@ -51,6 +51,7 @@ from app.integrations.weather.kma import (
 )
 from app.recommend.common.geo import haversine_m
 from app.recommend.config.pace import PACE, effective_rule
+from app.recommend.config.pet_policy_reason import NEEDS_CHECK_REASON
 from app.recommend.config.tags import normalize_preferred_tags
 from app.recommend.filters import filter_candidates
 from app.recommend.itinerary import (
@@ -1094,7 +1095,7 @@ def _save_unfilled_candidates(
                 place_id=candidate.place_id,
                 rank=rank,
                 recommendation_score=None,
-                recommendation_reason="동반 여부 확인 필요",
+                recommendation_reason=NEEDS_CHECK_REASON,
                 requires_verification=True,
             )
         )
