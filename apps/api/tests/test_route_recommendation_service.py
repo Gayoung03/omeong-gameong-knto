@@ -41,7 +41,7 @@ from app.db.models.enums import (
 )
 from app.integrations.maps.kakao import GeocodedAddress
 from app.integrations.weather.kma import DayForecast
-from app.recommend.schemas import CandidateTier
+from app.recommend.schemas import CandidateTier, PetPolicy, ScoredCandidate, Weights
 from app.recommend.tmap import RouteLeg, TMapError
 from app.recommend.weights import resolve_weights
 from app.schemas.pet import calculate_age
@@ -827,3 +827,36 @@ def test_generate_route_falls_back_to_template_when_llm_unavailable(
     db.refresh(route)
     assert route.explanation is not None
     assert route.explanation.startswith("사용자가 선택한 취향과 우선순위")
+
+
+def _scored_with_source(source: DataProvider) -> ScoredCandidate:
+    return ScoredCandidate(
+        place_id=uuid.uuid4(),
+        lat=33.5,
+        lng=126.5,
+        item_type=ScheduleItemType.ATTRACTION,
+        environment=None,
+        average_stay_minutes=60,
+        pet_policy=PetPolicy(policy_type=PetPolicyType.OUTDOOR_ONLY, source=source),
+        total_score=0.5,
+        sub_scores={key: 0.5 for key in Weights.model_fields},
+        reason="목줄 착용 시 야외 동반 가능 · 한국관광공사 반려동물 동반 정보 기준",
+    )
+
+
+def test_tour_api_note_skipped_when_source_already_tour_api() -> None:
+    """출처가 관광공사면 실시간 확인 접미를 겹쳐 붙이지 않는다(decision 6)."""
+    candidate = _scored_with_source(DataProvider.TOUR_API)
+
+    result = rr._with_tour_api_note(candidate)
+
+    assert result.reason.count("한국관광공사") == 1
+    assert "실시간 정보 확인" not in result.reason
+
+
+def test_tour_api_note_added_for_other_sources() -> None:
+    candidate = _scored_with_source(DataProvider.INTERNAL)
+
+    result = rr._with_tour_api_note(candidate)
+
+    assert result.reason.endswith("· 한국관광공사 TourAPI 실시간 정보 확인")

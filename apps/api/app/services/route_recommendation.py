@@ -25,6 +25,7 @@ from app.db.models import (
     WeatherSnapshot,
 )
 from app.db.models.enums import (
+    DataProvider,
     PetEnergyLevel,
     RouteItemSlotStatus,
     RouteStatus,
@@ -184,10 +185,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     if not scored:
         raise RecommendationGenerationError("추천할 장소를 찾지 못했습니다")
     scored = [
-        item.model_copy(update={"reason": f"{item.reason} · 한국관광공사 TourAPI 실시간 정보 확인"})
-        if item.place_id in tour_matched_ids
-        else item
-        for item in scored
+        _with_tour_api_note(item) if item.place_id in tour_matched_ids else item for item in scored
     ]
 
     day_start_anchors, day_end_anchors = _day_anchors(db, request, stay_coords)
@@ -260,6 +258,19 @@ _TRANSPORT_LABELS = {
     TransportType.FERRY: "배",
     TransportType.AIRPLANE: "비행기",
 }
+
+
+def _with_tour_api_note(candidate: ScoredCandidate) -> ScoredCandidate:
+    """TourAPI 실시간 대조에 성공한 후보에 확인 접미를 한 번만 붙인다(decision 6).
+
+    출처가 이미 한국관광공사(tour_api)면 근거 문장이 관광공사를 언급하므로 겹쳐 붙이지
+    않는다. 다른 출처(또는 확인 필요 후보)에만 실시간 확인 사실을 덧붙인다.
+    """
+    if candidate.pet_policy is not None and candidate.pet_policy.source == DataProvider.TOUR_API:
+        return candidate
+    return candidate.model_copy(
+        update={"reason": f"{candidate.reason} · 한국관광공사 TourAPI 실시간 정보 확인"}
+    )
 
 
 def _explanation_summary(
