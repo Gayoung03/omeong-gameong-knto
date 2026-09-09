@@ -7,6 +7,7 @@ from pydantic import Field
 
 from app.db.models.enums import PetPolicyType, PetSize, PlaceEnvironment, ScheduleItemType
 from app.recommend.common.geo import haversine_m
+from app.recommend.config.pet_policy_reason import reason_for
 from app.recommend.config.tags import STANDARD_TAG_SET
 from app.recommend.config.weights import MAX_DAILY_DISTANCE_M
 from app.recommend.schemas import (
@@ -17,15 +18,6 @@ from app.recommend.schemas import (
     ScoredCandidate,
     Weights,
 )
-
-SCORE_LABELS = {
-    "preference": "이번 여행 선호",
-    "pet": "반려 편의",
-    "proximity": "기준점 근접도",
-    "rating": "평점",
-    "weather": "날씨 적합도",
-    "popularity": "인기",
-}
 
 # 반려 적합도 계수(_fit_factor). 값 자체가 아니라 근거를 이름으로 남긴다.
 #: 최대 허용 체중의 몇 % 를 넘으면 감점하는가(100% 초과는 필터에서 이미 제외).
@@ -176,7 +168,7 @@ def score_candidates(
                 **candidate.model_dump(),
                 total_score=_clamp(total),
                 sub_scores=sub_scores,
-                reason=_reason_from(sub_scores, weights),
+                reason=reason_for(candidate.pet_policy, candidate.tier),
             )
         )
 
@@ -187,15 +179,6 @@ def _popularity_score(saved_count: int, max_saved_count: int) -> float:
     if max_saved_count <= 0:
         return 0.0
     return log1p(saved_count) / log1p(max_saved_count)
-
-
-def _reason_from(sub_scores: dict[str, float], weights: dict[str, float]) -> str:
-    active_scores = ((name, score) for name, score in sub_scores.items() if weights[name] > 0)
-    strongest = sorted(
-        active_scores,
-        key=lambda item: (-(item[1] * weights[item[0]]), item[0]),
-    )[:2]
-    return ", ".join(f"{SCORE_LABELS[name]} {score * 100:.0f}점" for name, score in strongest)
 
 
 def _clamp(value: float) -> float:

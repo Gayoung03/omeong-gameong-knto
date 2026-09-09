@@ -137,8 +137,9 @@ def test_rating_and_popularity_do_not_change_balanced_total_score() -> None:
     assert low_result.sub_scores["rating"] != high_result.sub_scores["rating"]
     assert low_result.sub_scores["popularity"] != high_result.sub_scores["popularity"]
     assert low_result.total_score == pytest.approx(high_result.total_score)
-    assert "평점" not in high_result.reason
-    assert "인기" not in high_result.reason
+    # 근거 문장은 점수 나열이 아니라 동반 조건 문장이다(의미 변경 Phase 6).
+    assert high_result.reason.startswith("실내외 동반 가능")
+    assert "점" not in high_result.reason
 
 
 def test_fit_factor_weight_over_seventy_percent_penalized() -> None:

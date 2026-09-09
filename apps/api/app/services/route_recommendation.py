@@ -25,15 +25,21 @@ from app.db.models import (
     WeatherSnapshot,
 )
 from app.db.models.enums import (
+    DataProvider,
     PetEnergyLevel,
     RouteItemSlotStatus,
     RouteStatus,
     ScheduleItemType,
     TransportType,
+    TripPace,
     WeatherCondition,
 )
 from app.integrations.llm.request_intent import extract_request_intent, merge_preferred_tags
 from app.integrations.llm.route_edit import RouteEditIntent
+from app.integrations.llm.route_explanation import (
+    TripExplanationInput,
+    generate_trip_explanation,
+)
 from app.integrations.maps.kakao import GeocodedAddress, geocode_address
 from app.integrations.tour_api.kto import TourAPIError, TourPlace, get_nearby_places
 from app.integrations.weather.kma import (
@@ -45,6 +51,7 @@ from app.integrations.weather.kma import (
 )
 from app.recommend.common.geo import haversine_m
 from app.recommend.config.pace import PACE, effective_rule
+from app.recommend.config.pet_policy_reason import NEEDS_CHECK_REASON
 from app.recommend.config.tags import normalize_preferred_tags
 from app.recommend.filters import filter_candidates
 from app.recommend.itinerary import (
@@ -179,10 +186,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     if not scored:
         raise RecommendationGenerationError("추천할 장소를 찾지 못했습니다")
     scored = [
-        item.model_copy(update={"reason": f"{item.reason} · 한국관광공사 TourAPI 실시간 정보 확인"})
-        if item.place_id in tour_matched_ids
-        else item
-        for item in scored
+        _with_tour_api_note(item) if item.place_id in tour_matched_ids else item for item in scored
     ]
 
     day_start_anchors, day_end_anchors = _day_anchors(db, request, stay_coords)
@@ -211,26 +215,91 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     if not any(day.items for day in itinerary.days):
         raise RecommendationGenerationError("일정에 배치할 수 있는 장소가 없습니다")
 
-    _save_itinerary(db, route, itinerary, day_forecasts, start_coord)
     selected = [item.candidate for day in itinerary.days for item in day.items]
-    route.total_score = Decimal(
-        str(round(sum(item.total_score for item in selected) / len(selected) * 100, 2))
-    )
-    route.pet_safety_score = Decimal(
-        str(round(sum(item.sub_scores["pet"] for item in selected) / len(selected) * 100, 2))
-    )
     tour_api_explanation = (
         f"한국관광공사 TourAPI 실시간 관광정보 {len(tour_places)}건을 조회해 "
         f"DB 장소 {len(tour_matched_ids)}건과 대조했습니다."
         if tour_api_succeeded
         else "한국관광공사 TourAPI 실시간 조회에 실패해 DB 장소로 추천했습니다."
     )
-    route.explanation = (
+    template_explanation = (
         "사용자가 선택한 취향과 우선순위, 숙소 기준 이동 거리를 반영했습니다. "
         + tour_api_explanation
     )
+    # 여행 전체 설명은 규칙 결과 요약으로 LLM 1회 생성하고, 실패·미설정 시 템플릿을 쓴다.
+    # 최대 10초 블로킹이라 일정 저장(쓰기·행 잠금) '전에' 부른다 — 커넥션·트랜잭션을
+    # 오래 점유해 풀이 고갈되는 것을 막는다(request_text 추출과 같은 시점 정책).
+    explanation = (
+        generate_trip_explanation(
+            _explanation_summary(request, itinerary, selected, pet_profiles, weights)
+        )
+        or template_explanation
+    )
+
+    _save_itinerary(db, route, itinerary, day_forecasts, start_coord)
+    route.total_score = Decimal(
+        str(round(sum(item.total_score for item in selected) / len(selected) * 100, 2))
+    )
+    route.pet_safety_score = Decimal(
+        str(round(sum(item.sub_scores["pet"] for item in selected) / len(selected) * 100, 2))
+    )
+    route.explanation = explanation
     route.status = RouteStatus.GENERATED
     db.commit()
+
+
+#: 여행 설명 프롬프트에 넣을 한글 라벨(설명 전용 — API 계약이 아님).
+_PACE_LABELS = {
+    TripPace.RELAXED: "여유로운",
+    TripPace.NORMAL: "보통",
+    TripPace.PACKED: "빠듯한",
+}
+_TRANSPORT_LABELS = {
+    TransportType.RENTAL_CAR: "렌터카",
+    TransportType.OWN_CAR: "자가용",
+    TransportType.TAXI: "택시",
+    TransportType.PUBLIC_TRANSPORT: "대중교통",
+    TransportType.WALK: "도보",
+    TransportType.FERRY: "배",
+    TransportType.AIRPLANE: "비행기",
+}
+
+
+def _with_tour_api_note(candidate: ScoredCandidate) -> ScoredCandidate:
+    """TourAPI 실시간 대조에 성공한 후보에 확인 접미를 한 번만 붙인다(decision 6).
+
+    출처가 이미 한국관광공사(tour_api)면 근거 문장이 관광공사를 언급하므로 겹쳐 붙이지
+    않는다. 다른 출처(또는 확인 필요 후보)에만 실시간 확인 사실을 덧붙인다.
+    """
+    if candidate.pet_policy is not None and candidate.pet_policy.source == DataProvider.TOUR_API:
+        return candidate
+    return candidate.model_copy(
+        update={"reason": f"{candidate.reason} · 한국관광공사 TourAPI 실시간 정보 확인"}
+    )
+
+
+def _explanation_summary(
+    request: RouteRequest,
+    itinerary: Itinerary,
+    selected: list[ScoredCandidate],
+    pet_profiles: tuple[PetProfile, ...],
+    weights: Weights,
+) -> TripExplanationInput:
+    """규칙 결과에서 설명 프롬프트 입력을 만든다. request_text 원문은 넣지 않는다."""
+    pet_notes: list[str] = []
+    if pet_profiles:
+        pet_notes.append(f"{len(pet_profiles)}마리 동반")
+        if any(pet.car_sickness for pet in pet_profiles):
+            pet_notes.append("차멀미 배려 동선")
+    return TripExplanationInput(
+        day_count=len(itinerary.days),
+        place_count=len(selected),
+        unfilled_count=sum(len(day.unfilled) for day in itinerary.days),
+        pace_label=_PACE_LABELS.get(request.pace, request.pace.value),
+        transport_label=_TRANSPORT_LABELS.get(request.transport, request.transport.value),
+        pet_notes=tuple(pet_notes),
+        weather_note=("비·더위를 고려해 실내 비중을 높였습니다" if weights.weather > 0 else None),
+    )
 
 
 def _tour_api_places(
@@ -1026,7 +1095,7 @@ def _save_unfilled_candidates(
                 place_id=candidate.place_id,
                 rank=rank,
                 recommendation_score=None,
-                recommendation_reason="동반 여부 확인 필요",
+                recommendation_reason=NEEDS_CHECK_REASON,
                 requires_verification=True,
             )
         )

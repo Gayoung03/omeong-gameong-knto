@@ -12,7 +12,6 @@ from app.db.models import (
     Pet,
     Place,
     PlaceBusinessHour,
-    PlacePetPolicy,
     PlaceTag,
     PlaceTagLink,
     RouteRequest,
@@ -20,7 +19,7 @@ from app.db.models import (
 from app.db.models.enums import PetPolicyType, ScheduleItemType
 from app.recommend.config.stay import default_stay_minutes
 from app.recommend.schemas import BusinessHour, Candidate, CandidateTier, PetPolicy
-from app.services.place_query import rating_expr, saved_count_expr
+from app.services.place_query import latest_pet_policies, rating_expr, saved_count_expr
 
 ITEM_TYPE_BY_CATEGORY = {
     "accommodation": ScheduleItemType.ACCOMMODATION,
@@ -142,30 +141,26 @@ def filter_candidates(
 
 
 def _policies_by_place(db: Session, place_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, PetPolicy]:
-    rows = db.scalars(
-        select(PlacePetPolicy)
-        .where(PlacePetPolicy.place_id.in_(place_ids))
-        .order_by(PlacePetPolicy.place_id, PlacePetPolicy.verified_at.desc().nullslast())
-    ).all()
-    result: dict[uuid.UUID, PetPolicy] = {}
-    for row in rows:
-        result.setdefault(
-            row.place_id,
-            PetPolicy(
-                policy_type=row.policy_type,
-                allowed_species=row.allowed_species or [],
-                allowed_sizes=row.allowed_sizes or [],
-                max_weight_kg=(float(row.max_weight_kg) if row.max_weight_kg is not None else None),
-                carrier_required=row.carrier_required,
-                leash_required=row.leash_required,
-                vaccination_required=row.vaccination_required,
-                muzzle_required=row.muzzle_required,
-                reliability_score=(
-                    float(row.reliability_score) if row.reliability_score is not None else None
-                ),
+    return {
+        place_id: PetPolicy(
+            policy_type=row.policy_type,
+            allowed_species=row.allowed_species or [],
+            allowed_sizes=row.allowed_sizes or [],
+            max_weight_kg=(float(row.max_weight_kg) if row.max_weight_kg is not None else None),
+            carrier_required=row.carrier_required,
+            leash_required=row.leash_required,
+            vaccination_required=row.vaccination_required,
+            muzzle_required=row.muzzle_required,
+            reliability_score=(
+                float(row.reliability_score) if row.reliability_score is not None else None
             ),
+            source=row.source,
+            source_url=row.source_url,
+            verified_at=row.verified_at,
+            caution_note=row.caution_note,
         )
-    return result
+        for place_id, row in latest_pet_policies(db, place_ids).items()
+    }
 
 
 def _hours_by_place(

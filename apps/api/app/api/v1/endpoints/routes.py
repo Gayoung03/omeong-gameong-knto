@@ -39,6 +39,7 @@ from app.recommend.tmap import get_cached_route
 from app.recommend.travel_estimate import SUPPORTED_TRANSPORTS, estimate_leg
 from app.recommend.weights import resolve_weights
 from app.schemas.route import (
+    NearbyAnimalHospital,
     RouteCreate,
     RouteDayWeather,
     RouteDetail,
@@ -50,6 +51,7 @@ from app.schemas.route import (
     RouteListItem,
     RouteListResponse,
     RouteMoveResponse,
+    RoutePlacePetPolicy,
     RouteReplacementSuggestion,
     RouteRequestAccepted,
     RouteRequestCreate,
@@ -60,7 +62,8 @@ from app.schemas.route import (
     SharedRouteDetail,
     TourAPIPlaceResponse,
 )
-from app.services.place_query import place_stats
+from app.services.animal_hospital import nearby_animal_hospitals
+from app.services.place_query import latest_pet_policies, place_stats
 from app.services.route_access import (
     load_owned_route,
     log_counts_of,
@@ -561,6 +564,10 @@ def _fill_computed(
         place.review_count = stat.review_count
         place.pet_policy_type = stat.pet_policy_type
 
+    policies = _pet_policies_by_place(db, [place.id for place in places])
+    for place in places:
+        place.pet_policy = policies.get(place.id)
+
     orm_items = {item.id: item for day in route.route_days for item in day.items}
     response_items = {item.id: item for day in detail.route_days for item in day.items}
     item_ids = list(orm_items)
@@ -608,6 +615,26 @@ def _fill_computed(
     )
     detail.slot_summary = _slot_summary(db, route.id)
     _fill_day_weather(db, route, detail)
+
+    anchor_coords = [
+        coord
+        for day in route.route_days
+        for item in day.items
+        if (coord := _item_coord(item)) is not None
+    ]
+    detail.nearby_animal_hospitals = [
+        NearbyAnimalHospital(
+            id=hospital.id,
+            name=hospital.name,
+            address=hospital.address,
+            phone=hospital.phone,
+            latitude=hospital.latitude,
+            longitude=hospital.longitude,
+            distance_meters=hospital.distance_meters,
+            is_24_hours=hospital.is_24h,
+        )
+        for hospital in nearby_animal_hospitals(db, anchor_coords)
+    ]
 
     # 슬롯별 대안 후보(route_item_candidates). 같은 날짜 편집 시 삭제되어 빈 배열이 된다.
     candidate_rows = (
@@ -707,6 +734,28 @@ def _fill_day_weather(
             ),
             precipitation_probability=snapshot.precipitation_probability,
         )
+
+
+def _pet_policies_by_place(
+    db: Session, place_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, RoutePlacePetPolicy]:
+    """장소별 동반 조건·근거 출처(응답 부분집합). 최신 행 선택은 latest_pet_policies 공용."""
+    return {
+        place_id: RoutePlacePetPolicy(
+            leash_required=row.leash_required,
+            carrier_required=row.carrier_required,
+            muzzle_required=row.muzzle_required,
+            food_area_allowed=row.food_area_allowed,
+            source=row.source,
+            source_url=row.source_url,
+            verified_at=row.verified_at,
+            reliability_score=(
+                float(row.reliability_score) if row.reliability_score is not None else None
+            ),
+            caution_note=row.caution_note,
+        )
+        for place_id, row in latest_pet_policies(db, place_ids).items()
+    }
 
 
 def _slot_summary(db: Session, route_id: uuid.UUID) -> RouteSlotSummary:

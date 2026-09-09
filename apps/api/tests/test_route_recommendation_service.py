@@ -41,7 +41,7 @@ from app.db.models.enums import (
 )
 from app.integrations.maps.kakao import GeocodedAddress
 from app.integrations.weather.kma import DayForecast
-from app.recommend.schemas import CandidateTier
+from app.recommend.schemas import CandidateTier, PetPolicy, ScoredCandidate, Weights
 from app.recommend.tmap import RouteLeg, TMapError
 from app.recommend.weights import resolve_weights
 from app.schemas.pet import calculate_age
@@ -728,3 +728,166 @@ def test_upsert_weather_snapshot_is_idempotent_on_region_and_date(db: Session) -
     assert len(rows) == 1
     assert rows[0].precipitation_probability == 80  # 갱신됨
     assert rows[0].condition == WeatherCondition.RAINY
+
+
+def _seed_generatable_route(db: Session, owner) -> Route:
+    """확실 동반 관광지 2곳으로 채워지는 최소 여행. 여행 설명 경로 검증용."""
+    start = datetime(2026, 9, 20, 9, tzinfo=KST)
+    request = RouteRequest(
+        id=uuid.uuid4(),
+        user_id=owner.id,
+        start_at=start,
+        end_at=start + timedelta(hours=8),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        companion_count=1,
+        departure_latitude=Decimal("33.4900000"),
+        departure_longitude=Decimal("126.5300000"),
+    )
+    db.add(request)
+    db.flush()
+    route = Route(
+        id=uuid.uuid4(),
+        route_request_id=request.id,
+        user_id=owner.id,
+        title="여행 설명 검증",
+        status=RouteStatus.GENERATING,
+        creation_type=RouteCreationType.RECOMMENDED,
+        version=1,
+        start_at=request.start_at,
+        end_at=request.end_at,
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+    )
+    db.add(route)
+    db.flush()
+    for index in range(2):
+        attraction = Place(
+            id=uuid.uuid4(),
+            name=f"확실 관광지 {index}",
+            category="attraction",
+            latitude=Decimal("33.4996000") + Decimal(index) / Decimal("10000"),
+            longitude=Decimal("126.5312000"),
+            average_stay_minutes=60,
+            is_active=True,
+        )
+        db.add(attraction)
+        db.flush()
+        db.add(
+            PlacePetPolicy(
+                place_id=attraction.id,
+                policy_type=PetPolicyType.INDOOR_ALLOWED,
+                source=DataProvider.INTERNAL,
+            )
+        )
+    db.flush()
+    return route
+
+
+def test_generate_route_uses_llm_explanation_once(
+    db: Session, owner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """여행 설명은 LLM 1회 결과를 쓴다(장소별 호출 없음)."""
+    monkeypatch.setattr(rr, "_tour_api_places", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        rr, "get_route", lambda *_a, **_k: RouteLeg(distance_m=1000, duration_min=10, polyline=None)
+    )
+    monkeypatch.setattr(rr, "get_daily_forecasts", lambda *_a, **_k: {})
+
+    calls: list[object] = []
+
+    def fake_explanation(summary: object) -> str:
+        calls.append(summary)
+        return "몽이랑 여유롭게 즐기는 제주 여행입니다."
+
+    monkeypatch.setattr(rr, "generate_trip_explanation", fake_explanation)
+
+    route = _seed_generatable_route(db, owner)
+    generate_route(db, route.id)
+
+    db.refresh(route)
+    assert route.explanation == "몽이랑 여유롭게 즐기는 제주 여행입니다."
+    assert len(calls) == 1  # 여행당 1회, 장소별 호출 없음
+
+
+def test_generate_route_falls_back_to_template_when_llm_unavailable(
+    db: Session, owner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """LLM 실패·미설정(None)이면 템플릿 설명으로 폴백한다."""
+    monkeypatch.setattr(rr, "_tour_api_places", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        rr, "get_route", lambda *_a, **_k: RouteLeg(distance_m=1000, duration_min=10, polyline=None)
+    )
+    monkeypatch.setattr(rr, "get_daily_forecasts", lambda *_a, **_k: {})
+    monkeypatch.setattr(rr, "generate_trip_explanation", lambda *_a, **_k: None)
+
+    route = _seed_generatable_route(db, owner)
+    generate_route(db, route.id)
+
+    db.refresh(route)
+    assert route.explanation is not None
+    assert route.explanation.startswith("사용자가 선택한 취향과 우선순위")
+
+
+def _scored_with_source(source: DataProvider) -> ScoredCandidate:
+    return ScoredCandidate(
+        place_id=uuid.uuid4(),
+        lat=33.5,
+        lng=126.5,
+        item_type=ScheduleItemType.ATTRACTION,
+        environment=None,
+        average_stay_minutes=60,
+        pet_policy=PetPolicy(policy_type=PetPolicyType.OUTDOOR_ONLY, source=source),
+        total_score=0.5,
+        sub_scores={key: 0.5 for key in Weights.model_fields},
+        reason="목줄 착용 시 야외 동반 가능 · 한국관광공사 반려동물 동반 정보 기준",
+    )
+
+
+def test_tour_api_note_skipped_when_source_already_tour_api() -> None:
+    """출처가 관광공사면 실시간 확인 접미를 겹쳐 붙이지 않는다(decision 6)."""
+    candidate = _scored_with_source(DataProvider.TOUR_API)
+
+    result = rr._with_tour_api_note(candidate)
+
+    assert result.reason.count("한국관광공사") == 1
+    assert "실시간 정보 확인" not in result.reason
+
+
+def test_tour_api_note_added_for_other_sources() -> None:
+    candidate = _scored_with_source(DataProvider.INTERNAL)
+
+    result = rr._with_tour_api_note(candidate)
+
+    assert result.reason.endswith("· 한국관광공사 TourAPI 실시간 정보 확인")
+
+
+def test_llm_explanation_runs_before_itinerary_save(
+    db: Session, owner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """H1: 설명 LLM 호출이 일정 저장(쓰기·행 잠금)보다 먼저 일어나 트랜잭션 점유를 줄인다."""
+    monkeypatch.setattr(rr, "_tour_api_places", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        rr, "get_route", lambda *_a, **_k: RouteLeg(distance_m=1000, duration_min=10, polyline=None)
+    )
+    monkeypatch.setattr(rr, "get_daily_forecasts", lambda *_a, **_k: {})
+
+    order: list[str] = []
+
+    def fake_explanation(*_a: object, **_k: object) -> str:
+        order.append("llm")
+        return "설명"
+
+    real_save = rr._save_itinerary
+
+    def recording_save(*args: object, **kwargs: object) -> object:
+        order.append("save")
+        return real_save(*args, **kwargs)
+
+    monkeypatch.setattr(rr, "generate_trip_explanation", fake_explanation)
+    monkeypatch.setattr(rr, "_save_itinerary", recording_save)
+
+    route = _seed_generatable_route(db, owner)
+    generate_route(db, route.id)
+
+    assert order == ["llm", "save"]

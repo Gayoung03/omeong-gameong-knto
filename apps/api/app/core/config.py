@@ -115,6 +115,12 @@ class Settings(BaseSettings):
     request_intent_model: str = "gpt-4o-mini"
     request_intent_timeout_seconds: float = 10.0
 
+    # --- 루트 여행 설명(explanation) -------------------------------------
+    # 규칙 결과 요약 → 여행 전체 한 문단. 생성 중 1회만, 실패·미설정 시 템플릿 폴백.
+    # 폴링 3분 예산 안에서 짧게 자른다(장소별 호출 없음).
+    route_explanation_model: str = "gpt-4o-mini"
+    route_explanation_timeout_seconds: float = 10.0
+
     model_config = SettingsConfigDict(
         env_file=(".env", "../../.env"),
         env_file_encoding="utf-8",
