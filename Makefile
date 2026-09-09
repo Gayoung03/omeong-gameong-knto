@@ -2,7 +2,7 @@ COMPOSE = docker compose --env-file .env -f infra/docker-compose.yml
 LOCAL_COMPOSE = $(COMPOSE) -f infra/docker-compose.local.yml
 REHEARSAL_COMPOSE = docker compose -f infra/docker-compose.rehearsal.yml
 
-.PHONY: setup dev dev-local mobile-install api-install mobile-dev api-dev backend-up \
+.PHONY: setup dev dev-local mobile-install admin-install api-install mobile-dev admin-dev api-dev backend-up \
 	backend-down backend-logs backend-local-up backend-local-down backend-local-logs \
 	db-migrate db-migrate-check db-migrate-local db-seed db-seed-local \
 	db-migration-smoke db-dump-dev db-rehearsal-up db-rehearsal-restore \
@@ -10,7 +10,7 @@ REHEARSAL_COMPOSE = docker compose -f infra/docker-compose.rehearsal.yml
 	chat-check-guardrails \
 	lint typecheck test check
 
-setup: mobile-install api-install
+setup: mobile-install admin-install api-install
 
 dev: backend-up
 	@trap 'cd "$(CURDIR)" && $(COMPOSE) down --remove-orphans' EXIT; \
@@ -33,11 +33,17 @@ dev-local: backend-local-up
 mobile-install:
 	cd apps/mobile && npm ci
 
+admin-install:
+	cd apps/admin && npm ci
+
 api-install:
 	cd apps/api && uv sync --frozen
 
 mobile-dev:
 	cd apps/mobile && npm run dev
+
+admin-dev:
+	cd apps/admin && npm run dev
 
 api-dev:
 	$(COMPOSE) up --build api
@@ -135,10 +141,12 @@ chat-check-places:
 
 lint:
 	cd apps/mobile && npm run lint
+	cd apps/admin && npm run lint
 	cd apps/api && uv run ruff check .
 
 typecheck:
 	cd apps/mobile && npm run typecheck
+	cd apps/admin && npm run typecheck
 
 test:
 	cd apps/api && uv run pytest

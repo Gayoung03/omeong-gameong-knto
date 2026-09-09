@@ -24,7 +24,11 @@ class Settings(BaseSettings):
     #: 짧은 값을 넣으면 기동에서 즉시 실패한다(아래 get_settings 의 안내 메시지 참고).
     secret_key: str = Field(min_length=_SECRET_KEY_MIN_LENGTH)
     database_url: str = "postgresql+psycopg://omeong:omeong@localhost:5432/omeong"
-    cors_origins: list[str] = ["http://localhost:8081", "http://localhost:19006"]
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:8081",
+        "http://localhost:19006",
+    ]
     aws_region: str = "ap-northeast-2"
     s3_bucket_name: str = ""
     s3_public_base_url: str = ""
@@ -57,6 +61,11 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     #: 제주 여행 이야기 초안은 일반 챗봇과 별도로 모델을 바꿀 수 있다.
     editorial_openai_model: str = ""
+    #: 1:1 문의 답변 초안 생성 모델. 비우면 openai_model 을 쓴다.
+    inquiry_openai_model: str = ""
+    #: 관리자 한 명이 하루에 만들 수 있는 문의 답변 AI 초안 수(토큰 절약).
+    #: `environment` 가 local 이면 세지 않는다 — chat_daily_limit 과 같은 방식.
+    inquiry_draft_daily_limit: int = 10
     #: 첫 응답까지 20초, 전체 60초(설계 결정 E2).
     chat_connect_timeout_seconds: float = 20.0
     chat_timeout_seconds: float = 60.0

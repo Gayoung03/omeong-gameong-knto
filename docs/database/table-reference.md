@@ -249,11 +249,20 @@
 
 ### `place_tags`
 
-추천에 사용하는 표준 태그 사전입니다.
+추천에 사용하는 표준 태그 사전입니다. `code`가 계약이고 `name`은 한글 라벨입니다.
 
-```text
-바다, 카페, 산책, 포토스팟, 체험, 휴식, 실내관광
-```
+| `code` | `name` |
+| --- | --- |
+| `sea` | 바다 |
+| `cafe` | 카페 |
+| `walk` | 산책 |
+| `photo_spot` | 포토스팟 |
+| `experience` | 체험 |
+| `rest` | 휴식 |
+| `indoor_tourism` | 실내관광 |
+
+추천 엔진(`app/recommend/config/tags.py`)·`user_travel_preferences.preferred_tags`·`route_requests.preferred_tags`는
+모두 `code`를 씁니다 (2026-09-07 통일, 이전에는 엔진이 `name`을 표준 태그로 써서 취향 점수가 항상 0이었음).
 
 ### `place_tag_links`
 
@@ -565,6 +574,13 @@ MVP에서는 첨부 이미지의 개별 메타데이터가 필요하지 않아 �
 | `is_pinned` | 상단 고정 여부 |
 | `is_active` | 노출 여부 |
 | `published_at` | 게시 시각 |
+| `announced_at` | 전 사용자 알림을 발송한 시각. `NULL`이면 아직 발송 전(초안). 한 번 채워지면 관리자가 재발행해도 다시 보내지 않습니다. |
+
+### `admin_inquiry_audit_logs` · `admin_notice_audit_logs`
+
+관리자 콘솔에서 문의에 답변하거나 공지를 만들고 발행한 이력입니다. `admin_editorial_audit_logs`와
+같은 구조(`<대상>_id`, `actor_user_id`, `action`, `previous_status`, `next_status`, `changes` JSONB,
+`created_at`)이며 각각 대상 테이블에 `ON DELETE CASCADE`로 매답니다. 상세 화면에서 최근 30건을 보여줍니다.
 
 ### `notifications`
 

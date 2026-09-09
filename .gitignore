@@ -26,6 +26,7 @@ dist/
 build/
 .next/
 .vite/
+*.tsbuildinfo
 coverage/
 
 # Local databases and generated data
