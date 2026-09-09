@@ -84,6 +84,12 @@ Enum schedule_item_type {
   custom
 }
 
+Enum route_item_slot_status {
+  filled
+  unfilled
+  needs_verification
+}
+
 Enum weather_condition {
   sunny
   partly_cloudy
@@ -391,6 +397,7 @@ Table route_items {
   recommendation_score decimal(6,2)
   recommendation_reason text
   is_selected boolean [not null, default: true]
+  slot_status route_item_slot_status [not null, default: 'filled', note: 'filled/needs_verification 은 place 있음, unfilled 은 place·시각 NULL']
 
   indexes {
     (route_day_id, sort_order) [unique]
@@ -402,6 +409,22 @@ Table route_moves {
   from_item_id uuid [not null, ref: > route_items.id]
   to_item_id uuid [not null, ref: > route_items.id]
   transport transport_type [not null]
+}
+
+Table route_item_candidates {
+  id uuid [pk]
+  route_item_id uuid [not null, ref: > route_items.id]
+  place_id uuid [not null, ref: > places.id]
+  rank smallint [not null, note: '1~3']
+  recommendation_score decimal(6,2)
+  recommendation_reason text
+  requires_verification boolean [not null, default: false]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (route_item_id, rank) [unique]
+    place_id
+  }
 }
 
 Table weather_snapshots {

@@ -9,12 +9,13 @@ DB 가 필요한 테스트는 TEST_DATABASE_URL 이 없으면 통째로 건너�
 """
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.v1.endpoints import routes
@@ -26,7 +27,10 @@ from app.db.models import (
     Route,
     RouteCalculationCache,
     RouteDay,
+    RouteItem,
+    RouteItemCandidate,
     RouteMove,
+    RouteRequest,
     TravelLog,
     User,
 )
@@ -34,11 +38,16 @@ from app.db.models.enums import (
     DataProvider,
     PetPolicyType,
     PetSpecies,
+    RouteCreationType,
+    RouteItemSlotStatus,
     RouteStatus,
+    ScheduleItemType,
     TransportType,
+    TripPace,
 )
 from app.integrations.llm.route_edit import RouteEditIntent
 from app.integrations.tour_api.kto import TourPlace
+from app.recommend.tmap import RouteLeg
 from app.schemas.route import RouteItemCreate
 
 
@@ -217,6 +226,343 @@ def test_여행_상세_이동정보_캐시없으면_추정값으로_내려준다
         "totalDistanceMeters": expected.distance_m,
         "totalDurationMinutes": expected.duration_min,
     }
+
+
+def test_여행_상세에_빈_슬롯과_후보_슬롯요약을_내려준다(
+    client: TestClient, db: Session, trip: Route
+) -> None:
+    items = sorted(_day_of(trip).items, key=lambda route_item: route_item.sort_order)
+    # 첫 항목은 앵커처럼(stay_minutes=0) 만들어 slotSummary 집계에서 빠지는지 본다.
+    items[0].stay_minutes = 0
+    # 마지막 항목을 빈 저녁 슬롯으로 바꾼다(place·시각 NULL, slot_status unfilled).
+    unfilled = items[-1]
+    unfilled.place_id = None
+    unfilled.custom_place_name = None
+    unfilled.item_type = ScheduleItemType.RESTAURANT
+    unfilled.slot_status = RouteItemSlotStatus.UNFILLED
+    unfilled.recommendation_reason = "확실히 동반 가능한 식당을 찾지 못했어요."
+    candidate_place = Place(
+        id=uuid.uuid4(),
+        name="확인 필요 식당",
+        category="restaurant",
+        latitude=Decimal("33.5000000"),
+        longitude=Decimal("126.5000000"),
+        phone="064-000-0000",
+    )
+    db.add(candidate_place)
+    db.flush()
+    db.add(
+        RouteItemCandidate(
+            id=uuid.uuid4(),
+            route_item_id=unfilled.id,
+            place_id=candidate_place.id,
+            rank=1,
+            recommendation_score=None,
+            recommendation_reason="동반 여부 확인 필요",
+            requires_verification=True,
+        )
+    )
+    db.flush()
+
+    body = client.get(f"/api/v1/routes/{trip.id}").json()
+    response_items = body["routeDays"][0]["items"]
+
+    assert response_items[0]["slotStatus"] == "filled"
+    last = response_items[-1]
+    assert last["slotStatus"] == "unfilled"
+    assert last["place"] is None
+    assert last["moveToNext"] is None
+    assert len(last["candidates"]) == 1
+    candidate = last["candidates"][0]
+    assert candidate["name"] == "확인 필요 식당"
+    assert candidate["requiresVerification"] is True
+    assert candidate["recommendationScore"] is None
+    assert candidate["phone"] == "064-000-0000"  # 전화번호는 구조화 필드로 내린다
+    # 앵커(items[0], stay_minutes=0)는 집계에서 빠진다 → 방문 슬롯 2개만 센다.
+    assert body["slotSummary"] == {
+        "total": 2,
+        "filled": 1,
+        "needsVerification": 0,
+        "unfilled": 1,
+    }
+
+
+def _day_candidate_count(db: Session, day: RouteDay) -> int:
+    return db.scalar(
+        select(func.count())
+        .select_from(RouteItemCandidate)
+        .join(RouteItem, RouteItem.id == RouteItemCandidate.route_item_id)
+        .where(RouteItem.route_day_id == day.id)
+    )
+
+
+def _seed_day_candidates(db: Session, day: RouteDay) -> None:
+    place = Place(
+        id=uuid.uuid4(),
+        name="대안 장소",
+        category="cafe",
+        latitude=Decimal("33.5000000"),
+        longitude=Decimal("126.5000000"),
+    )
+    db.add(place)
+    db.flush()
+    for item in sorted(day.items, key=lambda route_item: route_item.sort_order):
+        db.add(
+            RouteItemCandidate(
+                id=uuid.uuid4(),
+                route_item_id=item.id,
+                place_id=place.id,
+                rank=1,
+                requires_verification=False,
+            )
+        )
+    db.flush()
+
+
+def test_일정_삭제하면_그날짜_후보가_지워진다(client: TestClient, db: Session, trip: Route) -> None:
+    day = _day_of(trip)
+    _seed_day_candidates(db, day)
+    assert _day_candidate_count(db, day) == 3
+
+    target = sorted(day.items, key=lambda route_item: route_item.sort_order)[-1]
+    response = client.delete(f"/api/v1/route-items/{target.id}")
+
+    assert response.status_code == 204
+    assert _day_candidate_count(db, day) == 0
+
+
+def test_순서_변경하면_그날짜_후보가_지워진다(client: TestClient, db: Session, trip: Route) -> None:
+    day = _day_of(trip)
+    _seed_day_candidates(db, day)
+    ids = [str(item.id) for item in sorted(day.items, key=lambda route_item: route_item.sort_order)]
+
+    response = client.put(
+        f"/api/v1/route-days/{day.id}/items/order", json={"itemIds": list(reversed(ids))}
+    )
+
+    assert response.status_code == 200
+    assert _day_candidate_count(db, day) == 0
+
+
+def test_빈_슬롯에_장소를_넣으면_채워지고_후보가_지워진다(
+    client: TestClient, db: Session, owner: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.route_recommendation.get_precipitation_probabilities",
+        lambda *_args, **_kwargs: {},
+    )
+    kst = timezone(timedelta(hours=9))
+    start = datetime(2026, 9, 20, 9, tzinfo=kst)
+    request = RouteRequest(
+        id=uuid.uuid4(),
+        user_id=owner.id,
+        start_at=start,
+        end_at=start + timedelta(hours=9),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        companion_count=1,
+        departure_latitude=Decimal("33.4900000"),
+        departure_longitude=Decimal("126.5300000"),
+    )
+    db.add(request)
+    db.flush()
+    route = Route(
+        id=uuid.uuid4(),
+        route_request_id=request.id,
+        user_id=owner.id,
+        title="빈 슬롯 채우기",
+        status=RouteStatus.GENERATED,
+        creation_type=RouteCreationType.RECOMMENDED,
+        version=1,
+        start_at=start,
+        end_at=start + timedelta(hours=9),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+    )
+    db.add(route)
+    db.flush()
+    day = RouteDay(id=uuid.uuid4(), route_id=route.id, day_number=1, route_date=start.date())
+    db.add(day)
+    db.flush()
+    unfilled = RouteItem(
+        id=uuid.uuid4(),
+        route_day_id=day.id,
+        item_type=ScheduleItemType.RESTAURANT,
+        sort_order=0,
+        slot_status=RouteItemSlotStatus.UNFILLED,
+        recommendation_reason="확실히 동반 가능한 식당을 찾지 못했어요.",
+    )
+    db.add(unfilled)
+    db.flush()
+    restaurant = Place(
+        id=uuid.uuid4(),
+        name="확인 필요 식당",
+        category="restaurant",
+        latitude=Decimal("33.4996000"),
+        longitude=Decimal("126.5312000"),
+        is_active=True,
+    )
+    db.add(restaurant)
+    db.flush()
+    db.add(
+        RouteItemCandidate(
+            id=uuid.uuid4(),
+            route_item_id=unfilled.id,
+            place_id=restaurant.id,
+            rank=1,
+            requires_verification=True,
+        )
+    )
+    db.flush()
+
+    response = client.put(
+        f"/api/v1/route-items/{unfilled.id}/place", json={"placeId": str(restaurant.id)}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    # 정책이 없는 장소라 확인 필요(needs_verification)로 채워진다.
+    assert body["slotStatus"] == "needs_verification"
+    assert body["place"]["id"] == str(restaurant.id)
+    # 빈 슬롯을 채우면 체류시간(기본 60)과 시작·종료 시각이 채워진다(유일 항목이라
+    # 그날 시작 기준 09:00 을 앵커로 사용).
+    assert body["stayMinutes"] == 60
+    assert body["startsAt"].startswith("2026-09-20T09:00")
+    assert body["endsAt"].startswith("2026-09-20T10:00")
+    assert _day_candidate_count(db, day) == 0
+
+
+def _day_moves(db: Session, day: RouteDay) -> list[RouteMove]:
+    return list(
+        db.scalars(
+            select(RouteMove)
+            .join(RouteItem, RouteItem.id == RouteMove.from_item_id)
+            .where(RouteItem.route_day_id == day.id)
+        )
+    )
+
+
+def test_순서변경_시_이동은_빈_슬롯을_건너뛴다(
+    client: TestClient, db: Session, trip: Route
+) -> None:
+    day = _day_of(trip)
+    items = sorted(day.items, key=lambda route_item: route_item.sort_order)
+    middle = items[1]
+    middle.place_id = None
+    middle.custom_place_name = None
+    middle.item_type = ScheduleItemType.RESTAURANT
+    middle.slot_status = RouteItemSlotStatus.UNFILLED
+    db.flush()
+
+    ids = [str(item.id) for item in items]
+    response = client.put(f"/api/v1/route-days/{day.id}/items/order", json={"itemIds": ids})
+    assert response.status_code == 200
+
+    moves = _day_moves(db, day)
+    touched = {move.from_item_id for move in moves} | {move.to_item_id for move in moves}
+    assert middle.id not in touched  # 빈 슬롯은 이동으로 잇지 않는다
+    assert len(moves) == 1  # 앞·뒤 채워진 항목만 연결
+
+
+def test_앞뒤_채워진_사이_빈_슬롯을_채우면_이동이_재연결된다(
+    client: TestClient, db: Session, owner: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.route_recommendation.get_precipitation_probabilities",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        "app.services.route_recommendation.get_route",
+        lambda *_args, **_kwargs: RouteLeg(distance_m=1000, duration_min=10, polyline=None),
+    )
+    kst = timezone(timedelta(hours=9))
+    start = datetime(2026, 9, 20, 9, tzinfo=kst)
+    request = RouteRequest(
+        id=uuid.uuid4(),
+        user_id=owner.id,
+        start_at=start,
+        end_at=start + timedelta(hours=9),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        companion_count=1,
+        departure_latitude=Decimal("33.4900000"),
+        departure_longitude=Decimal("126.5300000"),
+    )
+    db.add(request)
+    db.flush()
+    route = Route(
+        id=uuid.uuid4(),
+        route_request_id=request.id,
+        user_id=owner.id,
+        title="사이 빈 슬롯",
+        status=RouteStatus.GENERATED,
+        creation_type=RouteCreationType.RECOMMENDED,
+        version=1,
+        start_at=start,
+        end_at=start + timedelta(hours=9),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+    )
+    db.add(route)
+    db.flush()
+    day = RouteDay(id=uuid.uuid4(), route_id=route.id, day_number=1, route_date=start.date())
+    db.add(day)
+    db.flush()
+    before = RouteItem(
+        id=uuid.uuid4(),
+        route_day_id=day.id,
+        item_type=ScheduleItemType.ATTRACTION,
+        custom_place_name="앞 관광지",
+        sort_order=0,
+        slot_status=RouteItemSlotStatus.FILLED,
+        latitude=Decimal("33.4900000"),
+        longitude=Decimal("126.5300000"),
+        stay_minutes=60,
+        starts_at=start,
+        ends_at=start + timedelta(minutes=60),
+    )
+    middle = RouteItem(
+        id=uuid.uuid4(),
+        route_day_id=day.id,
+        item_type=ScheduleItemType.RESTAURANT,
+        sort_order=1,
+        slot_status=RouteItemSlotStatus.UNFILLED,
+        recommendation_reason="확실히 동반 가능한 식당을 찾지 못했어요.",
+    )
+    after = RouteItem(
+        id=uuid.uuid4(),
+        route_day_id=day.id,
+        item_type=ScheduleItemType.ATTRACTION,
+        custom_place_name="뒤 관광지",
+        sort_order=2,
+        slot_status=RouteItemSlotStatus.FILLED,
+        latitude=Decimal("33.5100000"),
+        longitude=Decimal("126.5400000"),
+        stay_minutes=60,
+        starts_at=start + timedelta(hours=2),
+        ends_at=start + timedelta(hours=3),
+    )
+    db.add_all([before, middle, after])
+    db.flush()
+    restaurant = Place(
+        id=uuid.uuid4(),
+        name="확인 필요 식당",
+        category="restaurant",
+        latitude=Decimal("33.5000000"),
+        longitude=Decimal("126.5350000"),
+        is_active=True,
+    )
+    db.add(restaurant)
+    db.flush()
+
+    response = client.put(
+        f"/api/v1/route-items/{middle.id}/place", json={"placeId": str(restaurant.id)}
+    )
+    assert response.status_code == 200
+
+    moves = _day_moves(db, day)
+    pairs = {(move.from_item_id, move.to_item_id) for move in moves}
+    assert pairs == {(before.id, middle.id), (middle.id, after.id)}
 
 
 def test_여행_상세에_tour_api_실시간_장소를_내려준다(

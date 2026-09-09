@@ -7,22 +7,91 @@ from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Route, RouteDay, RouteItem, RouteRequest, RouteRequestStay
-from app.db.models.enums import ScheduleItemType, TransportType, TripPace
+from app.db.models import (
+    Place,
+    PlaceBusinessHour,
+    PlacePetPolicy,
+    Route,
+    RouteDay,
+    RouteItem,
+    RouteItemCandidate,
+    RouteRequest,
+    RouteRequestStay,
+)
+from app.db.models.enums import (
+    DataProvider,
+    PetPolicyType,
+    RouteCreationType,
+    RouteItemSlotStatus,
+    RouteStatus,
+    ScheduleItemType,
+    TransportType,
+    TripPace,
+)
 from app.integrations.maps.kakao import GeocodedAddress
+from app.recommend.schemas import CandidateTier
 from app.recommend.tmap import RouteLeg, TMapError
 from app.schemas.route import RouteRequestCreate, RouteRequestStayCreate
+from app.services import route_recommendation as rr
 from app.services.route_recommendation import (
     _cascade_item_times,
     _day_anchors,
     _fit_edited_item_visit,
     _paired_stay_anchor,
+    _slot_status_of,
+    generate_route,
     resolve_location,
+    resync_item_times,
 )
 
 KST = timezone(timedelta(hours=9))
+
+
+def test_slot_status_maps_tier() -> None:
+    assert _slot_status_of(CandidateTier.VERIFIED) == RouteItemSlotStatus.FILLED
+    assert _slot_status_of(CandidateTier.NEEDS_CHECK) == RouteItemSlotStatus.NEEDS_VERIFICATION
+
+
+def test_resync_keeps_leading_unfilled_null_and_anchors_first_filled() -> None:
+    anchor = datetime(2026, 9, 10, 10, tzinfo=KST)
+    route = SimpleNamespace(
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        end_at=datetime(2026, 9, 10, 22, tzinfo=KST),
+    )
+    unfilled = SimpleNamespace(
+        place_id=None,
+        latitude=None,
+        longitude=None,
+        stay_minutes=None,
+        starts_at=anchor,  # 잘못 들어간 시각이 지워져야 한다
+        ends_at=None,
+        slot_status=RouteItemSlotStatus.UNFILLED,
+    )
+    filled = SimpleNamespace(
+        place_id=None,
+        latitude=Decimal("33.45"),
+        longitude=Decimal("126.31"),
+        stay_minutes=60,
+        starts_at=None,
+        ends_at=None,
+        slot_status=RouteItemSlotStatus.FILLED,
+    )
+
+    resync_item_times(
+        FakeSession(),  # type: ignore[arg-type]
+        route,  # type: ignore[arg-type]
+        [unfilled, filled],
+        anchor,
+    )
+
+    assert unfilled.starts_at is None
+    assert unfilled.ends_at is None
+    assert filled.starts_at == anchor
+    assert filled.ends_at == anchor + timedelta(minutes=60)
 
 
 class FakeSession:
@@ -168,6 +237,7 @@ def test_cascade_uses_departure_after_rest_for_route_lookup(
         stay_minutes=60,
         starts_at=None,
         ends_at=None,
+        slot_status=RouteItemSlotStatus.FILLED,
     )
 
     _cascade_item_times(
@@ -204,6 +274,7 @@ def test_cascade_clears_remaining_times_when_tmap_fails(
             stay_minutes=60,
             starts_at=datetime(2026, 9, 10, 12, tzinfo=KST),
             ends_at=datetime(2026, 9, 10, 13, tzinfo=KST),
+            slot_status=RouteItemSlotStatus.FILLED,
         ),
         SimpleNamespace(
             place_id=None,
@@ -212,6 +283,7 @@ def test_cascade_clears_remaining_times_when_tmap_fails(
             stay_minutes=30,
             starts_at=datetime(2026, 9, 10, 14, tzinfo=KST),
             ends_at=datetime(2026, 9, 10, 14, 30, tzinfo=KST),
+            slot_status=RouteItemSlotStatus.FILLED,
         ),
     ]
 
@@ -251,3 +323,103 @@ def test_fit_edited_visit_waits_until_break_ends() -> None:
         datetime(2026, 9, 10, 13, tzinfo=KST),
         datetime(2026, 9, 10, 14, tzinfo=KST),
     )
+
+
+def test_generate_route_saves_alternatives_and_unfilled_candidates(
+    db: Session, owner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """generate_route 가 채워진 항목 대안(점수·rv False)과 빈 슬롯 확인 필요 후보
+    (score None·rv True)를 route_item_candidates 로 저장하는지 실제 경로로 확인."""
+    monkeypatch.setattr(rr, "_tour_api_places", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        rr, "get_route", lambda *_a, **_k: RouteLeg(distance_m=1000, duration_min=10, polyline=None)
+    )
+    monkeypatch.setattr(rr, "get_precipitation_probabilities", lambda *_a, **_k: {})
+
+    start = datetime(2026, 9, 20, 9, tzinfo=KST)
+    request = RouteRequest(
+        id=uuid.uuid4(),
+        user_id=owner.id,
+        start_at=start,
+        end_at=start + timedelta(hours=10),  # 19:00 → 저녁 필요
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        companion_count=1,
+        departure_latitude=Decimal("33.4900000"),
+        departure_longitude=Decimal("126.5300000"),
+    )
+    db.add(request)
+    db.flush()
+    route = Route(
+        id=uuid.uuid4(),
+        route_request_id=request.id,
+        user_id=owner.id,
+        title="후보 저장 검증",
+        status=RouteStatus.GENERATING,
+        creation_type=RouteCreationType.RECOMMENDED,
+        version=1,
+        start_at=request.start_at,
+        end_at=request.end_at,
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+    )
+    db.add(route)
+    db.flush()
+
+    # 확실(VERIFIED) 관광지 2곳(가까움) → 하나는 배치, 하나는 대안.
+    for index in range(2):
+        attraction = Place(
+            id=uuid.uuid4(),
+            name=f"확실 관광지 {index}",
+            category="attraction",
+            latitude=Decimal("33.4996000") + Decimal(index) / Decimal("10000"),
+            longitude=Decimal("126.5312000"),
+            average_stay_minutes=60,
+            is_active=True,
+        )
+        db.add(attraction)
+        db.flush()
+        db.add(
+            PlacePetPolicy(
+                place_id=attraction.id,
+                policy_type=PetPolicyType.INDOOR_ALLOWED,
+                source=DataProvider.INTERNAL,
+            )
+        )
+    # 정책 없는(NEEDS_CHECK) 식당, 09~14 영업 → 저녁 슬롯에 안 맞아 빈 슬롯 확인 필요 후보.
+    restaurant = Place(
+        id=uuid.uuid4(),
+        name="확인 필요 식당",
+        category="restaurant",
+        latitude=Decimal("33.5000000"),
+        longitude=Decimal("126.5300000"),
+        average_stay_minutes=60,
+        is_active=True,
+    )
+    db.add(restaurant)
+    db.flush()
+    dow = (start.date().weekday() + 1) % 7
+    db.add(
+        PlaceBusinessHour(
+            place_id=restaurant.id, day_of_week=dow, opens_at=time(9), closes_at=time(14)
+        )
+    )
+    db.flush()
+
+    generate_route(db, route.id)
+
+    candidates = list(
+        db.scalars(
+            select(RouteItemCandidate)
+            .join(RouteItem, RouteItem.id == RouteItemCandidate.route_item_id)
+            .join(RouteDay, RouteDay.id == RouteItem.route_day_id)
+            .where(RouteDay.route_id == route.id)
+        )
+    )
+    alternatives = [row for row in candidates if not row.requires_verification]
+    unfilled_candidates = [row for row in candidates if row.requires_verification]
+
+    assert alternatives
+    assert all(row.recommendation_score is not None for row in alternatives)
+    assert unfilled_candidates
+    assert all(row.recommendation_score is None for row in unfilled_candidates)

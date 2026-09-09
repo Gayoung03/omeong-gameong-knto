@@ -19,7 +19,7 @@ from app.db.models import (
 )
 from app.db.models.enums import PetPolicyType, ScheduleItemType
 from app.recommend.config.stay import default_stay_minutes
-from app.recommend.schemas import BusinessHour, Candidate, PetPolicy
+from app.recommend.schemas import BusinessHour, Candidate, CandidateTier, PetPolicy
 from app.services.place_query import rating_expr, saved_count_expr
 
 ITEM_TYPE_BY_CATEGORY = {
@@ -35,28 +35,32 @@ ITEM_TYPE_BY_CATEGORY = {
 }
 
 
-def is_pet_compatible(policy: PetPolicy | None, pets: Sequence[Pet]) -> bool:
-    """정책이 없거나 unknown이면 통과시키고, 명시된 제한만 검사한다."""
+def pet_compatibility(policy: PetPolicy | None, pets: Sequence[Pet]) -> CandidateTier:
+    """반려 정책을 3등급으로 판정한다.
+
+    정책 없음·unknown 은 NEEDS_CHECK(부분 성공에서 부족분을 메우는 데 쓴다),
+    not_allowed·종/크기/체중 제한 불통과는 BLOCKED, 그 외는 VERIFIED.
+    """
 
     if policy is None or policy.policy_type == PetPolicyType.UNKNOWN:
-        return True
+        return CandidateTier.NEEDS_CHECK
     if policy.policy_type == PetPolicyType.NOT_ALLOWED:
-        return False
+        return CandidateTier.BLOCKED
 
     allowed_species = set(policy.allowed_species)
     allowed_sizes = set(policy.allowed_sizes)
     for pet in pets:
         if allowed_species and pet.species.value not in allowed_species:
-            return False
+            return CandidateTier.BLOCKED
         if pet.size is not None and allowed_sizes and pet.size.value not in allowed_sizes:
-            return False
+            return CandidateTier.BLOCKED
         if (
             pet.weight_kg is not None
             and policy.max_weight_kg is not None
             and float(pet.weight_kg) > policy.max_weight_kg
         ):
-            return False
-    return True
+            return CandidateTier.BLOCKED
+    return CandidateTier.VERIFIED
 
 
 def is_closed_for_entire_trip(hours: Sequence[BusinessHour], dates: Iterable[date]) -> bool:
@@ -107,7 +111,8 @@ def filter_candidates(
 
         policy = policies.get(place.id)
         place_hours = hours.get(place.id, [])
-        if not is_pet_compatible(policy, pets):
+        tier = pet_compatibility(policy, pets)
+        if tier == CandidateTier.BLOCKED:
             continue
         if is_closed_for_entire_trip(place_hours, travel_dates):
             continue
@@ -129,6 +134,8 @@ def filter_candidates(
                 saved_count=row.saved_count,
                 pet_policy=policy,
                 business_hours=place_hours,
+                tier=tier,
+                phone=place.phone,
             )
         )
     return candidates

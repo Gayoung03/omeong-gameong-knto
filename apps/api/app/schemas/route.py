@@ -10,6 +10,7 @@ from app.db.models.enums import (
     PetSize,
     PetSpecies,
     RouteCreationType,
+    RouteItemSlotStatus,
     RouteStatus,
     ScheduleItemType,
     TransportType,
@@ -85,6 +86,7 @@ class PlaceSummary(APISchema):
     name: str
     category: str
     cuisine: str | None = None
+    phone: str | None = None
     address: str | None
     description: str | None
     primary_image_url: str | None
@@ -126,12 +128,36 @@ class TourAPIPlaceResponse(APISchema):
     image_url: str | None
 
 
+class RouteSlotSummary(APISchema):
+    """slot_status 집계(계산값). total = filled + needs_verification + unfilled."""
+
+    total: int = 0
+    filled: int = 0
+    needs_verification: int = 0
+    unfilled: int = 0
+
+
+class RouteItemCandidateResponse(APISchema):
+    """슬롯별 대안 후보. edit-suggestions 항목 모양 + requiresVerification."""
+
+    place_id: uuid.UUID
+    name: str
+    category: str
+    address: str | None
+    primary_image_url: str | None
+    phone: str | None
+    recommendation_score: float | None
+    recommendation_reason: str | None
+    requires_verification: bool
+
+
 class RouteItemResponse(APISchema):
     """하루 안의 방문 한 건. DB 의 route_items 한 줄이다."""
 
     id: uuid.UUID
     sort_order: int
     item_type: ScheduleItemType
+    slot_status: RouteItemSlotStatus
     starts_at: datetime | None
     ends_at: datetime | None
     stay_minutes: int | None
@@ -144,6 +170,7 @@ class RouteItemResponse(APISchema):
     latitude: float | None = None
     longitude: float | None = None
     place: PlaceSummary | None
+    candidates: list[RouteItemCandidateResponse] = Field(default_factory=list)
     move_to_next: RouteMoveResponse | None = None
 
 
@@ -176,6 +203,7 @@ class RouteDetail(RouteListItem):
     share_token: str | None
     pets: list[RoutePetResponse]
     distance_summary: RouteDistanceSummary = Field(default_factory=RouteDistanceSummary)
+    slot_summary: RouteSlotSummary = Field(default_factory=RouteSlotSummary)
     tour_api_places: list[TourAPIPlaceResponse] = Field(default_factory=list)
     route_days: list[RouteDayResponse]
 
@@ -278,6 +306,7 @@ class SharedRouteDetail(RouteListItem):
     total_score: float | None
     pets: list[RoutePetResponse]
     distance_summary: RouteDistanceSummary = Field(default_factory=RouteDistanceSummary)
+    slot_summary: RouteSlotSummary = Field(default_factory=RouteSlotSummary)
     tour_api_places: list[TourAPIPlaceResponse] = Field(default_factory=list)
     route_days: list[RouteDayResponse]
 
@@ -452,6 +481,8 @@ class RouteGenerationStatus(APISchema):
     status: RouteStatus
     version: int
     failure_reason: str | None = None
+    #: 계산값. 생성 완료 시에만 채운다(그 외 null).
+    slot_summary: RouteSlotSummary | None = None
 
 
 class RouteEditSuggestionRequest(APISchema):

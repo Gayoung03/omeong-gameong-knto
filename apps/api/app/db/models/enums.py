@@ -106,6 +106,12 @@ class ScheduleItemType(StrEnum):
     CUSTOM = "custom"
 
 
+class RouteItemSlotStatus(StrEnum):
+    FILLED = "filled"
+    UNFILLED = "unfilled"
+    NEEDS_VERIFICATION = "needs_verification"
+
+
 class WeatherCondition(StrEnum):
     SUNNY = "sunny"
     PARTLY_CLOUDY = "partly_cloudy"

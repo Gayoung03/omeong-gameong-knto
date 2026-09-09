@@ -6,10 +6,23 @@
 
 import uuid
 from datetime import time
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.db.models.enums import PetPolicyType, PlaceEnvironment, ScheduleItemType
+
+
+class CandidateTier(StrEnum):
+    """반려 정책 판정 3등급.
+
+    VERIFIED: 정책상 확실히 동반 가능 / NEEDS_CHECK: 정책 없음·unknown 이라 확인 필요 /
+    BLOCKED: 동반 불가 또는 종·크기·체중 제한 불통과(후보에서 제외).
+    """
+
+    VERIFIED = "verified"
+    NEEDS_CHECK = "needs_check"
+    BLOCKED = "blocked"
 
 
 class RecommendationSchema(BaseModel):
@@ -71,6 +84,9 @@ class Candidate(RecommendationSchema):
     saved_count: int = Field(default=0, ge=0)
     pet_policy: PetPolicy | None = None
     business_hours: list[BusinessHour] = Field(default_factory=list)
+    # 반려 정책 판정 등급과 확인 전화번호. filter_candidates 가 채운다.
+    tier: CandidateTier = CandidateTier.VERIFIED
+    phone: str | None = None
 
 
 class Weights(RecommendationSchema):
