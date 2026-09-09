@@ -12,7 +12,7 @@ from openai import APITimeoutError, OpenAI
 
 from app.core.config import settings
 from app.db.models.enums import ScheduleItemType
-from app.recommend.config.tags import STANDARD_TAGS
+from app.recommend.config.tags import STANDARD_TAGS, tag_hint_text
 
 EDITABLE_CATEGORIES = tuple(
     item.value for item in ScheduleItemType if item != ScheduleItemType.CUSTOM
@@ -116,6 +116,7 @@ def _edit_tool(items: list[RouteItemContext]) -> dict:
                     "preferred_tags": {
                         "type": "array",
                         "items": {"type": "string", "enum": list(STANDARD_TAGS)},
+                        "description": f"표준 선호 태그(영문 코드). 코드 의미: {tag_hint_text()}",
                     },
                     "location_anchor": {
                         "type": "string",

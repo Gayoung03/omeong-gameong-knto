@@ -32,6 +32,7 @@ class PlaceListItem(APISchema):
     id: uuid.UUID
     name: str
     category: str
+    cuisine: str | None
     region: str | None
     address: str | None
     road_address: str | None
@@ -108,6 +109,8 @@ class PlaceDetail(APISchema):
     category: str
     # etc 세부 분류(예: 동물약국). category 는 불변 enum, 이 필드가 세분화를 담는다. null 가능.
     category_detail: str | None
+    # 음식점·카페 세부 음식 종류(한식·중식 …). null 가능.
+    cuisine: str | None
     region: str | None
     address: str | None
     road_address: str | None
