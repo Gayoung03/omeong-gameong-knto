@@ -23,6 +23,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from urllib.parse import urlsplit
 
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
@@ -65,7 +66,8 @@ REGIONS: list[tuple[str, float, float]] = [
 PACES = [TripPace.RELAXED, TripPace.NORMAL, TripPace.PACKED]
 NIGHTS = [1, 2, 3]
 # 허용목록 — 로컬 compose DB 만. 거부목록은 Railway 포트포워딩(localhost) 을 못 막는다.
-LOCAL_DB_HOSTS = ("localhost", "127.0.0.1", "::1", "@postgres:")
+# URL 의 hostname 만 정확 일치로 본다(비밀번호·DB 이름에 "localhost" 가 섞여도 안전).
+LOCAL_DB_HOSTS = {"localhost", "127.0.0.1", "::1", "postgres"}
 
 
 def _install_offline_stubs() -> None:
@@ -80,9 +82,10 @@ def _install_offline_stubs() -> None:
 
 
 def _require_local(url: str) -> None:
-    if not any(host in url for host in LOCAL_DB_HOSTS):
+    hostname = (urlsplit(url).hostname or "").lower()
+    if hostname not in LOCAL_DB_HOSTS:
         raise SystemExit(
-            f"거부: 대상 DB 호스트가 로컬이 아닙니다({url!r}). 측정은 쓰기를 하므로 "
+            f"거부: 대상 DB 호스트가 로컬이 아닙니다(host={hostname!r}). 측정은 쓰기를 하므로 "
             "로컬 compose DB(localhost/127.0.0.1/::1/postgres)에만 실행하세요. "
             "포워딩된 원격(Railway ssh 등)에는 쓰지 마세요."
         )

@@ -19,6 +19,7 @@ RDS·실서비스에 쓰는 것을 막는다. 다만 Railway ssh·포트포워�
 from __future__ import annotations
 
 import argparse
+from urllib.parse import urlsplit
 
 from sqlalchemy import MetaData, Table, create_engine, delete, insert, select, text
 from sqlalchemy.orm import Session
@@ -34,14 +35,16 @@ from app.db.models import (
 
 # 삽입 순서(FK 만족): 독립 테이블 먼저, 의존 테이블 나중.
 COPY_ORDER = [PlaceTag, Place, PlacePetPolicy, PlaceBusinessHour, PlaceTagLink]
-LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
+# URL 의 hostname 만 정확 일치로 본다(비밀번호·DB 이름에 "localhost" 가 섞여도 안전).
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "postgres"}
 
 
 def _require_local(url: str) -> None:
-    if not any(host in url for host in LOCAL_HOSTS):
+    hostname = (urlsplit(url).hostname or "").lower()
+    if hostname not in LOCAL_HOSTS:
         raise SystemExit(
-            f"거부: 대상(--target-url)이 로컬이 아닙니다({url!r}). 이 스크립트는 로컬 측정 DB "
-            "에만 씁니다(RDS·실서비스 쓰기 금지)."
+            f"거부: 대상(--target-url)이 로컬이 아닙니다(host={hostname!r}). 이 스크립트는 로컬 "
+            "측정 DB 에만 씁니다(RDS·실서비스 쓰기 금지)."
         )
 
 
