@@ -199,6 +199,29 @@ class PlaceStats(NamedTuple):
     pet_policy_type: PetPolicyType
 
 
+def latest_pet_policies(
+    db: Session, place_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, PlacePetPolicy]:
+    """장소별 동반정책 행을 하나씩. 행이 없으면 키도 없다.
+
+    place_pet_policies 는 장소당 0~1 행이 보통이나 UNIQUE 가 아니라 인덱스만 있어,
+    여러 행이면 verified_at 이 가장 최근(없으면 뒤로) 것을 고른다. 추천 엔진 후보
+    스냅샷(recommend.filters)과 여행 상세 응답(endpoints.routes)이 같은 선택 규칙을
+    공유하도록 이 한 곳에서 조회한다. 매핑(엔진 PetPolicy / 응답 스키마)은 각 호출부가.
+    """
+    if not place_ids:
+        return {}
+    rows = db.scalars(
+        select(PlacePetPolicy)
+        .where(PlacePetPolicy.place_id.in_(place_ids))
+        .order_by(PlacePetPolicy.place_id, PlacePetPolicy.verified_at.desc().nullslast())
+    ).all()
+    result: dict[uuid.UUID, PlacePetPolicy] = {}
+    for row in rows:
+        result.setdefault(row.place_id, row)
+    return result
+
+
 def place_stats(db: Session, place_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, PlaceStats]:
     """여러 장소의 집계를 **한 번에** 가져온다.
 

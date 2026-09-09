@@ -14,7 +14,6 @@ from app.api.dependencies import CurrentUser
 from app.db.models import (
     Pet,
     Place,
-    PlacePetPolicy,
     Route,
     RouteDay,
     RouteItem,
@@ -64,7 +63,7 @@ from app.schemas.route import (
     TourAPIPlaceResponse,
 )
 from app.services.animal_hospital import nearby_animal_hospitals
-from app.services.place_query import place_stats
+from app.services.place_query import latest_pet_policies, place_stats
 from app.services.route_access import (
     load_owned_route,
     log_counts_of,
@@ -740,33 +739,23 @@ def _fill_day_weather(
 def _pet_policies_by_place(
     db: Session, place_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, RoutePlacePetPolicy]:
-    """장소별 동반 조건·근거 출처(응답 부분집합). 장소당 verified_at 최신 1행."""
-    if not place_ids:
-        return {}
-    rows = db.scalars(
-        select(PlacePetPolicy)
-        .where(PlacePetPolicy.place_id.in_(place_ids))
-        .order_by(PlacePetPolicy.place_id, PlacePetPolicy.verified_at.desc().nullslast())
-    ).all()
-    result: dict[uuid.UUID, RoutePlacePetPolicy] = {}
-    for row in rows:
-        result.setdefault(
-            row.place_id,
-            RoutePlacePetPolicy(
-                leash_required=row.leash_required,
-                carrier_required=row.carrier_required,
-                muzzle_required=row.muzzle_required,
-                food_area_allowed=row.food_area_allowed,
-                source=row.source,
-                source_url=row.source_url,
-                verified_at=row.verified_at,
-                reliability_score=(
-                    float(row.reliability_score) if row.reliability_score is not None else None
-                ),
-                caution_note=row.caution_note,
+    """장소별 동반 조건·근거 출처(응답 부분집합). 최신 행 선택은 latest_pet_policies 공용."""
+    return {
+        place_id: RoutePlacePetPolicy(
+            leash_required=row.leash_required,
+            carrier_required=row.carrier_required,
+            muzzle_required=row.muzzle_required,
+            food_area_allowed=row.food_area_allowed,
+            source=row.source,
+            source_url=row.source_url,
+            verified_at=row.verified_at,
+            reliability_score=(
+                float(row.reliability_score) if row.reliability_score is not None else None
             ),
+            caution_note=row.caution_note,
         )
-    return result
+        for place_id, row in latest_pet_policies(db, place_ids).items()
+    }
 
 
 def _slot_summary(db: Session, route_id: uuid.UUID) -> RouteSlotSummary:
