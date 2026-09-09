@@ -47,6 +47,19 @@ def test_leash_and_carrier_different_verbs_joined_with_comma() -> None:
     assert reason.startswith("목줄 착용, 케이지 이용 시 야외 동반 가능")
 
 
+def test_all_three_conditions_group_by_verb() -> None:
+    policy = _policy(
+        leash_required=True,
+        muzzle_required=True,
+        carrier_required=True,
+        source=DataProvider.INTERNAL,
+    )
+
+    reason = reason_for(policy, CandidateTier.VERIFIED)
+
+    assert reason.startswith("목줄·입마개 착용, 케이지 이용 시 야외 동반 가능")
+
+
 def test_no_conditions_omits_prefix() -> None:
     policy = _policy(policy_type=PetPolicyType.INDOOR_ALLOWED, source=DataProvider.KAKAO)
 
