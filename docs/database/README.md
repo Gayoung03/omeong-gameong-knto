@@ -44,7 +44,7 @@ Enum 18개
 | 회원/반려동물 | `users`, `pets`, `user_travel_preferences`, `user_social_accounts` |
 | 장소 | `places`, `place_external_refs`, `place_business_hours`, `place_pet_policies`, `place_tags`, `place_tag_links` |
 | 루트 입력 | `route_requests`, `route_request_pets`, `route_request_stays` |
-| 루트 결과/내 여행 | `routes`, `route_days`, `route_items`, `route_moves` |
+| 루트 결과/내 여행 | `routes`, `route_days`, `route_items`, `route_moves`, `route_item_candidates`(예정, 2026-09-07) |
 | 날씨/이동 | `weather_snapshots`, `route_calculation_cache` |
 | 여행 부가기능 | `route_checklist_items`, `route_memos` |
 | 저장/리뷰 | `favorites`, `reviews`, `review_images` |
@@ -146,7 +146,17 @@ size: enum
 breed: varchar
 ```
 
-품종별 검색·의료·입장 규칙을 구현하지 않으므로 `pet_breeds` 테이블은 만들지 않습니다. 반려동물 성격 태그도 MVP 추천에서 제외합니다.
+품종별 검색·의료·입장 규칙을 구현하지 않으므로 `pet_breeds` 테이블은 만들지 않습니다. 반려동물 성격 태그 **테이블**도 만들지 않습니다.
+
+**(2026-09-07 개정)** 루트 추천의 개인화 중심을 사람 취향에서 반려동물로 옮기면서 ([`route-redesign.md`](../planning/route-redesign.md)),
+추천 규칙에 직접 쓰는 여행 특성 3개를 `pets` 컬럼으로 둡니다. 이번 여행의 컨디션은 `route_request_pets.energy_level`에
+스냅샷합니다. 이전 결정("성격 태그도 MVP 추천에서 제외")은 태그 테이블에 한해 유지합니다.
+
+```text
+activity_level: enum low|normal|high, nullable (NULL = 규칙 미적용)
+sociability: enum low|normal|high, nullable
+car_sickness: boolean, nullable (NULL = 모름)
+```
 
 반려동물 삭제는 물리 삭제가 아니라 `pets.deleted_at`을 기록하는 soft delete로 처리합니다.
 활성 프로필은 `deleted_at IS NULL` 조건으로 조회합니다. 과거 여행 기록의 이름과 이미지는
@@ -184,10 +194,11 @@ place_external_refs
 | TourAPI | 공식 관광지, 이미지, 반려동물 동반 조건 |
 | KCISA CSV | 운영시간, 크기, 제한사항, 실내외 정보 |
 | 비짓제주 | 제주 장소 소개, 관광 태그, 편의시설 |
-| 카카오 | 장소 검색, 주소, 좌표, 전화번호, 상세 URL |
+| 카카오 | 장소 검색, 주소, 좌표, 전화번호, 상세 URL, 식당·카페 음식 종류(`places.cuisine`, 2026-09-07) |
 | TMAP | 장소 간 거리, 이동시간, 경로 |
 
-카카오 Local API에서 긴 소개문·반려동물 조건을 가져오지 않습니다. 장소 설명은 다음 우선순위로 `places.description`에 선택 저장합니다.
+카카오 Local API에서 긴 소개문·반려동물 조건을 가져오지 않습니다. 식당·카페의 음식 종류는 카카오 로컬 분류(`category_name`)에서
+가져와 `places.cuisine`에 저장합니다 (2026-09-07). 관광공사 TourAPI 응답은 저장하지 않고 실시간 조회만 합니다. 장소 설명은 다음 우선순위로 `places.description`에 선택 저장합니다.
 
 ```text
 비짓제주 소개
@@ -252,6 +263,23 @@ completed  여행 종료
 ```
 
 사용자가 추천안을 저장하면 `routes.status` 값을 `generated`에서 `saved`로 변경합니다. 추천을 다시 생성하면 `version`을 증가시킵니다.
+
+**부분 성공 (2026-09-07, [`route-redesign.md`](../planning/route-redesign.md))** — 추천 생성은 채울 수 있는 슬롯만 채우고 나머지는
+`route_items.slot_status = unfilled`로 남깁니다. 슬롯이 비어 있어도 `routes.status`는 `generated`이고,
+`failed`는 모든 날이 비었을 때만입니다. 상태 enum에 값을 추가하지 않습니다.
+
+```text
+route_items.slot_status
+
+filled              확실히 동반 가능한 장소로 확정
+needs_verification  정책 unknown 장소로 부족분을 메움 (앱은 확인 필요 라벨 + 전화번호)
+unfilled            못 채운 슬롯. place_id·custom_place_name·시각 NULL, item_type 은 의도한 유형
+```
+
+`place_id`와 `custom_place_name` 중 하나가 있어야 한다는 규칙은 `slot_status`와 묶은 CHECK 제약으로 강제합니다
+(`unfilled`만 둘 다 NULL). 슬롯마다 대안 후보를 `route_item_candidates`(route_item_id, place_id, rank 1~3, 점수,
+근거, requires_verification)에 저장하고, 같은 날짜의 항목이 편집되면 그 날짜의 후보를 모두 지웁니다.
+완성도는 컬럼 없이 `slot_status` 집계로 응답에만 내립니다. 동선 근처 동물병원도 저장하지 않고 응답 시점에 계산합니다.
 
 내 여행 화면에서 수정하는 여행 키워드는 `routes.style_keywords`에 저장합니다. 숙박 일수, 여행 일수,
 숙소 요약, 로그 개수와 이동 합계는 날짜·일정·로그·이동 데이터에서 계산합니다.
