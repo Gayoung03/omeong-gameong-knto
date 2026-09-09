@@ -3,7 +3,9 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Avatar } from '@/src/components/ui/Avatar';
 import { brandAssets } from '@/src/config/brandAssets';
+import { useUserProfile } from '@/src/features/profile/hooks/useUserProfile';
 import { colors, spacing } from '@/src/theme';
 
 import { NotificationPopup } from './NotificationPopup';
@@ -36,6 +38,7 @@ type Props = {
 
 export function AppHeader({ notifications = 'screen' }: Props = {}) {
   const router = useRouter();
+  const { data: user } = useUserProfile();
   const [popupOpen, setPopupOpen] = useState(false);
 
   const handlePressNotifications = () => {
@@ -82,12 +85,7 @@ export function AppHeader({ notifications = 'screen' }: Props = {}) {
           onPress={() => router.push('/profile')}
           style={({ pressed }) => [styles.profileCircle, pressed && styles.pressed]}
         >
-          <Image
-            accessibilityLabel="혼디 강아지 캐릭터"
-            resizeMode="cover"
-            source={brandAssets.character.avatar}
-            style={styles.profileImage}
-          />
+          <Avatar size={PROFILE_SIZE} uri={user?.profileImage} />
         </Pressable>
       </View>
 
@@ -137,10 +135,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
     width: PROFILE_SIZE,
-  },
-  profileImage: {
-    height: '100%',
-    width: '100%',
   },
   symbol: {
     height: SYMBOL_HEIGHT,
