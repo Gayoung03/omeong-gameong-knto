@@ -6,6 +6,7 @@ from datetime import date, datetime
 from pydantic import Field, computed_field, model_validator
 
 from app.db.models.enums import (
+    DataProvider,
     PetEnergyLevel,
     PetPolicyType,
     PetSize,
@@ -76,6 +77,24 @@ class RouteListResponse(APISchema):
 # 리뷰·즐겨찾기 API 를 만들면서 집계식(services/place_query.py)이 생겼기 때문이다.
 
 
+class RoutePlacePetPolicy(APISchema):
+    """장소 요약에 붙는 동반 조건·근거 출처. `place_pet_policies` 의 부분집합.
+
+    [`places.md`](./places.md) 상세 `petPolicy` 중 근거 문장·표시에 필요한 필드만 내린다.
+    조건·확인 컬럼은 3값 의미(True/False/미확인=null)를 그대로 유지한다.
+    """
+
+    leash_required: bool | None
+    carrier_required: bool | None
+    muzzle_required: bool | None
+    food_area_allowed: bool | None
+    source: DataProvider
+    source_url: str | None
+    verified_at: datetime | None
+    reliability_score: float | None
+    caution_note: str | None
+
+
 class PlaceSummary(APISchema):
     """일정에 담긴 장소 요약.
 
@@ -100,6 +119,8 @@ class PlaceSummary(APISchema):
     rating: float | None = None
     review_count: int = 0
     pet_policy_type: PetPolicyType = PetPolicyType.UNKNOWN
+    #: 동반 조건·근거 출처. place_pet_policies 조인으로 엔드포인트가 채운다. 없으면 null.
+    pet_policy: RoutePlacePetPolicy | None = None
 
 
 class RouteMoveResponse(APISchema):

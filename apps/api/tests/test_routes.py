@@ -861,7 +861,13 @@ def test_일정의_장소에_평점과_동반정책이_붙는다(
         PlacePetPolicy(
             place_id=place.id,
             policy_type=PetPolicyType.OUTDOOR_ONLY,
-            source=DataProvider.INTERNAL,
+            source=DataProvider.TOUR_API,
+            source_url="https://example.com/policy",
+            leash_required=True,
+            carrier_required=False,
+            verified_at=datetime(2026, 7, 20, 1, 0, tzinfo=UTC),
+            reliability_score=Decimal("82.5"),
+            caution_note="대형견은 입마개를 착용해 주세요.",
         )
     )
     db.add(Review(id=uuid.uuid4(), user_id=stranger.id, place_id=place.id, rating=4))
@@ -879,6 +885,16 @@ def test_일정의_장소에_평점과_동반정책이_붙는다(
     assert added["place"]["rating"] == 4.0
     assert added["place"]["reviewCount"] == 1
     assert added["place"]["petPolicyType"] == "outdoor_only"
+    # 동반 조건·근거 출처(petPolicy)가 부분집합으로 붙는다 (Phase 6).
+    policy = added["place"]["petPolicy"]
+    assert policy["source"] == "tour_api"
+    assert policy["sourceUrl"] == "https://example.com/policy"
+    assert policy["leashRequired"] is True
+    assert policy["carrierRequired"] is False
+    assert policy["muzzleRequired"] is None
+    assert policy["reliabilityScore"] == 82.5
+    assert policy["cautionNote"] == "대형견은 입마개를 착용해 주세요."
+    assert policy["verifiedAt"] is not None
 
 
 def test_정책이_없는_장소는_상세에서도_unknown(
@@ -896,6 +912,8 @@ def test_정책이_없는_장소는_상세에서도_unknown(
     assert added["place"]["petPolicyType"] == "unknown"
     assert added["place"]["rating"] is None
     assert added["place"]["reviewCount"] == 0
+    # 정책 행이 없으면 petPolicy 는 null (Phase 6).
+    assert added["place"]["petPolicy"] is None
 
 
 def test_여행기록_개수가_목록과_상세에_모두_나온다(
