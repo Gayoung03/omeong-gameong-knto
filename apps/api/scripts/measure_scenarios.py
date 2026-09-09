@@ -4,8 +4,10 @@
 잰다. 외부 호출(TMAP·TourAPI·기상청·OpenAI·카카오 지오코딩)은 전부 대역으로 막고,
 만든 route_requests/routes 는 **바깥 트랜잭션 롤백**으로 정리한다(아무것도 남기지 않음).
 
-대상 DB 는 `--database-url`(기본 로컬 omeong_test). 팀 RDS·실서비스에는 절대 쓰지
-않는다 — 호스트에 `rds.amazonaws.com`/`railway` 가 있으면 거부한다.
+대상 DB 는 `--database-url`(기본 로컬 omeong_test). 측정은 **쓰기**(생성 후 롤백)를 하므로
+**로컬 compose DB(호스트 localhost/127.0.0.1/::1/compose `postgres`)에만** 실행한다 — 그 외
+호스트는 전부 거부한다(허용목록). 포워딩된 원격(Railway ssh·포트포워딩)은 localhost 로도
+붙을 수 있어 허용목록으로도 못 막으니 **포워딩된 원격에는 절대 쓰지 말 것.**
 
     uv run python -m scripts.measure_scenarios \
         [--database-url postgresql+psycopg://omeong:omeong@localhost:5432/omeong_test] \
@@ -62,7 +64,8 @@ REGIONS: list[tuple[str, float, float]] = [
 ]
 PACES = [TripPace.RELAXED, TripPace.NORMAL, TripPace.PACKED]
 NIGHTS = [1, 2, 3]
-BLOCKED_DB_HOSTS = ("rds.amazonaws.com", "railway")
+# 허용목록 — 로컬 compose DB 만. 거부목록은 Railway 포트포워딩(localhost) 을 못 막는다.
+LOCAL_DB_HOSTS = ("localhost", "127.0.0.1", "::1", "@postgres:")
 
 
 def _install_offline_stubs() -> None:
@@ -76,11 +79,12 @@ def _install_offline_stubs() -> None:
     settings.openai_api_key = ""  # generate_trip_explanation·request_intent → None
 
 
-def _reject_remote(url: str) -> None:
-    if any(host in url for host in BLOCKED_DB_HOSTS):
+def _require_local(url: str) -> None:
+    if not any(host in url for host in LOCAL_DB_HOSTS):
         raise SystemExit(
-            f"거부: 대상 DB 가 팀 RDS·실서비스로 보입니다({url!r}). 측정은 쓰기를 하므로 "
-            "로컬/리허설 DB 에만 실행하세요."
+            f"거부: 대상 DB 호스트가 로컬이 아닙니다({url!r}). 측정은 쓰기를 하므로 "
+            "로컬 compose DB(localhost/127.0.0.1/::1/postgres)에만 실행하세요. "
+            "포워딩된 원격(Railway ssh 등)에는 쓰지 마세요."
         )
 
 
@@ -308,13 +312,13 @@ def main() -> None:
     parser.add_argument(
         "--database-url",
         default="postgresql+psycopg://omeong:omeong@localhost:5432/omeong_test",
-        help="대상 DB(기본 로컬 omeong_test). RDS·railway 는 거부.",
+        help="대상 DB(기본 로컬 omeong_test). 로컬 호스트만 허용(그 외 거부).",
     )
     parser.add_argument("--json", dest="json_path", default=None, help="결과 JSON 저장 경로")
     parser.add_argument("--pets", choices=["small", "none", "large"], default="small")
     args = parser.parse_args()
 
-    _reject_remote(args.database_url)
+    _require_local(args.database_url)
     _install_offline_stubs()
 
     engine = create_engine(args.database_url, connect_args={"options": "-c timezone=Asia/Seoul"})
