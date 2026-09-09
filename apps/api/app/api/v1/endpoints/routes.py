@@ -8,6 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser
@@ -92,6 +93,9 @@ KST = timezone(timedelta(hours=9))
 #: 만들 수 있는 여행 길이의 상한. 기간만큼 route_days 를 미리 만들기 때문에
 #: 실수로 몇 년짜리를 보내면 행이 그만큼 생긴다. 제주 여행에 30일이면 충분하다.
 MAX_TRIP_DAYS = 30
+
+#: PostgreSQL unique_violation SQLSTATE. regenerate 의 version 경쟁 재시도 판정에 쓴다.
+_UNIQUE_VIOLATION_SQLSTATE = "23505"
 
 ALLOWED_STATUS_TRANSITIONS: dict[RouteStatus, set[RouteStatus]] = {
     RouteStatus.GENERATED: {RouteStatus.SAVED},
@@ -216,6 +220,91 @@ def create_route_request(
         route_request_id=request.id,
         status=route.status,
         version=route.version,
+    )
+
+
+@router.post(
+    "/routes/{route_id}/regenerate",
+    response_model=RouteRequestAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="같은 조건으로 재생성",
+)
+def regenerate_route(
+    route_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    current_user: CurrentUser,
+    db: DbSession,
+    open_session: OpenSession,
+) -> RouteRequestAccepted:
+    """기존 결과는 그대로 두고 같은 추천 요청으로 새 version 을 생성한다.
+
+    수동 여행(creationType manual · route_request_id NULL)은 재생성할 원본 조건이
+    없어 422. 원본이 아직 generating 이어도 막지 않는다(명세에 제한이 없어 허용).
+    """
+    original = load_owned_route(db, route_id, current_user)
+    if original.creation_type != RouteCreationType.RECOMMENDED or original.route_request_id is None:
+        raise HTTPException(status_code=422, detail="직접 만든 여행은 다시 추천받을 수 없어요")
+    request = db.get(RouteRequest, original.route_request_id)
+    if request is None:
+        raise HTTPException(status_code=404, detail="추천 요청을 찾을 수 없습니다")
+
+    new_route = _insert_next_version(db, original)
+    pet_ids = db.scalars(
+        select(RouteRequestPet.pet_id).where(RouteRequestPet.route_request_id == request.id)
+    ).all()
+    for pet_id in pet_ids:
+        db.add(RoutePet(route_id=new_route.id, pet_id=pet_id))
+    db.commit()
+
+    background_tasks.add_task(run_route_generation, new_route.id, open_session)
+    return RouteRequestAccepted(
+        route_id=new_route.id,
+        route_request_id=request.id,
+        status=new_route.status,
+        version=new_route.version,
+    )
+
+
+def _next_version(db: Session, route_request_id: uuid.UUID) -> int:
+    """이 추천 요청의 다음 version. UNIQUE(route_request_id, version) 을 채운다."""
+    current_max = db.scalar(
+        select(func.max(Route.version)).where(Route.route_request_id == route_request_id)
+    )
+    return (current_max or 0) + 1
+
+
+def _insert_next_version(db: Session, original: Route) -> Route:
+    """max(version)+1 로 새 Route 를 넣는다. 동시 재생성 경쟁이면 1회 재시도, 재실패 409.
+
+    SAVEPOINT(begin_nested) 안에서 flush 해 UNIQUE 충돌 시 그 시도만 되돌린다 —
+    바깥 트랜잭션과 이미 읽어 둔 원본 행은 유지된다.
+    """
+    for _ in range(2):
+        route = Route(
+            route_request_id=original.route_request_id,
+            user_id=original.user_id,
+            title=original.title,
+            status=RouteStatus.GENERATING,
+            creation_type=RouteCreationType.RECOMMENDED,
+            version=_next_version(db, original.route_request_id),
+            start_at=original.start_at,
+            end_at=original.end_at,
+            pace=original.pace,
+            transport=original.transport,
+            style_keywords=original.style_keywords,
+        )
+        try:
+            with db.begin_nested():
+                db.add(route)
+                db.flush()
+            return route
+        except IntegrityError as error:
+            # version 경쟁(UNIQUE 23505)만 재시도한다. 다른 무결성 오류는 그대로 올려
+            # 전역 핸들러가 처리하게 둔다(잘못된 409 로 가리지 않는다).
+            if getattr(error.orig, "sqlstate", None) != _UNIQUE_VIOLATION_SQLSTATE:
+                raise
+    raise HTTPException(
+        status_code=409, detail="재생성이 동시에 요청되었어요. 잠시 후 다시 시도해 주세요"
     )
 
 
