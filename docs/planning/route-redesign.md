@@ -350,3 +350,4 @@ weather_api, internal`. 후보: `jeju_open_data`. **출처 목록 확정 후 추
 6. Phase 5에서 `weather` 축을 빼면서 `healing` 프리셋과 `userCriteria: weather`를 하루 구성 규칙(실내 비중 상향)으로 어떻게 재정의할지. 앱의 선택지 문구도 함께 조정. → **확정(Phase 5)**: `applied_weights.weather` 0.10 고정 신호 → `indoor_bias` → 80% 비 규칙 강제. 앱 문구는 앱 팀.
 7. 가입 화면 취향 선택지(`vibeOptions`)와 `place_tags.code` 7종의 어휘 통일 (앱 팀, 우선순위 낮음).
 8. Phase 3 슬롯 계획에 날짜별 **권역**(제주시/서귀포/동부/서부) 배정을 넣을지. 산 횡단을 구조적으로 줄이는 유일한 방법.
+9. `regenerate` 를 **원본이 아직 `generating`일 때** 막을지. 명세에 제한이 없어 Phase 7 은 **허용**(새 version 을 또 만듦)으로 구현. 중복 생성 방지가 필요하면 정책을 추가한다 (앱 팀 — 버튼 노출 조건).
