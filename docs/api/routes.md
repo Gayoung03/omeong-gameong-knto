@@ -610,16 +610,78 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
 | `slotStatus` | **[재설계 2026-09-07]** `filled` \| `needs_verification` \| `unfilled`. `unfilled`면 `place`·시각이 `null`이고 `candidates`에 확인 필요 후보가 붙음. `needs_verification`이면 장소는 있지만 동반 여부가 미확인 — 앱은 "확인 필요" 라벨과 `place.phone`을 함께 보여줌 |
 | `candidates` | **[재설계 2026-09-07]** 슬롯별 대안 후보 최대 3개 (`route_item_candidates`). 모양은 `edit-suggestions`의 `suggestions` 항목과 같고 `requiresVerification`과 `phone`(확인 전화용, `places.phone`)을 추가. 같은 날짜의 항목이 편집되면 그 날짜의 후보는 모두 지워져 빈 배열이 됨 |
 | `slotSummary` | 계산값. `route_items.slot_status` 집계. **출발지·숙소 앵커(체류시간 0인 항목)는 빼고 방문 슬롯만 센다** (2026-09-08 결정). 상태 조회 응답과 같음 |
-| `nearbyAnimalHospitals` | 계산값, 저장 안 함. 숙소와 각 날짜 동선에서 가까운 동물병원(`places.category_detail = '동물병원'`) 최대 3곳. `is24Hours`는 이름의 "24시"로 판정 (영업시간 데이터가 없음) |
+| `nearbyAnimalHospitals` | 계산값, 저장 안 함. 숙소와 각 날짜 동선에서 가까운 동물병원(`places.category_detail = '동물병원'`) 최대 3곳. `is24Hours`는 이름의 "24시"로 판정 (영업시간 데이터가 없음). 조립·한계는 아래 [`nearbyAnimalHospitals` 안전망 규칙] |
 | `place.petPolicy` | 동반 조건과 근거 출처. [`places.md`](./places.md) 상세의 `petPolicy` 부분집합 |
 | `place.cuisine` `place.phone` | 음식 종류(카카오 로컬 분류로 보강, 없으면 `null`)와 전화번호 |
-| `recommendationReason` | **[의미 변경 2026-09-07]** 내부 점수 나열("반려 편의 80점")이 아니라 **동반 조건 + 근거 출처 문장**. 규칙 템플릿으로 만들며 LLM을 쓰지 않음 |
+| `recommendationReason` | **[의미 변경 2026-09-07]** 내부 점수 나열("반려 편의 80점")이 아니라 **동반 조건 + 근거 출처 문장**. 규칙 템플릿으로 만들며 LLM을 쓰지 않음. 조립 형식은 아래 [`recommendationReason` 조립 규칙] |
 | `explanation` | 여행 전체 설명 한 문단. **[개정 2026-09-07]** 규칙 결과를 바탕으로 LLM이 **1회** 생성, 실패 시 템플릿 |
 | `distanceSummary` | 계산값. 하위 `moveToNext` 합계 |
 | `tourApiPlaces` | 상세 조회 시 한국관광공사 TourAPI에서 실시간 조회한 주변 장소 최대 3건. DB에 저장하지 않음 |
 | `logCount` | 계산값. 이 여행에 속한 `travel_logs` 개수. 여행 모아보기 화면 헤더가 씀 ([`travel-logs.md`](./travel-logs.md)) |
 
 `route_moves`에는 순서와 이동수단만 영구 저장하고, 거리·시간·polyline은 캐시에서 가져옵니다.
+
+### `recommendationReason` 조립 규칙 [재설계 Phase 6, 2026-09-09]
+
+동반 가능이 **확실한**(tier `verified`) 항목·후보는 규칙 템플릿으로 문장을 만든다. LLM은 쓰지 않는다.
+
+조립 형식:
+
+```
+{조건 접두 }{동반 문장} · {출처 라벨} 기준{ (YYYY-MM-DD 확인)}{ · 유의사항}
+```
+
+- **조건 접두** — `place_pet_policies`의 참인 조건을 고정 순서(목줄→입마개→케이지)로 모아 만든다. 같은 서술어(`착용`)를 공유하는 명사는 `·`로 잇고, 다른 서술어는 `, `로 잇는다. 마지막에 서술어를 한 번 붙이고 ` 시`로 닫는다. 참인 조건이 없으면 접두는 없다.
+
+  | 조건 컬럼 | 명사·서술어 |
+  | --- | --- |
+  | `leash_required` | 목줄 착용 |
+  | `muzzle_required` | 입마개 착용 |
+  | `carrier_required` | 케이지 이용 |
+
+  예: 목줄만 → `목줄 착용 시` / 목줄+입마개 → `목줄·입마개 착용 시` / 목줄+케이지 → `목줄 착용, 케이지 이용 시`
+
+- **동반 문장** — `place_pet_policies.policy_type`(= `PetPolicyType`) 값별.
+
+  | `policy_type` | 동반 문장 |
+  | --- | --- |
+  | `indoor_allowed` | 실내외 동반 가능 |
+  | `outdoor_only` | 야외 동반 가능 |
+  | `partial_allowed` | 일부 구역 동반 가능 |
+  | `not_allowed` | (해당 없음 — 후보에서 제외되어 문장을 만들지 않음) |
+  | `unknown` | (해당 없음 — `needs_check` 경로) |
+
+  `unknown`·정책 없음 등 tier `needs_check` 항목은 문장을 만들지 않고 기존 안내(`동반 여부 확인 필요`, 빈 식사 슬롯은 전용 문구)를 유지한다.
+
+- **출처 라벨** — `place_pet_policies.source`(= `DataProvider`) 값별. 조립 시 라벨 뒤에 ` 기준`을 붙이고, `verified_at`이 있으면 ` (YYYY-MM-DD 확인)`(KST 날짜)을 잇는다. 없으면 괄호를 생략한다.
+
+  | `source` | 라벨 |
+  | --- | --- |
+  | `tour_api` | 한국관광공사 반려동물 동반 정보 |
+  | `kcisa` | 한국문화정보원 반려동물 동반 정보 |
+  | `visitjeju` | 비짓제주 정보 |
+  | `kakao` | 카카오 로컬 정보 |
+  | `internal` | 자체 확인 정보 |
+  | `tmap`·`weather_api` | 제공 정보 (정책 출처로 쓰지 않는 값의 폴백) |
+
+- **유의사항** — `caution_note`가 있으면 ` · {caution_note}`로 잇는다.
+
+- **TourAPI 실시간 대조** — 상세 생성 시 TourAPI 실시간 조회로 대조에 성공한 장소는 출처 문장 **뒤에 한 번만** `· 한국관광공사 TourAPI 실시간 정보 확인`을 덧붙인다(출처 라벨과 중복 표기하지 않음).
+
+예: `목줄 착용 시 야외 동반 가능 · 한국관광공사 반려동물 동반 정보 기준 (2026-07-20 확인)`
+
+> 이 문장을 만들려면 추천 엔진 내부 스냅샷(`recommend/schemas.py`의 `PetPolicy`)에 `source`·`source_url`·`verified_at`·`caution_note`를 실어야 한다. 기존 컬럼을 노출만 하는 것이라 **DB 스키마 변경은 없다**.
+
+### `nearbyAnimalHospitals` 안전망 규칙 [재설계 Phase 6, 2026-09-09]
+
+- 여행 항목(출발지·숙소 앵커 포함)의 **앵커 좌표**를 중심으로 `places.category_detail = '동물병원'`을 조회한다. 별도 좌표 조회 없이 이미 응답에 있는 좌표를 쓴다.
+- 좌표 인덱스로 **bounding-box(반경 5km)** 후 **haversine** 거리 정렬, 최대 **3곳**. 정렬은 `is24Hours` 우선 → 거리순.
+- `is24Hours`는 영업시간 데이터가 없어 **이름에 `24시` 포함** 여부로만 판정한다.
+- 저장하지 않는 계산값이다.
+
+> **판정 한계** (팀 RDS 실측, 2026-09-09): 동물병원 75곳(전부 제주·좌표 보유) 중 이름에 `24시`가 들어간 곳은 **2곳**(`24시동물병원`, `24시똑똑똑동물메디컬센터`)뿐이고 `24시간` 표기는 0곳이다. 따라서 `is24Hours: true`는 사실상 이 소수에만 붙으며, `24시 우선` 정렬은 데이터 보강 전까지 상징적이다.
+>
+> **데이터 caveat**: 같은 분류에 워크인 반려 병원이 아닌 5곳(`씨엔에프 팜테크`, 제주대학교 3개 기관, 한국마사회 육성목장)이 섞여 있다. 정정은 DB 적용 보류 대상이라 코드로 걸러내지 않는다.
 
 ### 에러
 
