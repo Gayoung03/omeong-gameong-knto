@@ -23,7 +23,7 @@ def _candidate(**overrides: object) -> Candidate:
         "item_type": "attraction",
         "environment": PlaceEnvironment.OUTDOOR,
         "average_stay_minutes": 60,
-        "tags": ["바다", "산책"],
+        "tags": ["sea", "walk"],
         "amenities": [],
         "rating_avg": 4.0,
         "saved_count": 10,
@@ -40,9 +40,9 @@ def _candidate(**overrides: object) -> Candidate:
 @pytest.mark.parametrize(
     ("user_tags", "place_tags", "expected"),
     [
-        ({"바다", "산책"}, {"바다", "산책"}, 1.0),
-        ({"바다"}, {"카페"}, 0.0),
-        ({"바다", "산책"}, {"바다", "카페"}, 1 / 3),
+        ({"sea", "walk"}, {"sea", "walk"}, 1.0),
+        ({"sea"}, {"cafe"}, 0.0),
+        ({"sea", "walk"}, {"sea", "cafe"}, 1 / 3),
         ({"표준외"}, {"표준외"}, 0.0),
     ],
 )
@@ -95,12 +95,12 @@ def test_unknown_pet_policy_is_halved() -> None:
 
 
 def test_score_candidates_returns_contract_sorted_by_total_score() -> None:
-    high = _candidate(tags=["바다"], rating_avg=5.0, saved_count=10)
-    low = _candidate(tags=["카페"], rating_avg=1.0, saved_count=0)
+    high = _candidate(tags=["sea"], rating_avg=5.0, saved_count=10)
+    low = _candidate(tags=["cafe"], rating_avg=1.0, saved_count=0)
     context = ScoringContext(
         weights=resolve_weights(),
         base_coord=(33.4996, 126.5312),
-        preferred_tags=frozenset({"바다"}),
+        preferred_tags=frozenset({"sea"}),
     )
 
     result = score_candidates([low, high], context)

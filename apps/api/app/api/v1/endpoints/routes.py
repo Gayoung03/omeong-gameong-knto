@@ -33,8 +33,8 @@ from app.integrations.llm.route_edit import (
 )
 from app.integrations.tour_api.kto import TourAPIError, get_nearby_places
 from app.recommend.config.tags import normalize_preferred_tags
-from app.recommend.itinerary import SUPPORTED_TRANSPORTS
 from app.recommend.tmap import get_cached_route
+from app.recommend.travel_estimate import SUPPORTED_TRANSPORTS, estimate_leg
 from app.recommend.weights import resolve_weights
 from app.schemas.route import (
     RouteCreate,
@@ -562,12 +562,18 @@ def _fill_computed(
             destination_coord,
             move.transport,
         )
+        is_estimated = False
         if leg is None:
-            continue
+            # 캐시가 없으면 추정으로 채우되, 추정을 지원하는 이동수단일 때만.
+            if move.transport not in SUPPORTED_TRANSPORTS:
+                continue
+            leg = estimate_leg(source_coord, destination_coord, move.transport)
+            is_estimated = True
         response_items[move.from_item_id].move_to_next = RouteMoveResponse(
             transport=move.transport,
             distance_meters=leg.distance_m,
             duration_minutes=leg.duration_min,
+            is_estimated=is_estimated,
         )
         total_distance_meters += leg.distance_m
         total_duration_minutes += leg.duration_min

@@ -163,16 +163,59 @@ def test_여행_상세에_tmap_이동정보와합계를_내려준다(
         "transport": "rental_car",
         "distanceMeters": 1200,
         "durationMinutes": 7,
+        "isEstimated": False,
     }
     assert response_items[1]["moveToNext"] == {
         "transport": "rental_car",
         "distanceMeters": 2300,
         "durationMinutes": 11,
+        "isEstimated": False,
     }
     assert response_items[2]["moveToNext"] is None
     assert body["distanceSummary"] == {
         "totalDistanceMeters": 3500,
         "totalDurationMinutes": 18,
+    }
+
+
+def test_여행_상세_이동정보_캐시없으면_추정값으로_내려준다(
+    client: TestClient, db: Session, trip: Route
+) -> None:
+    from app.recommend.travel_estimate import estimate_leg
+
+    items = _day_of(trip).items
+    coords = [(33.4000, 126.5000), (33.4500, 126.6000)]
+    for item, (lat, lng) in zip(items[:2], coords, strict=True):
+        place = Place(
+            id=uuid.uuid4(),
+            name="추정 이동 장소",
+            category="attraction",
+            latitude=Decimal(str(lat)),
+            longitude=Decimal(str(lng)),
+        )
+        db.add(place)
+        item.place = place
+    db.flush()
+    # RouteMove 만 있고 RouteCalculationCache 는 없다 → 추정값으로 채워야 한다.
+    db.add(
+        RouteMove(
+            from_item_id=items[0].id,
+            to_item_id=items[1].id,
+            transport=TransportType.RENTAL_CAR,
+        )
+    )
+    db.flush()
+
+    body = client.get(f"/api/v1/routes/{trip.id}").json()
+    move = body["routeDays"][0]["items"][0]["moveToNext"]
+    expected = estimate_leg(coords[0], coords[1], TransportType.RENTAL_CAR)
+
+    assert move["isEstimated"] is True
+    assert move["distanceMeters"] == expected.distance_m
+    assert move["durationMinutes"] == expected.duration_min
+    assert body["distanceSummary"] == {
+        "totalDistanceMeters": expected.distance_m,
+        "totalDurationMinutes": expected.duration_min,
     }
 
 

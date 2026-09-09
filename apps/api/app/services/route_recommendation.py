@@ -32,6 +32,7 @@ from app.integrations.weather.kma import (
 )
 from app.recommend.common.geo import haversine_m
 from app.recommend.config.pace import PACE
+from app.recommend.config.tags import normalize_preferred_tags
 from app.recommend.filters import filter_candidates
 from app.recommend.itinerary import BuildRequest, Itinerary, RouteAnchor, build
 from app.recommend.schemas import Candidate, ScoredCandidate, Weights
@@ -96,7 +97,10 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     # request_text 자유문에서 표준 태그를 보충한다(routes.md·설계 8.3-3). **로컬 변수로만**
     # 쓴다 — request ORM 속성을 바꾸면 아래 커밋에 딸려 영속화된다(이번 생성 한정 원칙).
     # 실패는 TourAPI 와 같은 급으로 무시한다 — 추출이 안 돼도 생성은 계속 간다.
-    merged_tags = frozenset(request.preferred_tags or [])
+    # 과거 요청 행의 preferred_tags 는 한글 라벨일 수 있어(엔진 코드 통일 전 저장분)
+    # 읽는 쪽에서 코드로 한 번 더 정규화한다. 새 행은 이미 코드라 그대로 통과한다.
+    stored_tags = normalize_preferred_tags(request.preferred_tags or [])
+    merged_tags = frozenset(stored_tags)
     if request.request_text:
         try:
             intent = extract_request_intent(request.request_text)
@@ -104,7 +108,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
             logger.warning("request_text 추출 예외: %s", type(error).__name__)
             intent = None
         if intent:
-            merged_tags = merge_preferred_tags(request.preferred_tags, intent.preferred_tags)
+            merged_tags = merge_preferred_tags(stored_tags, intent.preferred_tags)
 
     weights = (
         Weights(**request.applied_weights)
@@ -332,7 +336,9 @@ def suggest_replacements(
         if request.applied_weights is not None
         else resolve_weights(request.priority_preset)
     )
-    preferred_tags = frozenset([*(request.preferred_tags or []), *intent.preferred_tags])
+    preferred_tags = frozenset(
+        [*normalize_preferred_tags(request.preferred_tags or []), *intent.preferred_tags]
+    )
     precipitation_probability = _precipitation_probability(request, start_coord)
     return score_candidates(
         candidates,
@@ -376,7 +382,7 @@ def replace_route_item(
             weights=weights,
             base_coord=start_coord,
             additional_base_coords=tuple(dict.fromkeys(coord for _, coord in stay_coords)),
-            preferred_tags=frozenset(request.preferred_tags or []),
+            preferred_tags=frozenset(normalize_preferred_tags(request.preferred_tags or [])),
             precipitation_probability=_precipitation_probability(request, start_coord),
         ),
     )
