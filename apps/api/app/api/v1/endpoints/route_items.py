@@ -19,6 +19,7 @@ from app.api.dependencies import CurrentUser
 from app.db.models import RouteDay, RouteItem, RouteMove
 from app.db.models.enums import TransportType
 from app.db.session import get_db
+from app.recommend.config.stay import default_stay_minutes
 from app.recommend.tmap import TMapError
 from app.schemas.route import (
     RouteItemCreate,
@@ -139,7 +140,7 @@ def create_route_item(
 
     stay_minutes = payload.stay_minutes
     if stay_minutes is None and place is not None:
-        stay_minutes = place.average_stay_minutes or 60
+        stay_minutes = place.average_stay_minutes or default_stay_minutes(place.category)
     ends_at = payload.ends_at
     if ends_at is None and payload.starts_at is not None and stay_minutes is not None:
         ends_at = payload.starts_at + timedelta(minutes=stay_minutes)

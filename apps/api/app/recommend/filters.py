@@ -18,10 +18,10 @@ from app.db.models import (
     RouteRequest,
 )
 from app.db.models.enums import PetPolicyType, ScheduleItemType
+from app.recommend.config.stay import default_stay_minutes
 from app.recommend.schemas import BusinessHour, Candidate, PetPolicy
 from app.services.place_query import rating_expr, saved_count_expr
 
-DEFAULT_STAY_MINUTES = 60
 ITEM_TYPE_BY_CATEGORY = {
     "accommodation": ScheduleItemType.ACCOMMODATION,
     "attraction": ScheduleItemType.ATTRACTION,
@@ -120,7 +120,9 @@ def filter_candidates(
                 item_type=item_type,
                 source_category=place.category,
                 environment=place.environment,
-                average_stay_minutes=place.average_stay_minutes or DEFAULT_STAY_MINUTES,
+                average_stay_minutes=(
+                    place.average_stay_minutes or default_stay_minutes(place.category)
+                ),
                 tags=tags.get(place.id, []),
                 amenities=place.amenities or [],
                 rating_avg=row.rating_avg,

@@ -84,6 +84,7 @@ class PlaceSummary(APISchema):
     id: uuid.UUID
     name: str
     category: str
+    cuisine: str | None = None
     address: str | None
     description: str | None
     primary_image_url: str | None

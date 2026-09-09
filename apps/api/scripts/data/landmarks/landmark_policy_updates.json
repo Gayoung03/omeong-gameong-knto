@@ -1,0 +1,40 @@
+[
+  {
+    "name": "천지연폭포",
+    "category_fix": "attraction",
+    "pet_policy": {
+      "policy_type": "partial_allowed",
+      "leash_required": true,
+      "carrier_required": null,
+      "allowed_sizes": [
+        "small"
+      ],
+      "notes": "서귀포시 관광지관리소: 2025-06-13 시범운영 후 동반 입장 허용. 동물등록 완료·체고 40cm 이하 반려견·반려묘, 리드줄 2m 이내, 케이지·유모차 탑승 시 지정 휴게 장소 이용, 배변봉투 지참",
+      "caution_note": "동물등록·체고 40cm 이하·리드줄 2m",
+      "source_url": "https://www.mediajeju.com/news/articleView.html?idxno=362105",
+      "verified_at": "2026-09-08"
+    }
+  },
+  {
+    "name": "낙천리아홉굿의자마을",
+    "pet_policy": {
+      "policy_type": "outdoor_only",
+      "leash_required": true,
+      "notes": "비짓제주 '반려동물과 함께하는 지속가능 여행지'(무장애 여행지) 등록",
+      "caution_note": "목줄 착용·배변봉투 지참",
+      "source_url": "https://www.visitjeju.net/kr/detail/view?contentsid=CNTS_200000000009901",
+      "verified_at": "2026-09-08"
+    }
+  },
+  {
+    "name": "9.81파크 제주",
+    "pet_policy": {
+      "policy_type": "partial_allowed",
+      "leash_required": true,
+      "notes": "등길이 40cm 이하·몸무게 13kg 이하 권장, 매주 토요일 16:30부터 반려동물 동반 운영(2024-05 확인)",
+      "caution_note": "토요일 16:30 이후, 소형견 권장",
+      "source_url": "https://korean.visitkorea.or.kr/detail/rem_detail.do?cotid=5bf42aa9-c0dd-4456-a34b-478f953766df",
+      "verified_at": "2026-09-08"
+    }
+  }
+]
