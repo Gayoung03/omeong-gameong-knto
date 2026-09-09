@@ -5,11 +5,18 @@ from math import log1p
 
 from pydantic import Field
 
-from app.db.models.enums import PetPolicyType, PlaceEnvironment, ScheduleItemType
+from app.db.models.enums import PetPolicyType, PetSize, PlaceEnvironment, ScheduleItemType
 from app.recommend.common.geo import haversine_m
 from app.recommend.config.tags import STANDARD_TAG_SET
 from app.recommend.config.weights import MAX_DAILY_DISTANCE_M
-from app.recommend.schemas import Candidate, RecommendationSchema, ScoredCandidate, Weights
+from app.recommend.schemas import (
+    Candidate,
+    PetPolicy,
+    PetProfile,
+    RecommendationSchema,
+    ScoredCandidate,
+    Weights,
+)
 
 SCORE_LABELS = {
     "preference": "이번 여행 선호",
@@ -20,6 +27,17 @@ SCORE_LABELS = {
     "popularity": "인기",
 }
 
+# 반려 적합도 계수(_fit_factor). 값 자체가 아니라 근거를 이름으로 남긴다.
+#: 최대 허용 체중의 몇 % 를 넘으면 감점하는가(100% 초과는 필터에서 이미 제외).
+WEIGHT_WARNING_RATIO = 0.7
+#: 체중이 경고 구간(70~100%)일 때 곱하는 계수.
+OVERWEIGHT_FIT = 0.85
+#: 이동장 필수인데 대형/중형이라 현실성이 떨어질 때의 계수.
+CARRIER_LARGE_FIT = 0.6
+CARRIER_MEDIUM_FIT = 0.8
+#: 입마개 필수가 대형에게 주는 부담 계수(소형은 영향 없음).
+MUZZLE_LARGE_FIT = 0.9
+
 
 class ScoringContext(RecommendationSchema):
     weights: Weights
@@ -28,6 +46,7 @@ class ScoringContext(RecommendationSchema):
     preferred_tags: frozenset[str] = Field(default_factory=frozenset)
     precipitation_probability: int | None = Field(default=None, ge=0, le=100)
     max_daily_distance_m: float = Field(default=MAX_DAILY_DISTANCE_M, gt=0)
+    pets: tuple[PetProfile, ...] = ()
 
 
 def preference_score(
@@ -69,8 +88,29 @@ def weather_score(
     return 1 - 0.5 * precipitation
 
 
-def pet_score(candidate: Candidate) -> float:
-    """허용 범위·이용 조건·정보 신뢰도로 반려 편의를 계산한다."""
+def _fit_factor(policy: PetPolicy, pet: PetProfile) -> float:
+    """한 반려동물의 정책 적합도 계수(≤1). 곱셈으로 합쳐 base 점수에 적용한다."""
+    if policy.allowed_sizes and pet.size is not None and pet.size.value not in policy.allowed_sizes:
+        return 0.0  # 필터에서 이미 BLOCKED 라 보통 없음
+    factor = 1.0
+    if (
+        policy.max_weight_kg is not None
+        and pet.weight_kg is not None
+        and pet.weight_kg > policy.max_weight_kg * WEIGHT_WARNING_RATIO
+    ):
+        factor *= OVERWEIGHT_FIT
+    if policy.carrier_required:
+        if pet.size == PetSize.LARGE:
+            factor *= CARRIER_LARGE_FIT  # 대형견을 안고 이동은 비현실적
+        elif pet.size == PetSize.MEDIUM:
+            factor *= CARRIER_MEDIUM_FIT
+    if policy.muzzle_required and pet.size == PetSize.LARGE:
+        factor *= MUZZLE_LARGE_FIT  # 소형은 영향 없음
+    return factor
+
+
+def pet_score(candidate: Candidate, pets: Sequence[PetProfile] = ()) -> float:
+    """허용 범위·이용 조건·정보 신뢰도에 동반 반려동물 적합도를 곱해 반려 편의를 계산한다."""
 
     policy = candidate.pet_policy
     if policy is None:
@@ -97,6 +137,9 @@ def pet_score(candidate: Candidate) -> float:
     score = openness * convenience * reliability
     if policy.policy_type == PetPolicyType.UNKNOWN:
         score *= 0.5
+    # 동반 반려동물이 있으면 가장 덜 맞는 반려동물 기준으로 적합도 계수를 곱한다.
+    if pets:
+        score *= min(_fit_factor(policy, pet) for pet in pets)
     return _clamp(score)
 
 
@@ -118,7 +161,7 @@ def score_candidates(
             "preference": preference_score(
                 set(context.preferred_tags), set(candidate.tags), candidate.item_type
             ),
-            "pet": pet_score(candidate),
+            "pet": pet_score(candidate, context.pets),
             "proximity": max(
                 proximity_score(base, (candidate.lat, candidate.lng), context.max_daily_distance_m)
                 for base in (context.base_coord, *context.additional_base_coords)

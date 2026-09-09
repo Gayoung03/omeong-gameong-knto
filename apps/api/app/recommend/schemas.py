@@ -10,7 +10,14 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.db.models.enums import PetPolicyType, PlaceEnvironment, ScheduleItemType
+from app.db.models.enums import (
+    PetActivityLevel,
+    PetEnergyLevel,
+    PetPolicyType,
+    PetSize,
+    PlaceEnvironment,
+    ScheduleItemType,
+)
 
 
 class CandidateTier(StrEnum):
@@ -64,7 +71,19 @@ class PetPolicy(RecommendationSchema):
     carrier_required: bool | None = None
     leash_required: bool | None = None
     vaccination_required: bool | None = None
+    muzzle_required: bool | None = None
     reliability_score: float | None = Field(default=None, ge=0, le=100)
+
+
+class PetProfile(RecommendationSchema):
+    """반려 점수·하루 구성에 쓰는 반려동물 프로필. ORM 대신 엔진 경계에서 이걸 쓴다."""
+
+    size: PetSize | None = None
+    weight_kg: float | None = Field(default=None, ge=0)
+    age_years: int | None = Field(default=None, ge=0)
+    activity_level: PetActivityLevel | None = None
+    car_sickness: bool | None = None
+    energy_level: PetEnergyLevel | None = None
 
 
 class Candidate(RecommendationSchema):

@@ -4,10 +4,12 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.v1.endpoints import routes
-from app.db.models import Place, Route, RouteRequest
+from app.db.models import Pet, Place, Route, RouteRequest, RouteRequestPet
+from app.db.models.enums import PetEnergyLevel
 from app.integrations.tour_api.kto import TourPlace
 from app.recommend.tmap import RouteLeg
 from app.recommend.weights import resolve_weights
@@ -324,3 +326,114 @@ def test_replacement_rejects_place_that_fails_hard_filter(
     assert response.status_code == 422
     db.refresh(item)
     assert item.place_id == original_place_id
+
+
+def _seed_departure(db: Session) -> Place:
+    place = Place(
+        id=uuid.uuid4(),
+        name="출발지",
+        category="attraction",
+        latitude=33.4996,
+        longitude=126.5312,
+    )
+    db.add(place)
+    db.flush()
+    return place
+
+
+def test_route_request_pets_saves_energy_level_snapshot(
+    client: TestClient, db: Session
+) -> None:
+    place = _seed_departure(db)
+    pet = client.post("/api/v1/pets", json={"name": "몽이", "species": "dog"}).json()
+
+    payload = _payload(place.id)
+    payload["pets"] = [{"petId": pet["id"], "energyLevel": "low"}]
+    response = client.post("/api/v1/route-requests", json=payload)
+
+    assert response.status_code == 202
+    request_id = uuid.UUID(response.json()["routeRequestId"])
+    rows = list(
+        db.scalars(
+            select(RouteRequestPet).where(RouteRequestPet.route_request_id == request_id)
+        )
+    )
+    assert len(rows) == 1
+    assert rows[0].pet_id == uuid.UUID(pet["id"])
+    assert rows[0].energy_level == PetEnergyLevel.LOW
+
+
+def test_route_request_prefers_pets_over_pet_ids(client: TestClient, db: Session) -> None:
+    place = _seed_departure(db)
+    chosen = client.post("/api/v1/pets", json={"name": "몽이", "species": "dog"}).json()
+    ignored = client.post("/api/v1/pets", json={"name": "코코", "species": "cat"}).json()
+
+    payload = _payload(place.id)
+    payload["petIds"] = [ignored["id"]]
+    payload["pets"] = [{"petId": chosen["id"], "energyLevel": "high"}]
+    response = client.post("/api/v1/route-requests", json=payload)
+
+    assert response.status_code == 202
+    request_id = uuid.UUID(response.json()["routeRequestId"])
+    pet_ids = set(
+        db.scalars(
+            select(RouteRequestPet.pet_id).where(
+                RouteRequestPet.route_request_id == request_id
+            )
+        )
+    )
+    assert pet_ids == {uuid.UUID(chosen["id"])}  # pets 가 우선, petIds 는 무시
+
+
+def test_route_request_rejects_other_users_pet_in_pets(
+    client: TestClient, db: Session, stranger
+) -> None:
+    place = _seed_departure(db)
+    stranger_pet = Pet(id=uuid.uuid4(), user_id=stranger.id, name="남의개", species="dog")
+    db.add(stranger_pet)
+    db.flush()
+
+    payload = _payload(place.id)
+    payload["pets"] = [{"petId": str(stranger_pet.id), "energyLevel": "normal"}]
+    response = client.post("/api/v1/route-requests", json=payload)
+
+    assert response.status_code == 403
+
+
+def test_route_request_empty_pets_means_no_pets_ignoring_pet_ids(
+    client: TestClient, db: Session
+) -> None:
+    # pets:[] 를 명시하면 "반려동물 없음". petIds 로 폴백하지 않는다(생략과 구분).
+    place = _seed_departure(db)
+    pet = client.post("/api/v1/pets", json={"name": "몽이", "species": "dog"}).json()
+
+    payload = _payload(place.id)
+    payload["petIds"] = [pet["id"]]
+    payload["pets"] = []
+    response = client.post("/api/v1/route-requests", json=payload)
+
+    assert response.status_code == 202
+    request_id = uuid.UUID(response.json()["routeRequestId"])
+    rows = list(
+        db.scalars(
+            select(RouteRequestPet).where(RouteRequestPet.route_request_id == request_id)
+        )
+    )
+    assert rows == []
+
+
+def test_route_request_rejects_duplicate_pet_id_in_pets(
+    client: TestClient, db: Session
+) -> None:
+    place = _seed_departure(db)
+    pet = client.post("/api/v1/pets", json={"name": "몽이", "species": "dog"}).json()
+
+    payload = _payload(place.id)
+    payload["pets"] = [
+        {"petId": pet["id"], "energyLevel": "high"},
+        {"petId": pet["id"], "energyLevel": "low"},
+    ]
+    response = client.post("/api/v1/route-requests", json=payload)
+
+    assert response.status_code == 422
+    assert "중복된 petId" in response.text

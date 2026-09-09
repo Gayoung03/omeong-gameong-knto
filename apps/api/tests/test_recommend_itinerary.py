@@ -4,6 +4,7 @@ from datetime import date, datetime, time
 from zoneinfo import ZoneInfo
 
 from app.db.models.enums import ScheduleItemType, TransportType, TripPace
+from app.recommend.config.pace import PaceRule, effective_rule
 from app.recommend.itinerary import (
     DINNER_START,
     DINNER_START_BY,
@@ -14,7 +15,7 @@ from app.recommend.itinerary import (
     RouteAnchor,
     build,
 )
-from app.recommend.schemas import BusinessHour, CandidateTier, ScoredCandidate
+from app.recommend.schemas import BusinessHour, CandidateTier, PetProfile, ScoredCandidate
 from app.recommend.tmap import RouteLeg, TMapError
 
 KST = ZoneInfo("Asia/Seoul")
@@ -56,13 +57,16 @@ def _candidate(
     )
 
 
-def _request(pace: TripPace = TripPace.NORMAL) -> BuildRequest:
+def _request(
+    pace: TripPace = TripPace.NORMAL, *, pace_rule: PaceRule | None = None
+) -> BuildRequest:
     return BuildRequest(
         start_at=datetime(2026, 8, 31, 9, tzinfo=KST),
         end_at=datetime(2026, 8, 31, 19, tzinfo=KST),
         pace=pace,
         transport=TransportType.RENTAL_CAR,
         start_coord=(33.5, 126.53),
+        pace_rule=pace_rule,
     )
 
 
@@ -653,3 +657,59 @@ def test_unfilled_slot_candidates_are_needs_check_restaurants_sorted() -> None:
     assert all(candidate.item_type == ScheduleItemType.RESTAURANT for candidate in candidates)
     assert len(candidates) == 3  # 4개 중 상위 3
     assert [candidate.total_score for candidate in candidates] == [0.8, 0.6, 0.5]
+
+
+def test_travel_limit_prefers_nearby_candidate_over_higher_scored_far_one() -> None:
+    # 차멀미 규칙(이동 상한 40분)이 있으면 첫 방문은 멀지만 점수 높은 후보 대신
+    # 상한 안의 가까운 후보를 고른다. estimate_leg 는 시작점(33.5, 126.53)에서
+    # 위도 +0.22(≈24km)면 48분, 같은 좌표면 7분으로 추정한다.
+    near = _candidate(0.5, lat=33.5, lng=126.53)
+    far = _candidate(0.9, lat=33.72, lng=126.53)
+    car_sick_rule = effective_rule(TripPace.NORMAL, [PetProfile(car_sickness=True)])
+
+    result = build([near, far], _request(pace_rule=car_sick_rule), _fast_route)
+
+    assert result.days[0].items[0].candidate.place_id == near.place_id
+
+
+def test_travel_limit_off_keeps_highest_scored_far_candidate_first() -> None:
+    # 상한이 없으면 같은 후보 집합에서 점수 높은 먼 후보를 먼저 배치한다.
+    near = _candidate(0.5, lat=33.5, lng=126.53)
+    far = _candidate(0.9, lat=33.72, lng=126.53)
+
+    result = build([near, far], _request(), _fast_route)
+
+    assert result.days[0].items[0].candidate.place_id == far.place_id
+
+
+def test_travel_limit_relaxes_when_no_candidate_within_limit() -> None:
+    # 상한 안에 후보가 하나도 없으면 완화 사다리가 상한을 풀어 먼 후보라도 채운다.
+    far = _candidate(0.9, lat=33.72, lng=126.53)
+    car_sick_rule = effective_rule(TripPace.NORMAL, [PetProfile(car_sickness=True)])
+
+    result = build([far], _request(pace_rule=car_sick_rule), _fast_route)
+
+    placed = [item.candidate.place_id for item in result.days[0].items]
+    assert far.place_id in placed
+
+
+def test_travel_limit_applies_to_return_leg_to_stay() -> None:
+    # 시작점엔 가깝지만 그날 숙소 복귀가 상한을 넘는 고득점 후보는 제외되고,
+    # 시작·숙소 양쪽 상한 안에 드는 후보가 먼저 배치된다.
+    stay = RouteAnchor(name="숙소", coord=(33.72, 126.53), item_type=ScheduleItemType.ACCOMMODATION)
+    near = _candidate(0.5, lat=33.61, lng=126.53)
+    far_from_stay = _candidate(0.9, lat=33.5, lng=126.53)
+    car_sick_rule = effective_rule(TripPace.NORMAL, [PetProfile(car_sickness=True)])
+    request = BuildRequest(
+        start_at=datetime(2026, 8, 31, 9, tzinfo=KST),
+        end_at=datetime(2026, 8, 31, 19, tzinfo=KST),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        start_coord=(33.5, 126.53),
+        pace_rule=car_sick_rule,
+        day_end_anchors={date(2026, 8, 31): stay},
+    )
+
+    result = build([near, far_from_stay], request, _fast_route)
+
+    assert result.days[0].items[0].candidate.place_id == near.place_id

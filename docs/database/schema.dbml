@@ -22,6 +22,24 @@ Enum pet_size {
   large
 }
 
+Enum pet_activity_level {
+  low
+  normal
+  high
+}
+
+Enum pet_sociability_level {
+  low
+  normal
+  high
+}
+
+Enum pet_energy_level {
+  low
+  normal
+  high
+}
+
 Enum trip_pace {
   relaxed
   normal
@@ -161,6 +179,9 @@ Table pets {
   birth_date date
   image_url text
   health_notes text
+  activity_level pet_activity_level [note: '추천 개인화: NULL=규칙 미적용']
+  sociability pet_sociability_level [note: '추천 개인화: 1차는 라벨 노출만']
+  car_sickness boolean [note: 'NULL=모름. true 면 이동시간 상한·휴식 상향']
   is_primary boolean [not null, default: false]
   deleted_at timestamptz
   created_at timestamptz [not null]
@@ -316,6 +337,7 @@ Table route_requests {
 Table route_request_pets {
   route_request_id uuid [ref: > route_requests.id]
   pet_id uuid [ref: > pets.id]
+  energy_level pet_energy_level [note: '이번 여행 컨디션 스냅샷. NULL=미적용(pets.activity_level 폴백)']
 
   indexes {
     (route_request_id, pet_id) [pk]

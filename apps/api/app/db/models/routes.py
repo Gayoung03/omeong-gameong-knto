@@ -27,6 +27,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.db.models.enums import (
+    PetEnergyLevel,
     RouteCreationType,
     RouteItemSlotStatus,
     RouteStatus,
@@ -87,6 +88,10 @@ class RouteRequestPet(Base):
     )
     pet_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("pets.id", ondelete="RESTRICT"), primary_key=True
+    )
+    # 이번 여행 컨디션 스냅샷(NULL = 미적용, pets.activity_level 로 폴백).
+    energy_level: Mapped[PetEnergyLevel | None] = mapped_column(
+        db_enum(PetEnergyLevel, "pet_energy_level")
     )
 
 

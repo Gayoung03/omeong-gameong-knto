@@ -95,6 +95,9 @@
 | `weight_kg` | 입장 무게 제한 판단에 사용 |
 | `birth_date` | 나이 계산용 |
 | `health_notes` | 건강 주의사항 |
+| `activity_level` | 추천 개인화: `low`/`normal`/`high`. `low` 면 하루 장소 수 −1·휴식 상향 (nullable, NULL=미적용) |
+| `sociability` | 추천 개인화: `low`/`normal`/`high`. 1차는 라벨 노출만 (nullable) |
+| `car_sickness` | 추천 개인화: `true` 면 구간 이동시간 상한·휴식 상향. NULL=모름 |
 | `is_primary` | 대표 반려동물 여부 |
 | `deleted_at` | 프로필 삭제 시각. null이면 활성 프로필 |
 
@@ -301,6 +304,11 @@
 루트 요청과 동행 반려동물의 N:M 연결 테이블입니다.
 
 반려동물이 여러 마리면 모든 반려동물의 종류·크기·무게 조건을 모두 충족하는 장소만 추천합니다.
+
+| 컬럼 | 설명 |
+| --- | --- |
+| `route_request_id`, `pet_id` | 복합 PK |
+| `energy_level` | 이번 여행 컨디션(`low`/`normal`/`high`). 우선순위 energy_level > `pets.activity_level` > 미적용. NULL=미적용 |
 
 ### `route_request_stays`
 

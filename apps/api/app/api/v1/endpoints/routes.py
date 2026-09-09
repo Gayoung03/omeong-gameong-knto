@@ -51,6 +51,7 @@ from app.schemas.route import (
     RouteReplacementSuggestion,
     RouteRequestAccepted,
     RouteRequestCreate,
+    RouteRequestPetInput,
     RouteShareResponse,
     RouteSlotSummary,
     RouteUpdate,
@@ -119,10 +120,19 @@ def create_route_request(
             detail=f"현재 루트 추천에서 지원하지 않는 이동수단입니다: {payload.transport.value}",
         )
 
+    # pets(이번 여행 컨디션 포함)를 보냈으면 우선(빈 배열이면 반려동물 없음), 안 보냈으면
+    # petIds. "pets" 를 보냈는지(model_fields_set)로 빈 배열과 생략을 구분한다.
+    pet_inputs = (
+        payload.pets
+        if "pets" in payload.model_fields_set
+        else [RouteRequestPetInput(pet_id=pet_id) for pet_id in payload.pet_ids]
+    )
+    pet_id_list = [pet_input.pet_id for pet_input in pet_inputs]
+    energy_by_pet = {pet_input.pet_id: pet_input.energy_level for pet_input in pet_inputs}
     pets = []
-    if payload.pet_ids:
-        pets = list(db.scalars(select(Pet).where(Pet.id.in_(payload.pet_ids))).all())
-        if len(pets) != len(set(payload.pet_ids)):
+    if pet_id_list:
+        pets = list(db.scalars(select(Pet).where(Pet.id.in_(pet_id_list))).all())
+        if len(pets) != len(set(pet_id_list)):
             raise HTTPException(status_code=404, detail="반려동물을 찾을 수 없습니다")
         if any(pet.user_id != current_user.id for pet in pets):
             raise HTTPException(status_code=403, detail="다른 사용자의 반려동물입니다")
@@ -157,7 +167,13 @@ def create_route_request(
     db.flush()
 
     for pet in pets:
-        db.add(RouteRequestPet(route_request_id=request.id, pet_id=pet.id))
+        db.add(
+            RouteRequestPet(
+                route_request_id=request.id,
+                pet_id=pet.id,
+                energy_level=energy_by_pet.get(pet.id),
+            )
+        )
     for stay in payload.stays:
         db.add(
             RouteRequestStay(
