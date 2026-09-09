@@ -5,6 +5,7 @@
 """
 
 import uuid
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -63,7 +64,7 @@ def _save_anchor(
     route_day_id: uuid.UUID,
     anchor: RouteAnchor,
     sort_order: int,
-    starts_at,
+    starts_at: datetime | None,
 ) -> uuid.UUID:
     item = RouteItem(
         route_day_id=route_day_id,

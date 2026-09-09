@@ -15,11 +15,11 @@ from sqlalchemy.orm import Session
 from app.db.models import Pet, Place, RouteRequest, RouteRequestPet, RouteRequestStay
 from app.db.models.enums import PetEnergyLevel
 from app.integrations.maps.kakao import GeocodedAddress, geocode_address
+from app.recommend.common.geo import Coordinate
 from app.recommend.schemas import PetProfile
 from app.schemas.pet import calculate_age
 from app.services.route_recommendation_errors import LocationResolutionError
 
-Coordinate = tuple[float, float]
 Geocoder = Callable[[str], GeocodedAddress]
 LinkedPet = tuple[Pet, PetEnergyLevel | None]
 

@@ -36,6 +36,7 @@ from app.integrations.llm.request_intent import extract_request_intent, merge_pr
 from app.integrations.llm.route_explanation import generate_trip_explanation
 from app.integrations.tour_api.kto import TourAPIError, TourPlace, get_nearby_places
 from app.integrations.weather.kma import DayForecast, WeatherForecastError, get_daily_forecasts
+from app.recommend.common.geo import Coordinate
 from app.recommend.config.pace import PACE, effective_rule
 from app.recommend.config.tags import normalize_preferred_tags
 from app.recommend.filters import filter_candidates
@@ -68,7 +69,6 @@ from app.services.route_recommendation_tour import _match_tour_places, _with_tou
 from app.services.route_recommendation_weather import _upsert_weather_snapshot, _weather_region
 
 logger = logging.getLogger(__name__)
-Coordinate = tuple[float, float]
 
 
 def generate_route(db: Session, route_id: uuid.UUID) -> None:

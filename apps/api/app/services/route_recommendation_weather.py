@@ -14,9 +14,8 @@ from sqlalchemy.orm import Session
 from app.db.models import WeatherSnapshot
 from app.db.models.enums import WeatherCondition
 from app.integrations.weather.kma import KST, DayForecast, region_key
+from app.recommend.common.geo import Coordinate
 from app.recommend.itinerary.plan import CLOUDY_POP, RAIN_POP
-
-Coordinate = tuple[float, float]
 
 
 def _weather_region(coord: Coordinate) -> str:

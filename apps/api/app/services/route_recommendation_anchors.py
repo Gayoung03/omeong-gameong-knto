@@ -11,10 +11,9 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import Place, Route, RouteDay, RouteItem, RouteRequest, RouteRequestStay
 from app.db.models.enums import ScheduleItemType
+from app.recommend.common.geo import Coordinate
 from app.recommend.itinerary import RouteAnchor
 from app.services.route_recommendation_inputs import _start_coord
-
-Coordinate = tuple[float, float]
 
 
 def _day_anchors(
