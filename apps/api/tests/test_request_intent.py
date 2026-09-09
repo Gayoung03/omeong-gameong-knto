@@ -96,7 +96,7 @@ def _generate_with_request_text(client, db, place, monkeypatch, *, intent_behavi
         rr, "get_route",
         lambda *_a, **_k: RouteLeg(distance_m=0, duration_min=0, polyline=None),
     )
-    monkeypatch.setattr(rr, "get_precipitation_probabilities", lambda *_a, **_k: {})
+    monkeypatch.setattr(rr, "get_daily_forecasts", lambda *_a, **_k: {})
     monkeypatch.setattr(rr, "extract_request_intent", intent_behavior)
 
     restaurant = Place(

@@ -8,18 +8,18 @@ from app.recommend.config.weights import (
     PRESET_MULTIPLIERS,
     USER_CRITERIA_BOOST,
 )
-from app.recommend.schemas import Candidate, PetPolicy
+from app.recommend.schemas import Candidate, PetPolicy, Weights
 from app.recommend.scoring import ScoringContext, score_candidates
-from app.recommend.weights import resolve_weights
+from app.recommend.weights import backfill_weather_signal, resolve_weights
 
 
 def test_initial_weights_sum_to_one() -> None:
     assert INITIAL_WEIGHTS == {
-        "preference": 0.20,
-        "pet": 0.45,
-        "proximity": 0.25,
+        "preference": 0.22,
+        "pet": 0.50,
+        "proximity": 0.28,
         "rating": 0.0,
-        "weather": 0.10,
+        "weather": 0.0,
         "popularity": 0.0,
     }
     assert sum(INITIAL_WEIGHTS.values()) == pytest.approx(1.0)
@@ -39,7 +39,7 @@ def test_preset_multipliers_match_confirmed_policy() -> None:
         "taste": {"preference": 2.0},
         "pet": {"pet": 2.0},
         "proximity": {"proximity": 2.0},
-        "healing": {"weather": 2.0},
+        "healing": {},
     }
     assert USER_CRITERIA_BOOST == 2.0
 
@@ -72,7 +72,7 @@ def test_user_criteria_boosts_selected_weight_without_mutating_constants() -> No
     [
         ["preference"],
         ["pet", "proximity"],
-        ["preference", "pet", "weather"],
+        ["preference", "pet", "proximity"],
     ],
 )
 def test_manual_criteria_are_equally_doubled_and_normalized(criteria: list[str]) -> None:
@@ -96,21 +96,23 @@ def test_unknown_user_criterion_is_rejected() -> None:
         resolve_weights(user_criteria=["unknown"])
 
 
-def test_healing_preset_and_weather_criterion_stay_effective() -> None:
-    """weather=0 이면 healing·weather 기준이 balanced 와 같아져 조용히 무효화된다.
+def test_healing_preset_and_weather_criterion_leave_weather_signal() -> None:
+    """[Phase 5] weather 축은 0 이지만 healing·weather 기준은 스냅샷에 고정 신호를 남긴다.
 
-    Phase 5 전까지 weather 를 0 이 아닌 값으로 남겨 앱의 두 선택지를 살려 둔다.
-    (기존 test_manual_criteria_are_equally_doubled_and_normalized 는 구현 공식을
-    그대로 재현하는 항진명제라 이 무효화를 잡지 못해 별도 케이스로 둔다.)
+    생성기는 weights.weather > 0 을 실내 우선 규칙(indoor_bias)의 신호로 읽는다.
+    balanced 는 0(신호 없음), healing·weather 기준은 0.10 을 정규화한 양수.
     """
     balanced = resolve_weights("balanced")
+    assert balanced.weather == 0.0
 
     healing = resolve_weights("healing")
     assert healing != balanced
-    assert healing.weather > balanced.weather
+    assert healing.weather > 0
+    # weather 0.10 을 얹고 정규화(pet .50/prox .28/pref .22 = 1.0, +0.10 → /1.10).
+    assert healing.weather == pytest.approx(0.10 / 1.10)
 
     weather_boost = resolve_weights(user_criteria=["weather"])
-    assert weather_boost.weather > balanced.weather
+    assert weather_boost.weather == pytest.approx(0.10 / 1.10)
 
 
 def test_taste_preset_does_not_lower_total_than_balanced_for_matching_candidate() -> None:
@@ -147,3 +149,41 @@ def test_taste_preset_does_not_lower_total_than_balanced_for_matching_candidate(
     )[0]
 
     assert taste.total_score >= balanced.total_score
+
+
+def test_backfill_zeroes_weather_for_non_healing_snapshot() -> None:
+    # 옛 balanced 스냅샷(weather 0.15 등 양수) → weather 0, 합 1 유지.
+    old = {
+        "preference": 0.20,
+        "pet": 0.45,
+        "proximity": 0.25,
+        "rating": 0.0,
+        "weather": 0.10,
+        "popularity": 0.0,
+    }
+
+    result = backfill_weather_signal(old, "balanced")
+
+    assert result["weather"] == 0.0
+    assert sum(result.values()) == pytest.approx(1.0)
+    # Weights 검증기(합 1·6키)를 통과해야 편집 API 가 500 이 안 난다.
+    assert Weights(**result)
+
+
+def test_backfill_keeps_weather_signal_for_healing_snapshot() -> None:
+    old = {
+        "preference": 0.18,
+        "pet": 0.41,
+        "proximity": 0.23,
+        "rating": 0.0,
+        "weather": 0.18,
+        "popularity": 0.0,
+    }
+
+    result = backfill_weather_signal(old, "healing")
+
+    assert result["weather"] > 0
+    assert sum(result.values()) == pytest.approx(1.0)
+    assert Weights(**result)
+    # 다른 축의 상대 비율은 보존된다(weather 만 신호로 교체 후 재정규화).
+    assert result["pet"] / result["preference"] == pytest.approx(0.41 / 0.18)

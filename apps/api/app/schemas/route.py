@@ -16,6 +16,7 @@ from app.db.models.enums import (
     ScheduleItemType,
     TransportType,
     TripPace,
+    WeatherCondition,
 )
 from app.schemas.base import APISchema
 from app.schemas.validators import OptionalImageUrl
@@ -175,6 +176,16 @@ class RouteItemResponse(APISchema):
     move_to_next: RouteMoveResponse | None = None
 
 
+class RouteDayWeather(APISchema):
+    """그날 적용한 날씨 스냅샷(route_days.weather_snapshot_id 조인). 계산값."""
+
+    condition: WeatherCondition
+    temperature: float | None
+    min_temperature: float | None
+    max_temperature: float | None
+    precipitation_probability: int | None
+
+
 class RouteDayResponse(APISchema):
     """여행의 하루."""
 
@@ -182,6 +193,8 @@ class RouteDayResponse(APISchema):
     day_number: int
     route_date: date
     title: str | None
+    #: 계산값. weather_snapshots 조인으로 엔드포인트가 채운다. 없으면 null.
+    weather: RouteDayWeather | None = None
     items: list[RouteItemResponse]
 
 

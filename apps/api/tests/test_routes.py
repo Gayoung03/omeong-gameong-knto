@@ -348,7 +348,7 @@ def test_빈_슬롯에_장소를_넣으면_채워지고_후보가_지워진다(
     client: TestClient, db: Session, owner: User, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "app.services.route_recommendation.get_precipitation_probabilities",
+        "app.services.route_recommendation.get_daily_forecasts",
         lambda *_args, **_kwargs: {},
     )
     kst = timezone(timedelta(hours=9))
@@ -468,7 +468,7 @@ def test_앞뒤_채워진_사이_빈_슬롯을_채우면_이동이_재연결된�
     client: TestClient, db: Session, owner: User, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "app.services.route_recommendation.get_precipitation_probabilities",
+        "app.services.route_recommendation.get_daily_forecasts",
         lambda *_args, **_kwargs: {},
     )
     monkeypatch.setattr(

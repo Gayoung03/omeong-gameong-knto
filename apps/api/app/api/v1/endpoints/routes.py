@@ -23,6 +23,7 @@ from app.db.models import (
     RouteRequest,
     RouteRequestPet,
     RouteRequestStay,
+    WeatherSnapshot,
 )
 from app.db.models.enums import RouteCreationType, RouteItemSlotStatus, RouteStatus
 from app.db.session import BackgroundSessionFactory, get_background_session, get_db
@@ -39,6 +40,7 @@ from app.recommend.travel_estimate import SUPPORTED_TRANSPORTS, estimate_leg
 from app.recommend.weights import resolve_weights
 from app.schemas.route import (
     RouteCreate,
+    RouteDayWeather,
     RouteDetail,
     RouteDistanceSummary,
     RouteEditSuggestionRequest,
@@ -605,6 +607,7 @@ def _fill_computed(
         total_duration_minutes=total_duration_minutes,
     )
     detail.slot_summary = _slot_summary(db, route.id)
+    _fill_day_weather(db, route, detail)
 
     # 슬롯별 대안 후보(route_item_candidates). 같은 날짜 편집 시 삭제되어 빈 배열이 된다.
     candidate_rows = (
@@ -665,6 +668,45 @@ def _fill_computed(
             logger.warning("TourAPI route highlights lookup failed: %s", error)
 
     return detail
+
+
+def _fill_day_weather(
+    db: Session, route: Route, detail: RouteDetail | SharedRouteDetail
+) -> None:
+    """route_days.weather_snapshot_id 조인으로 각 하루의 weather 를 채운다(없으면 null)."""
+    snapshot_ids = {
+        day.weather_snapshot_id
+        for day in route.route_days
+        if day.weather_snapshot_id is not None
+    }
+    if not snapshot_ids:
+        return
+    snapshots = {
+        snapshot.id: snapshot
+        for snapshot in db.scalars(
+            select(WeatherSnapshot).where(WeatherSnapshot.id.in_(snapshot_ids))
+        ).all()
+    }
+    snapshot_by_day = {
+        day.id: snapshots[day.weather_snapshot_id]
+        for day in route.route_days
+        if day.weather_snapshot_id in snapshots
+    }
+    for response_day in detail.route_days:
+        snapshot = snapshot_by_day.get(response_day.id)
+        if snapshot is None:
+            continue
+        response_day.weather = RouteDayWeather(
+            condition=snapshot.condition,
+            temperature=float(snapshot.temperature) if snapshot.temperature is not None else None,
+            min_temperature=(
+                float(snapshot.min_temperature) if snapshot.min_temperature is not None else None
+            ),
+            max_temperature=(
+                float(snapshot.max_temperature) if snapshot.max_temperature is not None else None
+            ),
+            precipitation_probability=snapshot.precipitation_probability,
+        )
 
 
 def _slot_summary(db: Session, route_id: uuid.UUID) -> RouteSlotSummary:

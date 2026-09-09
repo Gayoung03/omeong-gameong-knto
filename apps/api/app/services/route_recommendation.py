@@ -7,6 +7,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import (
@@ -21,20 +22,26 @@ from app.db.models import (
     RouteRequest,
     RouteRequestPet,
     RouteRequestStay,
+    WeatherSnapshot,
 )
 from app.db.models.enums import (
+    PetEnergyLevel,
     RouteItemSlotStatus,
     RouteStatus,
     ScheduleItemType,
     TransportType,
+    WeatherCondition,
 )
 from app.integrations.llm.request_intent import extract_request_intent, merge_preferred_tags
 from app.integrations.llm.route_edit import RouteEditIntent
 from app.integrations.maps.kakao import GeocodedAddress, geocode_address
 from app.integrations.tour_api.kto import TourAPIError, TourPlace, get_nearby_places
 from app.integrations.weather.kma import (
+    KST,
+    DayForecast,
     WeatherForecastError,
-    get_precipitation_probabilities,
+    get_daily_forecasts,
+    region_key,
 )
 from app.recommend.common.geo import haversine_m
 from app.recommend.config.pace import PACE, effective_rule
@@ -47,6 +54,7 @@ from app.recommend.itinerary import (
     RouteAnchor,
     build,
 )
+from app.recommend.itinerary.plan import CLOUDY_POP, RAIN_POP
 from app.recommend.schemas import (
     Candidate,
     CandidateTier,
@@ -110,9 +118,15 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     if request is None:
         raise RecommendationGenerationError("추천 요청을 찾지 못했습니다")
 
-    pets, stay_coords, start_coord = _request_inputs(db, request)
-    pet_profiles = _pet_profiles(db, request)
-    precipitation_probability = _precipitation_probability(request, start_coord)
+    linked_pets, stay_coords, start_coord = _request_inputs(db, request)
+    pets = [pet for pet, _ in linked_pets]
+    pet_profiles = _pet_profiles_from(linked_pets)
+    day_forecasts = _day_forecasts(request, start_coord)
+    # 날씨 점수 축은 0(하루 구성 규칙으로 이동)이라 점수엔 영향이 없지만, 스키마 호환을
+    # 위해 최대 강수확률을 넘겨둔다.
+    precipitation_probability = max(
+        (forecast.pop_max for forecast in day_forecasts.values()), default=None
+    )
 
     # request_text 자유문에서 표준 태그를 보충한다(routes.md·설계 8.3-3). **로컬 변수로만**
     # 쓴다 — request ORM 속성을 바꾸면 아래 커밋에 딸려 영속화된다(이번 생성 한정 원칙).
@@ -184,6 +198,9 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
             day_start_anchors=day_start_anchors,
             day_end_anchors=day_end_anchors,
             pace_rule=effective_rule(request.pace, pet_profiles),
+            day_forecasts=day_forecasts,
+            # healing 프리셋·weather 기준 신호. 예보와 무관하게 실내 우선 규칙을 켠다.
+            indoor_bias=weights.weather > 0,
         ),
         lambda origin, destination, transport, depart_at: get_route(
             db, origin, destination, transport, depart_at
@@ -194,7 +211,7 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
     if not any(day.items for day in itinerary.days):
         raise RecommendationGenerationError("일정에 배치할 수 있는 장소가 없습니다")
 
-    _save_itinerary(db, route, itinerary)
+    _save_itinerary(db, route, itinerary, day_forecasts, start_coord)
     selected = [item.candidate for day in itinerary.days for item in day.items]
     route.total_score = Decimal(
         str(round(sum(item.total_score for item in selected) / len(selected) * 100, 2))
@@ -319,7 +336,8 @@ def suggest_replacements(
             .where(RouteDay.route_id == route.id, RouteItem.place_id.is_not(None))
         ).all()
     )
-    pets, stay_coords, start_coord = _request_inputs(db, request)
+    linked_pets, stay_coords, start_coord = _request_inputs(db, request)
+    pets = [pet for pet, _ in linked_pets]
     if intent.location_anchor == "stay" and stay_coords:
         start_coord = stay_coords[0][1]
     elif target.place_id is not None:
@@ -343,7 +361,6 @@ def suggest_replacements(
     preferred_tags = frozenset(
         [*normalize_preferred_tags(request.preferred_tags or []), *intent.preferred_tags]
     )
-    precipitation_probability = _precipitation_probability(request, start_coord)
     return score_candidates(
         candidates,
         ScoringContext(
@@ -351,8 +368,9 @@ def suggest_replacements(
             base_coord=start_coord,
             additional_base_coords=tuple(dict.fromkeys(coord for _, coord in stay_coords)),
             preferred_tags=preferred_tags,
-            precipitation_probability=precipitation_probability,
-            pets=_pet_profiles(db, request),
+            # 날씨 축은 하루 구성 규칙으로 옮겨 점수 가중치가 0 이라 편집 경로에선 조회 생략.
+            precipitation_probability=None,
+            pets=_pet_profiles_from(linked_pets),
         ),
     )[:limit]
 
@@ -437,7 +455,8 @@ def replace_route_item(
     if request is None:
         raise RecommendationGenerationError("추천 요청을 찾지 못했습니다")
 
-    pets, stay_coords, start_coord = _request_inputs(db, request)
+    linked_pets, stay_coords, start_coord = _request_inputs(db, request)
+    pets = [pet for pet, _ in linked_pets]
     weights = (
         Weights(**request.applied_weights)
         if request.applied_weights is not None
@@ -450,8 +469,9 @@ def replace_route_item(
             base_coord=start_coord,
             additional_base_coords=tuple(dict.fromkeys(coord for _, coord in stay_coords)),
             preferred_tags=frozenset(normalize_preferred_tags(request.preferred_tags or [])),
-            precipitation_probability=_precipitation_probability(request, start_coord),
-            pets=_pet_profiles(db, request),
+            # 날씨 축은 하루 구성 규칙으로 옮겨 점수 가중치가 0 이라 편집 경로에선 조회 생략.
+            precipitation_probability=None,
+            pets=_pet_profiles_from(linked_pets),
         ),
     )
     scored_by_id = {candidate.place_id: candidate for candidate in scored}
@@ -754,16 +774,44 @@ def _route_item_coord(db: Session, item: RouteItem) -> Coordinate | None:
     return (float(place.latitude), float(place.longitude)) if place is not None else None
 
 
+LinkedPet = tuple[Pet, PetEnergyLevel | None]
+
+
+def _linked_pets(db: Session, request: RouteRequest) -> list[LinkedPet]:
+    """요청에 연결된 반려동물과 이번 여행 컨디션(energy_level)을 한 번에 읽는다.
+
+    필터(반려 정책 판정)는 Pet 을, 점수·하루 구성은 energy_level 을 함께 써서,
+    _request_inputs 와 _pet_profiles 가 같은 조회를 두 번 하지 않게 공용화한다.
+    """
+    rows = db.execute(
+        select(Pet, RouteRequestPet.energy_level)
+        .join(RouteRequestPet, RouteRequestPet.pet_id == Pet.id)
+        .where(RouteRequestPet.route_request_id == request.id)
+        .order_by(Pet.id)
+    ).all()
+    return [(pet, energy_level) for pet, energy_level in rows]
+
+
+def _pet_profiles_from(linked_pets: list[LinkedPet]) -> tuple[PetProfile, ...]:
+    """이미 조회한 반려동물+컨디션으로 반려 점수·하루 구성용 프로필을 만든다."""
+    return tuple(
+        PetProfile(
+            size=pet.size,
+            weight_kg=float(pet.weight_kg) if pet.weight_kg is not None else None,
+            age_years=calculate_age(pet.birth_date),
+            activity_level=pet.activity_level,
+            car_sickness=pet.car_sickness,
+            energy_level=energy_level,
+        )
+        for pet, energy_level in linked_pets
+    )
+
+
 def _request_inputs(
     db: Session,
     request: RouteRequest,
-) -> tuple[list[Pet], list[tuple[RouteRequestStay, Coordinate]], Coordinate]:
-    pet_ids = list(
-        db.scalars(
-            select(RouteRequestPet.pet_id).where(RouteRequestPet.route_request_id == request.id)
-        ).all()
-    )
-    pets = list(db.scalars(select(Pet).where(Pet.id.in_(pet_ids))).all()) if pet_ids else []
+) -> tuple[list[LinkedPet], list[tuple[RouteRequestStay, Coordinate]], Coordinate]:
+    linked_pets = _linked_pets(db, request)
     stays = list(
         db.scalars(
             select(RouteRequestStay)
@@ -793,30 +841,7 @@ def _request_inputs(
         )
         request.departure_latitude = Decimal(str(departure_coord[0]))
         request.departure_longitude = Decimal(str(departure_coord[1]))
-    return pets, stay_coords, _start_coord(db, request, stay_coords)
-
-
-def _pet_profiles(db: Session, request: RouteRequest) -> tuple[PetProfile, ...]:
-    """반려 점수·하루 구성에 쓰는 반려동물 프로필. 요청에 연결된 반려동물의 여행
-    특성(pets)과 이번 여행 컨디션(route_request_pets.energy_level)을 합쳐 만든다.
-    """
-    rows = db.execute(
-        select(Pet, RouteRequestPet.energy_level)
-        .join(RouteRequestPet, RouteRequestPet.pet_id == Pet.id)
-        .where(RouteRequestPet.route_request_id == request.id)
-        .order_by(Pet.id)
-    ).all()
-    return tuple(
-        PetProfile(
-            size=pet.size,
-            weight_kg=float(pet.weight_kg) if pet.weight_kg is not None else None,
-            age_years=calculate_age(pet.birth_date),
-            activity_level=pet.activity_level,
-            car_sickness=pet.car_sickness,
-            energy_level=energy_level,
-        )
-        for pet, energy_level in rows
-    )
+    return linked_pets, stay_coords, _start_coord(db, request, stay_coords)
 
 
 def _start_coord(
@@ -833,20 +858,81 @@ def _start_coord(
     raise LocationResolutionError("출발 장소 또는 숙소 좌표가 필요합니다")
 
 
-def _precipitation_probability(
-    request: RouteRequest,
-    coord: Coordinate,
-) -> int | None:
+def _day_forecasts(request: RouteRequest, coord: Coordinate) -> dict[date, DayForecast]:
+    """여행 날짜별 예보. 예보 범위(3일) 밖·조회 실패면 그 날짜는 없다(규칙 미적용)."""
     dates = {
         date.fromordinal(request.start_at.date().toordinal() + offset)
         for offset in range((request.end_at.date() - request.start_at.date()).days + 1)
     }
     try:
-        forecasts = get_precipitation_probabilities(coord[0], coord[1], dates)
+        return get_daily_forecasts(coord[0], coord[1], dates)
     except WeatherForecastError:
         logger.warning("weather forecast unavailable", exc_info=True)
-        return None
-    return max(forecasts.values()) if forecasts else None
+        return {}
+
+
+def _weather_region(coord: Coordinate) -> str:
+    """기상청 5km 격자 키. weather_snapshots UNIQUE(region, forecast_at)의 region."""
+    return region_key(coord[0], coord[1])
+
+
+def _snapshot_condition(forecast: DayForecast) -> WeatherCondition:
+    """일 단위 강수확률·기온으로 대표 날씨를 고른다(시간별 하늘/강수형태는 미보유).
+
+    강수확률이 높으면 비/눈(영하), 중간이면 흐림, 낮으면 맑음으로 근사한다. 임계값은
+    plan_day 의 규칙 상수(RAIN_POP·CLOUDY_POP)를 재사용한다.
+    """
+    if forecast.pop_max >= RAIN_POP:
+        if forecast.tmin is not None and forecast.tmin <= 0:
+            return WeatherCondition.SNOWY
+        return WeatherCondition.RAINY
+    if forecast.pop_max >= CLOUDY_POP:
+        return WeatherCondition.CLOUDY
+    return WeatherCondition.SUNNY
+
+
+def _representative_temp(forecast: DayForecast) -> float | None:
+    """스냅샷 대표 기온. 오후(15→14→13시 순) 기온을 우선, 없으면 최고기온."""
+    for hour in (15, 14, 13):
+        if hour in forecast.hourly_tmp:
+            return forecast.hourly_tmp[hour]
+    if forecast.tmax is not None:
+        return forecast.tmax
+    return max(forecast.hourly_tmp.values(), default=None)
+
+
+def _upsert_weather_snapshot(
+    db: Session, region: str, coord: Coordinate, route_date: date, forecast: DayForecast
+) -> uuid.UUID:
+    """그날 예보를 weather_snapshots 에 upsert 하고 id 를 돌려준다.
+
+    region 은 격자 키, forecast_at 은 그날 00:00 KST. 같은 격자·날짜를 동시에 생성하는
+    두 요청이 겹쳐도 SELECT→INSERT 는 UNIQUE(region, forecast_at) IntegrityError 로
+    정상 일정을 FAILED 로 만든다. 저장소 첫 ON CONFLICT 도입 — 원자적 upsert 로 막는다.
+    """
+    forecast_at = datetime.combine(route_date, time(0, 0), tzinfo=KST)
+    temperature = _representative_temp(forecast)
+    mutable = {
+        "latitude": Decimal(str(coord[0])),
+        "longitude": Decimal(str(coord[1])),
+        "condition": _snapshot_condition(forecast),
+        "temperature": None if temperature is None else Decimal(str(round(temperature, 1))),
+        "min_temperature": (
+            None if forecast.tmin is None else Decimal(str(round(forecast.tmin, 1)))
+        ),
+        "max_temperature": (
+            None if forecast.tmax is None else Decimal(str(round(forecast.tmax, 1)))
+        ),
+        "precipitation_probability": forecast.pop_max,
+        "source_updated_at": datetime.now(KST),
+    }
+    statement = (
+        pg_insert(WeatherSnapshot)
+        .values(id=uuid.uuid4(), region=region, forecast_at=forecast_at, **mutable)
+        .on_conflict_do_update(index_elements=["region", "forecast_at"], set_=mutable)
+        .returning(WeatherSnapshot.id)
+    )
+    return db.execute(statement).scalar_one()
 
 
 def _day_anchors(
@@ -946,12 +1032,26 @@ def _save_unfilled_candidates(
         )
 
 
-def _save_itinerary(db: Session, route: Route, itinerary: Itinerary) -> None:
+def _save_itinerary(
+    db: Session,
+    route: Route,
+    itinerary: Itinerary,
+    day_forecasts: dict[date, DayForecast],
+    coord: Coordinate,
+) -> None:
+    region = _weather_region(coord)
     for day_number, day in enumerate(itinerary.days, start=1):
+        forecast = day_forecasts.get(day.route_date)
+        weather_snapshot_id = (
+            _upsert_weather_snapshot(db, region, coord, day.route_date, forecast)
+            if forecast is not None
+            else None
+        )
         route_day = RouteDay(
             route_id=route.id,
             day_number=day_number,
             route_date=day.route_date,
+            weather_snapshot_id=weather_snapshot_id,
         )
         db.add(route_day)
         db.flush()
