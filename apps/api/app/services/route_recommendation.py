@@ -30,10 +30,15 @@ from app.db.models.enums import (
     RouteStatus,
     ScheduleItemType,
     TransportType,
+    TripPace,
     WeatherCondition,
 )
 from app.integrations.llm.request_intent import extract_request_intent, merge_preferred_tags
 from app.integrations.llm.route_edit import RouteEditIntent
+from app.integrations.llm.route_explanation import (
+    TripExplanationInput,
+    generate_trip_explanation,
+)
 from app.integrations.maps.kakao import GeocodedAddress, geocode_address
 from app.integrations.tour_api.kto import TourAPIError, TourPlace, get_nearby_places
 from app.integrations.weather.kma import (
@@ -225,12 +230,60 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
         if tour_api_succeeded
         else "한국관광공사 TourAPI 실시간 조회에 실패해 DB 장소로 추천했습니다."
     )
-    route.explanation = (
+    template_explanation = (
         "사용자가 선택한 취향과 우선순위, 숙소 기준 이동 거리를 반영했습니다. "
         + tour_api_explanation
     )
+    # 여행 전체 설명은 규칙 결과 요약으로 LLM 1회 생성하고, 실패·미설정 시 템플릿을 쓴다.
+    route.explanation = (
+        generate_trip_explanation(
+            _explanation_summary(request, itinerary, selected, pet_profiles, weights)
+        )
+        or template_explanation
+    )
     route.status = RouteStatus.GENERATED
     db.commit()
+
+
+#: 여행 설명 프롬프트에 넣을 한글 라벨(설명 전용 — API 계약이 아님).
+_PACE_LABELS = {
+    TripPace.RELAXED: "여유로운",
+    TripPace.NORMAL: "보통",
+    TripPace.PACKED: "빠듯한",
+}
+_TRANSPORT_LABELS = {
+    TransportType.RENTAL_CAR: "렌터카",
+    TransportType.OWN_CAR: "자가용",
+    TransportType.TAXI: "택시",
+    TransportType.PUBLIC_TRANSPORT: "대중교통",
+    TransportType.WALK: "도보",
+    TransportType.FERRY: "배",
+    TransportType.AIRPLANE: "비행기",
+}
+
+
+def _explanation_summary(
+    request: RouteRequest,
+    itinerary: Itinerary,
+    selected: list[ScoredCandidate],
+    pet_profiles: tuple[PetProfile, ...],
+    weights: Weights,
+) -> TripExplanationInput:
+    """규칙 결과에서 설명 프롬프트 입력을 만든다. request_text 원문은 넣지 않는다."""
+    pet_notes: list[str] = []
+    if pet_profiles:
+        pet_notes.append(f"{len(pet_profiles)}마리 동반")
+        if any(pet.car_sickness for pet in pet_profiles):
+            pet_notes.append("차멀미 배려 동선")
+    return TripExplanationInput(
+        day_count=len(itinerary.days),
+        place_count=len(selected),
+        unfilled_count=sum(len(day.unfilled) for day in itinerary.days),
+        pace_label=_PACE_LABELS.get(request.pace, request.pace.value),
+        transport_label=_TRANSPORT_LABELS.get(request.transport, request.transport.value),
+        pet_notes=tuple(pet_notes),
+        weather_note=("비·더위를 고려해 실내 비중을 높였습니다" if weights.weather > 0 else None),
+    )
 
 
 def _tour_api_places(

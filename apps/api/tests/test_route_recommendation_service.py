@@ -728,3 +728,102 @@ def test_upsert_weather_snapshot_is_idempotent_on_region_and_date(db: Session) -
     assert len(rows) == 1
     assert rows[0].precipitation_probability == 80  # 갱신됨
     assert rows[0].condition == WeatherCondition.RAINY
+
+
+def _seed_generatable_route(db: Session, owner) -> Route:
+    """확실 동반 관광지 2곳으로 채워지는 최소 여행. 여행 설명 경로 검증용."""
+    start = datetime(2026, 9, 20, 9, tzinfo=KST)
+    request = RouteRequest(
+        id=uuid.uuid4(),
+        user_id=owner.id,
+        start_at=start,
+        end_at=start + timedelta(hours=8),
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+        companion_count=1,
+        departure_latitude=Decimal("33.4900000"),
+        departure_longitude=Decimal("126.5300000"),
+    )
+    db.add(request)
+    db.flush()
+    route = Route(
+        id=uuid.uuid4(),
+        route_request_id=request.id,
+        user_id=owner.id,
+        title="여행 설명 검증",
+        status=RouteStatus.GENERATING,
+        creation_type=RouteCreationType.RECOMMENDED,
+        version=1,
+        start_at=request.start_at,
+        end_at=request.end_at,
+        pace=TripPace.NORMAL,
+        transport=TransportType.RENTAL_CAR,
+    )
+    db.add(route)
+    db.flush()
+    for index in range(2):
+        attraction = Place(
+            id=uuid.uuid4(),
+            name=f"확실 관광지 {index}",
+            category="attraction",
+            latitude=Decimal("33.4996000") + Decimal(index) / Decimal("10000"),
+            longitude=Decimal("126.5312000"),
+            average_stay_minutes=60,
+            is_active=True,
+        )
+        db.add(attraction)
+        db.flush()
+        db.add(
+            PlacePetPolicy(
+                place_id=attraction.id,
+                policy_type=PetPolicyType.INDOOR_ALLOWED,
+                source=DataProvider.INTERNAL,
+            )
+        )
+    db.flush()
+    return route
+
+
+def test_generate_route_uses_llm_explanation_once(
+    db: Session, owner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """여행 설명은 LLM 1회 결과를 쓴다(장소별 호출 없음)."""
+    monkeypatch.setattr(rr, "_tour_api_places", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        rr, "get_route", lambda *_a, **_k: RouteLeg(distance_m=1000, duration_min=10, polyline=None)
+    )
+    monkeypatch.setattr(rr, "get_daily_forecasts", lambda *_a, **_k: {})
+
+    calls: list[object] = []
+
+    def fake_explanation(summary: object) -> str:
+        calls.append(summary)
+        return "몽이랑 여유롭게 즐기는 제주 여행입니다."
+
+    monkeypatch.setattr(rr, "generate_trip_explanation", fake_explanation)
+
+    route = _seed_generatable_route(db, owner)
+    generate_route(db, route.id)
+
+    db.refresh(route)
+    assert route.explanation == "몽이랑 여유롭게 즐기는 제주 여행입니다."
+    assert len(calls) == 1  # 여행당 1회, 장소별 호출 없음
+
+
+def test_generate_route_falls_back_to_template_when_llm_unavailable(
+    db: Session, owner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """LLM 실패·미설정(None)이면 템플릿 설명으로 폴백한다."""
+    monkeypatch.setattr(rr, "_tour_api_places", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        rr, "get_route", lambda *_a, **_k: RouteLeg(distance_m=1000, duration_min=10, polyline=None)
+    )
+    monkeypatch.setattr(rr, "get_daily_forecasts", lambda *_a, **_k: {})
+    monkeypatch.setattr(rr, "generate_trip_explanation", lambda *_a, **_k: None)
+
+    route = _seed_generatable_route(db, owner)
+    generate_route(db, route.id)
+
+    db.refresh(route)
+    assert route.explanation is not None
+    assert route.explanation.startswith("사용자가 선택한 취향과 우선순위")
