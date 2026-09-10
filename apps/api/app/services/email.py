@@ -1,12 +1,12 @@
-"""메일 발송 — Resend HTTP API 또는 SMTP 로 보내고, 둘 다 없으면 로그로만 남긴다.
+"""메일 발송 — Brevo HTTP API 또는 SMTP 로 보내고, 둘 다 없으면 로그로만 남긴다.
 
 ## 세 가지 모드 (우선순위대로)
 
-`RESEND_API_KEY`·`RESEND_FROM_EMAIL` 이 채워져 있으면 **Resend HTTP API** 로
+`BREVO_API_KEY`·`BREVO_FROM_EMAIL` 이 채워져 있으면 **Brevo HTTP API** 로
 보낸다. 클라우드(Railway 등)는 아웃바운드 SMTP(465/587)를 막는 경우가 많아
-`smtplib` 접속이 타임아웃나는데, Resend 는 https(443)라 그 차단에 안 걸린다.
+`smtplib` 접속이 타임아웃나는데, Brevo 는 https(443)라 그 차단에 안 걸린다.
 
-Resend 키가 없고 `SMTP_HOST`·`SMTP_USERNAME`·`SMTP_PASSWORD` 가 **모두**
+Brevo 키가 없고 `SMTP_HOST`·`SMTP_USERNAME`·`SMTP_PASSWORD` 가 **모두**
 채워져 있으면 **SMTP** 로 보낸다(로컬·개발용). 둘 다 없으면 예전처럼 로그
 스텁으로 돈다.
 
@@ -107,18 +107,25 @@ def _send_smtp(message: EmailMessage) -> None:
         client.send_message(message)
 
 
-def _send_resend(to: str, subject: str, body: str) -> None:
-    """Resend HTTP API 로 한 통 보낸다.
+def _send_brevo(to: str, subject: str, body: str) -> None:
+    """Brevo HTTP API 로 한 통 보낸다.
 
     클라우드(Railway 등)가 아웃바운드 SMTP 를 막아 `_send_smtp` 가 타임아웃나는
     환경을 위한 경로다. https(443)라 그 차단에 걸리지 않는다. 실패(4xx/5xx·네트워크)는
     `raise_for_status`·httpx 예외로 위로 던지고, `send_email` 이 받아 로그로 남긴다.
     """
-    sender = f"{_one_line(settings.smtp_from_name)} <{settings.resend_from_email}>"
     response = httpx.post(
-        "https://api.resend.com/emails",
-        headers={"Authorization": f"Bearer {settings.resend_api_key}"},
-        json={"from": sender, "to": [to], "subject": _one_line(subject), "text": body},
+        "https://api.brevo.com/v3/smtp/email",
+        headers={"api-key": settings.brevo_api_key, "accept": "application/json"},
+        json={
+            "sender": {
+                "name": _one_line(settings.smtp_from_name),
+                "email": settings.brevo_from_email,
+            },
+            "to": [{"email": to}],
+            "subject": _one_line(subject),
+            "textContent": body,
+        },
         timeout=settings.smtp_timeout_seconds,
     )
     response.raise_for_status()
@@ -126,9 +133,9 @@ def _send_resend(to: str, subject: str, body: str) -> None:
 
 def _deliver(to: str, subject: str, body: str) -> None:
     """실제 전송 지점. 설정이 없으면 로그로 대신한다."""
-    if settings.resend_api_key and settings.resend_from_email:
-        _send_resend(to, subject, body)
-        logger.info("메일 발송(Resend) — to=%s subject=%s", to, subject)
+    if settings.brevo_api_key and settings.brevo_from_email:
+        _send_brevo(to, subject, body)
+        logger.info("메일 발송(Brevo) — to=%s subject=%s", to, subject)
         return
     if not _is_configured():
         if settings.environment == "local":
