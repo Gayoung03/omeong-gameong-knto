@@ -80,8 +80,8 @@ def _disable_outgoing_mail(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "smtp_host", "")
     monkeypatch.setattr(settings, "smtp_username", "")
     monkeypatch.setattr(settings, "smtp_password", "")
-    # Resend 경로도 막는다 — 키가 있으면 SMTP 보다 우선해 진짜 HTTP 발송을 시도한다.
-    monkeypatch.setattr(settings, "resend_api_key", "")
+    # Brevo 경로도 막는다 — 키가 있으면 SMTP 보다 우선해 진짜 HTTP 발송을 시도한다.
+    monkeypatch.setattr(settings, "brevo_api_key", "")
 
 
 @pytest.fixture(autouse=True)
