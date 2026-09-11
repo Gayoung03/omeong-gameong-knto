@@ -80,6 +80,22 @@ def _disable_outgoing_mail(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "smtp_host", "")
     monkeypatch.setattr(settings, "smtp_username", "")
     monkeypatch.setattr(settings, "smtp_password", "")
+    # Brevo 경로도 막는다 — 키가 있으면 SMTP 보다 우선해 진짜 HTTP 발송을 시도한다.
+    monkeypatch.setattr(settings, "brevo_api_key", "")
+
+
+@pytest.fixture(autouse=True)
+def _disable_openai(monkeypatch: pytest.MonkeyPatch) -> None:
+    """테스트가 진짜 OpenAI 에 접속하지 못하게 API 키를 비운다.
+
+    로컬 `.env` 에는 실제 키가 들어 있다. 비우지 않으면 여행 설명(explanation)·
+    챗봇 등 LLM 경로가 지나갈 때 진짜 호출이 나가 ① 느려지고 ② 비용·비결정성이
+    생긴다. 키가 없으면 각 LLM 모듈은 조용히 None/폴백으로 빠진다.
+
+    LLM 동작 자체를 검증하는 테스트는 키를 직접 세팅하거나(request_intent·inquiry)
+    클라이언트·함수를 대역으로 바꾼다(chat·routes·route_recommendation).
+    """
+    monkeypatch.setattr(settings, "openai_api_key", "")
 
 
 @pytest.fixture(scope="session")

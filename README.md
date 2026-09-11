@@ -5,6 +5,7 @@
 ## 기술 스택
 
 - 모바일: React Native, Expo SDK 57, Expo Router, TypeScript
+- 관리자 웹: React, Vite, TypeScript
 - 상태 관리: Zustand, TanStack Query
 - 폼 및 통신: React Hook Form, Zod, Axios
 - 백엔드: FastAPI, SQLAlchemy 2, Alembic
@@ -36,6 +37,7 @@ make setup
 `make setup`은 다음 작업을 수행합니다.
 
 - `apps/mobile`: `package-lock.json` 기준 npm 패키지 설치
+- `apps/admin`: `package-lock.json` 기준 npm 패키지 설치
 - `apps/api`: `uv.lock` 기준 Python 가상환경 및 패키지 설치
 
 `.venv`를 직접 활성화할 필요 없이 `uv run` 또는 Makefile 명령을 사용합니다.
@@ -105,6 +107,15 @@ alembic upgrade head
 - Health check: `http://localhost:8000/api/v1/health`
 - Expo: 터미널에 표시되는 QR 코드를 Expo Go로 스캔
 
+관리자 웹은 FastAPI가 실행 중인 상태에서 별도로 실행합니다.
+
+```bash
+make admin-dev
+```
+
+- 관리자 웹: `http://localhost:5173`
+- 관리자 계정 설정: [apps/admin/README.md](apps/admin/README.md)
+
 필요한 경우 각 서비스를 따로 실행할 수도 있습니다.
 
 ```bash
@@ -121,6 +132,7 @@ make db-seed
 make db-seed-local
 make api-dev
 make mobile-dev
+make admin-dev
 ```
 
 - `make backend-up`: FastAPI를 빌드하고 백그라운드에서 실행합니다.
@@ -135,6 +147,7 @@ make mobile-dev
 - `make db-seed`: AWS RDS에 개발용 씨앗 데이터를 넣습니다.
 - `make db-seed-local`: 로컬 PostgreSQL에 개발용 씨앗 데이터를 넣습니다.
 - `make api-dev`: FastAPI 로그를 전면에서 확인합니다.
+- `make admin-dev`: 관리자 Vite 웹을 `localhost:5173`에서 실행합니다.
 
 ### 마이그레이션 전체 재현 검사
 
@@ -179,6 +192,7 @@ make test
 
 ```text
 apps/mobile  React Native + Expo 프론트엔드
+apps/admin   React + Vite 관리자 웹
 apps/api     FastAPI 백엔드
 packages     공통 설정과 생성 API 클라이언트
 infra        PostgreSQL 등 로컬 인프라
@@ -204,6 +218,15 @@ Expo 네이티브 패키지:
 ```bash
 cd apps/mobile
 npx expo install <package-name>
+```
+
+변경된 `package.json`과 `package-lock.json`을 함께 커밋합니다.
+
+### 관리자 웹
+
+```bash
+cd apps/admin
+npm install <package-name>
 ```
 
 변경된 `package.json`과 `package-lock.json`을 함께 커밋합니다.

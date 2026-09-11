@@ -44,6 +44,25 @@ class PetSize(StrEnum):
     LARGE = "large"
 
 
+# 값 집합이 같아도 별도 타입으로 둔다(한쪽만 값을 늘릴 때 ALTER TYPE 이 번지지 않게).
+class PetActivityLevel(StrEnum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+
+
+class PetSociabilityLevel(StrEnum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+
+
+class PetEnergyLevel(StrEnum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+
+
 class TripPace(StrEnum):
     RELAXED = "relaxed"
     NORMAL = "normal"
@@ -104,6 +123,12 @@ class ScheduleItemType(StrEnum):
     CAFE = "cafe"
     ACCOMMODATION = "accommodation"
     CUSTOM = "custom"
+
+
+class RouteItemSlotStatus(StrEnum):
+    FILLED = "filled"
+    UNFILLED = "unfilled"
+    NEEDS_VERIFICATION = "needs_verification"
 
 
 class WeatherCondition(StrEnum):

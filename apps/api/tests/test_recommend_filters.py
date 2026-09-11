@@ -12,8 +12,12 @@ from app.db.models.enums import (
     TransportType,
     TripPace,
 )
-from app.recommend.filters import filter_candidates, is_closed_for_entire_trip, is_pet_compatible
-from app.recommend.schemas import BusinessHour, PetPolicy
+from app.recommend.filters import (
+    filter_candidates,
+    is_closed_for_entire_trip,
+    pet_compatibility,
+)
+from app.recommend.schemas import BusinessHour, CandidateTier, PetPolicy
 
 
 def _pet(
@@ -43,30 +47,43 @@ def _policy(**overrides: object) -> PetPolicy:
     return PetPolicy(**values)
 
 
-def test_unknown_or_missing_pet_policy_passes_hard_filter() -> None:
+def test_unknown_or_missing_pet_policy_is_needs_check() -> None:
     pet = _pet()
 
-    assert is_pet_compatible(None, [pet]) is True
-    assert is_pet_compatible(_policy(policy_type=PetPolicyType.UNKNOWN), [pet]) is True
+    assert pet_compatibility(None, [pet]) == CandidateTier.NEEDS_CHECK
+    assert (
+        pet_compatibility(_policy(policy_type=PetPolicyType.UNKNOWN), [pet])
+        == CandidateTier.NEEDS_CHECK
+    )
 
 
-def test_not_allowed_policy_is_rejected() -> None:
-    assert is_pet_compatible(_policy(policy_type=PetPolicyType.NOT_ALLOWED), [_pet()]) is False
+def test_compatible_policy_is_verified() -> None:
+    assert pet_compatibility(_policy(), [_pet()]) == CandidateTier.VERIFIED
 
 
-def test_species_size_and_weight_restrictions_are_enforced() -> None:
+def test_not_allowed_policy_is_blocked() -> None:
+    assert (
+        pet_compatibility(_policy(policy_type=PetPolicyType.NOT_ALLOWED), [_pet()])
+        == CandidateTier.BLOCKED
+    )
+
+
+def test_species_size_and_weight_restrictions_are_blocked() -> None:
     pet = _pet()
 
-    assert is_pet_compatible(_policy(allowed_species=["cat"]), [pet]) is False
-    assert is_pet_compatible(_policy(allowed_sizes=["small"]), [pet]) is False
-    assert is_pet_compatible(_policy(max_weight_kg=10), [pet]) is False
+    assert pet_compatibility(_policy(allowed_species=["cat"]), [pet]) == CandidateTier.BLOCKED
+    assert pet_compatibility(_policy(allowed_sizes=["small"]), [pet]) == CandidateTier.BLOCKED
+    assert pet_compatibility(_policy(max_weight_kg=10), [pet]) == CandidateTier.BLOCKED
 
 
 def test_every_companion_must_match_policy() -> None:
     small_dog = _pet(size=PetSize.SMALL, weight_kg=Decimal("5"))
     large_dog = _pet(size=PetSize.LARGE, weight_kg=Decimal("20"))
 
-    assert is_pet_compatible(_policy(allowed_sizes=["small"]), [small_dog, large_dog]) is False
+    assert (
+        pet_compatibility(_policy(allowed_sizes=["small"]), [small_dog, large_dog])
+        == CandidateTier.BLOCKED
+    )
 
 
 def test_place_is_removed_only_when_every_trip_date_is_closed() -> None:

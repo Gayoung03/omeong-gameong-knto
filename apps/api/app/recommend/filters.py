@@ -12,16 +12,15 @@ from app.db.models import (
     Pet,
     Place,
     PlaceBusinessHour,
-    PlacePetPolicy,
     PlaceTag,
     PlaceTagLink,
     RouteRequest,
 )
 from app.db.models.enums import PetPolicyType, ScheduleItemType
-from app.recommend.schemas import BusinessHour, Candidate, PetPolicy
-from app.services.place_query import rating_expr, saved_count_expr
+from app.recommend.config.stay import default_stay_minutes
+from app.recommend.schemas import BusinessHour, Candidate, CandidateTier, PetPolicy
+from app.services.place_query import latest_pet_policies, rating_expr, saved_count_expr
 
-DEFAULT_STAY_MINUTES = 60
 ITEM_TYPE_BY_CATEGORY = {
     "accommodation": ScheduleItemType.ACCOMMODATION,
     "attraction": ScheduleItemType.ATTRACTION,
@@ -35,28 +34,32 @@ ITEM_TYPE_BY_CATEGORY = {
 }
 
 
-def is_pet_compatible(policy: PetPolicy | None, pets: Sequence[Pet]) -> bool:
-    """정책이 없거나 unknown이면 통과시키고, 명시된 제한만 검사한다."""
+def pet_compatibility(policy: PetPolicy | None, pets: Sequence[Pet]) -> CandidateTier:
+    """반려 정책을 3등급으로 판정한다.
+
+    정책 없음·unknown 은 NEEDS_CHECK(부분 성공에서 부족분을 메우는 데 쓴다),
+    not_allowed·종/크기/체중 제한 불통과는 BLOCKED, 그 외는 VERIFIED.
+    """
 
     if policy is None or policy.policy_type == PetPolicyType.UNKNOWN:
-        return True
+        return CandidateTier.NEEDS_CHECK
     if policy.policy_type == PetPolicyType.NOT_ALLOWED:
-        return False
+        return CandidateTier.BLOCKED
 
     allowed_species = set(policy.allowed_species)
     allowed_sizes = set(policy.allowed_sizes)
     for pet in pets:
         if allowed_species and pet.species.value not in allowed_species:
-            return False
+            return CandidateTier.BLOCKED
         if pet.size is not None and allowed_sizes and pet.size.value not in allowed_sizes:
-            return False
+            return CandidateTier.BLOCKED
         if (
             pet.weight_kg is not None
             and policy.max_weight_kg is not None
             and float(pet.weight_kg) > policy.max_weight_kg
         ):
-            return False
-    return True
+            return CandidateTier.BLOCKED
+    return CandidateTier.VERIFIED
 
 
 def is_closed_for_entire_trip(hours: Sequence[BusinessHour], dates: Iterable[date]) -> bool:
@@ -107,7 +110,8 @@ def filter_candidates(
 
         policy = policies.get(place.id)
         place_hours = hours.get(place.id, [])
-        if not is_pet_compatible(policy, pets):
+        tier = pet_compatibility(policy, pets)
+        if tier == CandidateTier.BLOCKED:
             continue
         if is_closed_for_entire_trip(place_hours, travel_dates):
             continue
@@ -120,42 +124,43 @@ def filter_candidates(
                 item_type=item_type,
                 source_category=place.category,
                 environment=place.environment,
-                average_stay_minutes=place.average_stay_minutes or DEFAULT_STAY_MINUTES,
+                average_stay_minutes=(
+                    place.average_stay_minutes or default_stay_minutes(place.category)
+                ),
                 tags=tags.get(place.id, []),
                 amenities=place.amenities or [],
                 rating_avg=row.rating_avg,
                 saved_count=row.saved_count,
                 pet_policy=policy,
                 business_hours=place_hours,
+                tier=tier,
+                phone=place.phone,
             )
         )
     return candidates
 
 
 def _policies_by_place(db: Session, place_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, PetPolicy]:
-    rows = db.scalars(
-        select(PlacePetPolicy)
-        .where(PlacePetPolicy.place_id.in_(place_ids))
-        .order_by(PlacePetPolicy.place_id, PlacePetPolicy.verified_at.desc().nullslast())
-    ).all()
-    result: dict[uuid.UUID, PetPolicy] = {}
-    for row in rows:
-        result.setdefault(
-            row.place_id,
-            PetPolicy(
-                policy_type=row.policy_type,
-                allowed_species=row.allowed_species or [],
-                allowed_sizes=row.allowed_sizes or [],
-                max_weight_kg=(float(row.max_weight_kg) if row.max_weight_kg is not None else None),
-                carrier_required=row.carrier_required,
-                leash_required=row.leash_required,
-                vaccination_required=row.vaccination_required,
-                reliability_score=(
-                    float(row.reliability_score) if row.reliability_score is not None else None
-                ),
+    return {
+        place_id: PetPolicy(
+            policy_type=row.policy_type,
+            allowed_species=row.allowed_species or [],
+            allowed_sizes=row.allowed_sizes or [],
+            max_weight_kg=(float(row.max_weight_kg) if row.max_weight_kg is not None else None),
+            carrier_required=row.carrier_required,
+            leash_required=row.leash_required,
+            vaccination_required=row.vaccination_required,
+            muzzle_required=row.muzzle_required,
+            reliability_score=(
+                float(row.reliability_score) if row.reliability_score is not None else None
             ),
+            source=row.source,
+            source_url=row.source_url,
+            verified_at=row.verified_at,
+            caution_note=row.caution_note,
         )
-    return result
+        for place_id, row in latest_pet_policies(db, place_ids).items()
+    }
 
 
 def _hours_by_place(

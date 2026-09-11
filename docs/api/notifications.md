@@ -6,9 +6,10 @@
 
 관련 DB 테이블: `notices`, `notifications`, `inquiries`
 
-이 세 도메인은 대응하는 엔드포인트 스텁 파일이 없습니다
-(`app/api/v1/endpoints/`에 `notices.py`·`notifications.py`·`inquiries.py`가 없음).
-구현 시 파일을 새로 만들어야 합니다.
+> **구현 상태 (2026-09-08)** — `notices.py`·`inquiries.py` 는 구현됐습니다. 아래 사용자
+> API 스펙이 그대로 동작합니다. 관리자용 문의 답변·공지 작성/발행은
+> [`admin-support.md`](./admin-support.md)에 있습니다. `notifications.py`(종 버튼
+> 알림 목록·읽음)는 아직 미구현입니다.
 
 알림 **수신 설정**(`users`의 두 컬럼)은 이 문서가 아니라 [`users.md`](./users.md)에 있습니다.
 
@@ -449,3 +450,4 @@ DB CHECK 제약이 이를 보장합니다.
 | 2026-08-12 | PR #26 머지 반영 — `NotificationPreview` 타입 추가에 따른 대조표, `tone` 컬럼 부재 기록 |
 | 2026-08-12 | 문의 첨부 이미지 업로드 확인 필요 항목을 [`uploads.md`](./uploads.md) 참조로 교체 |
 | 2026-08-18 | 미정 4건 확정 — `tone`은 앱이 번갈아 결정(컬럼 추가 없음), 알림 **3종**(`travel_log_ready` `inquiry_answered` `notice`) 확정, `iconKey`·`actionPath`를 응답에서 빼고 `targetId`로 대체, 문의 `category` **영문 코드** 6종 |
+| 2026-09-08 | 사용자 `/notices`·`/inquiries` 구현. 관리자 문의 답변(+AI 초안)·공지 CRUD/발행은 [`admin-support.md`](./admin-support.md). `notices.announced_at` 추가(1회성 알림) |

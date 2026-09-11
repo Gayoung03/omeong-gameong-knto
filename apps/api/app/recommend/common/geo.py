@@ -4,6 +4,9 @@ from math import asin, cos, radians, sin, sqrt
 
 EARTH_RADIUS_M = 6_371_008.8
 
+#: (위도, 경도) 좌표. 추천·경로 코드 공용 별칭.
+Coordinate = tuple[float, float]
+
 
 def haversine_m(from_coord: tuple[float, float], to_coord: tuple[float, float]) -> float:
     """(위도, 경도) 두 좌표의 대권 거리를 미터로 반환한다."""

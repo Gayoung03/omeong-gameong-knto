@@ -8,6 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser
@@ -17,13 +18,15 @@ from app.db.models import (
     Route,
     RouteDay,
     RouteItem,
+    RouteItemCandidate,
     RouteMove,
     RoutePet,
     RouteRequest,
     RouteRequestPet,
     RouteRequestStay,
+    WeatherSnapshot,
 )
-from app.db.models.enums import RouteCreationType, RouteStatus
+from app.db.models.enums import RouteCreationType, RouteItemSlotStatus, RouteStatus
 from app.db.session import BackgroundSessionFactory, get_background_session, get_db
 from app.integrations.llm.route_edit import (
     RouteEditError,
@@ -33,28 +36,35 @@ from app.integrations.llm.route_edit import (
 )
 from app.integrations.tour_api.kto import TourAPIError, get_nearby_places
 from app.recommend.config.tags import normalize_preferred_tags
-from app.recommend.itinerary import SUPPORTED_TRANSPORTS
 from app.recommend.tmap import get_cached_route
+from app.recommend.travel_estimate import SUPPORTED_TRANSPORTS, estimate_leg
 from app.recommend.weights import resolve_weights
 from app.schemas.route import (
+    NearbyAnimalHospital,
     RouteCreate,
+    RouteDayWeather,
     RouteDetail,
     RouteDistanceSummary,
     RouteEditSuggestionRequest,
     RouteEditSuggestionResponse,
     RouteGenerationStatus,
+    RouteItemCandidateResponse,
     RouteListItem,
     RouteListResponse,
     RouteMoveResponse,
+    RoutePlacePetPolicy,
     RouteReplacementSuggestion,
     RouteRequestAccepted,
     RouteRequestCreate,
+    RouteRequestPetInput,
     RouteShareResponse,
+    RouteSlotSummary,
     RouteUpdate,
     SharedRouteDetail,
     TourAPIPlaceResponse,
 )
-from app.services.place_query import place_stats
+from app.services.animal_hospital import nearby_animal_hospitals
+from app.services.place_query import latest_pet_policies, place_stats
 from app.services.route_access import (
     load_owned_route,
     log_counts_of,
@@ -83,6 +93,9 @@ KST = timezone(timedelta(hours=9))
 #: 만들 수 있는 여행 길이의 상한. 기간만큼 route_days 를 미리 만들기 때문에
 #: 실수로 몇 년짜리를 보내면 행이 그만큼 생긴다. 제주 여행에 30일이면 충분하다.
 MAX_TRIP_DAYS = 30
+
+#: PostgreSQL unique_violation SQLSTATE. regenerate 의 version 경쟁 재시도 판정에 쓴다.
+_UNIQUE_VIOLATION_SQLSTATE = "23505"
 
 ALLOWED_STATUS_TRANSITIONS: dict[RouteStatus, set[RouteStatus]] = {
     RouteStatus.GENERATED: {RouteStatus.SAVED},
@@ -116,10 +129,19 @@ def create_route_request(
             detail=f"현재 루트 추천에서 지원하지 않는 이동수단입니다: {payload.transport.value}",
         )
 
+    # pets(이번 여행 컨디션 포함)를 보냈으면 우선(빈 배열이면 반려동물 없음), 안 보냈으면
+    # petIds. "pets" 를 보냈는지(model_fields_set)로 빈 배열과 생략을 구분한다.
+    pet_inputs = (
+        payload.pets
+        if "pets" in payload.model_fields_set
+        else [RouteRequestPetInput(pet_id=pet_id) for pet_id in payload.pet_ids]
+    )
+    pet_id_list = [pet_input.pet_id for pet_input in pet_inputs]
+    energy_by_pet = {pet_input.pet_id: pet_input.energy_level for pet_input in pet_inputs}
     pets = []
-    if payload.pet_ids:
-        pets = list(db.scalars(select(Pet).where(Pet.id.in_(payload.pet_ids))).all())
-        if len(pets) != len(set(payload.pet_ids)):
+    if pet_id_list:
+        pets = list(db.scalars(select(Pet).where(Pet.id.in_(pet_id_list))).all())
+        if len(pets) != len(set(pet_id_list)):
             raise HTTPException(status_code=404, detail="반려동물을 찾을 수 없습니다")
         if any(pet.user_id != current_user.id for pet in pets):
             raise HTTPException(status_code=403, detail="다른 사용자의 반려동물입니다")
@@ -154,7 +176,13 @@ def create_route_request(
     db.flush()
 
     for pet in pets:
-        db.add(RouteRequestPet(route_request_id=request.id, pet_id=pet.id))
+        db.add(
+            RouteRequestPet(
+                route_request_id=request.id,
+                pet_id=pet.id,
+                energy_level=energy_by_pet.get(pet.id),
+            )
+        )
     for stay in payload.stays:
         db.add(
             RouteRequestStay(
@@ -192,6 +220,91 @@ def create_route_request(
         route_request_id=request.id,
         status=route.status,
         version=route.version,
+    )
+
+
+@router.post(
+    "/routes/{route_id}/regenerate",
+    response_model=RouteRequestAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="같은 조건으로 재생성",
+)
+def regenerate_route(
+    route_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    current_user: CurrentUser,
+    db: DbSession,
+    open_session: OpenSession,
+) -> RouteRequestAccepted:
+    """기존 결과는 그대로 두고 같은 추천 요청으로 새 version 을 생성한다.
+
+    수동 여행(creationType manual · route_request_id NULL)은 재생성할 원본 조건이
+    없어 422. 원본이 아직 generating 이어도 막지 않는다(명세에 제한이 없어 허용).
+    """
+    original = load_owned_route(db, route_id, current_user)
+    if original.creation_type != RouteCreationType.RECOMMENDED or original.route_request_id is None:
+        raise HTTPException(status_code=422, detail="직접 만든 여행은 다시 추천받을 수 없어요")
+    request = db.get(RouteRequest, original.route_request_id)
+    if request is None:
+        raise HTTPException(status_code=404, detail="추천 요청을 찾을 수 없습니다")
+
+    new_route = _insert_next_version(db, original)
+    pet_ids = db.scalars(
+        select(RouteRequestPet.pet_id).where(RouteRequestPet.route_request_id == request.id)
+    ).all()
+    for pet_id in pet_ids:
+        db.add(RoutePet(route_id=new_route.id, pet_id=pet_id))
+    db.commit()
+
+    background_tasks.add_task(run_route_generation, new_route.id, open_session)
+    return RouteRequestAccepted(
+        route_id=new_route.id,
+        route_request_id=request.id,
+        status=new_route.status,
+        version=new_route.version,
+    )
+
+
+def _next_version(db: Session, route_request_id: uuid.UUID) -> int:
+    """이 추천 요청의 다음 version. UNIQUE(route_request_id, version) 을 채운다."""
+    current_max = db.scalar(
+        select(func.max(Route.version)).where(Route.route_request_id == route_request_id)
+    )
+    return (current_max or 0) + 1
+
+
+def _insert_next_version(db: Session, original: Route) -> Route:
+    """max(version)+1 로 새 Route 를 넣는다. 동시 재생성 경쟁이면 1회 재시도, 재실패 409.
+
+    SAVEPOINT(begin_nested) 안에서 flush 해 UNIQUE 충돌 시 그 시도만 되돌린다 —
+    바깥 트랜잭션과 이미 읽어 둔 원본 행은 유지된다.
+    """
+    for _ in range(2):
+        route = Route(
+            route_request_id=original.route_request_id,
+            user_id=original.user_id,
+            title=original.title,
+            status=RouteStatus.GENERATING,
+            creation_type=RouteCreationType.RECOMMENDED,
+            version=_next_version(db, original.route_request_id),
+            start_at=original.start_at,
+            end_at=original.end_at,
+            pace=original.pace,
+            transport=original.transport,
+            style_keywords=original.style_keywords,
+        )
+        try:
+            with db.begin_nested():
+                db.add(route)
+                db.flush()
+            return route
+        except IntegrityError as error:
+            # version 경쟁(UNIQUE 23505)만 재시도한다. 다른 무결성 오류는 그대로 올려
+            # 전역 핸들러가 처리하게 둔다(잘못된 409 로 가리지 않는다).
+            if getattr(error.orig, "sqlstate", None) != _UNIQUE_VIOLATION_SQLSTATE:
+                raise
+    raise HTTPException(
+        status_code=409, detail="재생성이 동시에 요청되었어요. 잠시 후 다시 시도해 주세요"
     )
 
 
@@ -336,6 +449,7 @@ def get_route_status(
     db: DbSession,
 ) -> RouteGenerationStatus:
     route = load_owned_route(db, route_id, current_user)
+    still_running = route.status in (RouteStatus.GENERATING, RouteStatus.FAILED)
     return RouteGenerationStatus(
         route_id=route.id,
         status=route.status,
@@ -343,6 +457,8 @@ def get_route_status(
         failure_reason=(
             "추천 루트를 생성하지 못했습니다" if route.status == RouteStatus.FAILED else None
         ),
+        # 생성 완료 뒤에만 완성도를 채운다(생성 중·실패는 null).
+        slot_summary=None if still_running else _slot_summary(db, route.id),
     )
 
 
@@ -537,6 +653,10 @@ def _fill_computed(
         place.review_count = stat.review_count
         place.pet_policy_type = stat.pet_policy_type
 
+    policies = _pet_policies_by_place(db, [place.id for place in places])
+    for place in places:
+        place.pet_policy = policies.get(place.id)
+
     orm_items = {item.id: item for day in route.route_days for item in day.items}
     response_items = {item.id: item for day in detail.route_days for item in day.items}
     item_ids = list(orm_items)
@@ -562,12 +682,18 @@ def _fill_computed(
             destination_coord,
             move.transport,
         )
+        is_estimated = False
         if leg is None:
-            continue
+            # 캐시가 없으면 추정으로 채우되, 추정을 지원하는 이동수단일 때만.
+            if move.transport not in SUPPORTED_TRANSPORTS:
+                continue
+            leg = estimate_leg(source_coord, destination_coord, move.transport)
+            is_estimated = True
         response_items[move.from_item_id].move_to_next = RouteMoveResponse(
             transport=move.transport,
             distance_meters=leg.distance_m,
             duration_minutes=leg.duration_min,
+            is_estimated=is_estimated,
         )
         total_distance_meters += leg.distance_m
         total_duration_minutes += leg.duration_min
@@ -576,6 +702,62 @@ def _fill_computed(
         total_distance_meters=total_distance_meters,
         total_duration_minutes=total_duration_minutes,
     )
+    detail.slot_summary = _slot_summary(db, route.id)
+    _fill_day_weather(db, route, detail)
+
+    anchor_coords = [
+        coord
+        for day in route.route_days
+        for item in day.items
+        if (coord := _item_coord(item)) is not None
+    ]
+    detail.nearby_animal_hospitals = [
+        NearbyAnimalHospital(
+            id=hospital.id,
+            name=hospital.name,
+            address=hospital.address,
+            phone=hospital.phone,
+            latitude=hospital.latitude,
+            longitude=hospital.longitude,
+            distance_meters=hospital.distance_meters,
+            is_24_hours=hospital.is_24h,
+        )
+        for hospital in nearby_animal_hospitals(db, anchor_coords)
+    ]
+
+    # 슬롯별 대안 후보(route_item_candidates). 같은 날짜 편집 시 삭제되어 빈 배열이 된다.
+    candidate_rows = (
+        db.execute(
+            select(RouteItemCandidate, Place)
+            .join(Place, Place.id == RouteItemCandidate.place_id)
+            .where(RouteItemCandidate.route_item_id.in_(item_ids))
+            .order_by(RouteItemCandidate.route_item_id, RouteItemCandidate.rank)
+        ).all()
+        if item_ids
+        else []
+    )
+    for candidate, place in candidate_rows:
+        response_item = response_items.get(candidate.route_item_id)
+        if response_item is None:
+            continue
+        response_item.candidates.append(
+            RouteItemCandidateResponse(
+                place_id=place.id,
+                name=place.name,
+                category=place.category,
+                address=place.address,
+                primary_image_url=place.primary_image_url,
+                phone=place.phone,
+                recommendation_score=(
+                    float(candidate.recommendation_score)
+                    if candidate.recommendation_score is not None
+                    else None
+                ),
+                recommendation_reason=candidate.recommendation_reason,
+                requires_verification=candidate.requires_verification,
+            )
+        )
+
     center = next(
         (
             coord
@@ -602,6 +784,94 @@ def _fill_computed(
             logger.warning("TourAPI route highlights lookup failed: %s", error)
 
     return detail
+
+
+def _fill_day_weather(
+    db: Session, route: Route, detail: RouteDetail | SharedRouteDetail
+) -> None:
+    """route_days.weather_snapshot_id 조인으로 각 하루의 weather 를 채운다(없으면 null)."""
+    snapshot_ids = {
+        day.weather_snapshot_id
+        for day in route.route_days
+        if day.weather_snapshot_id is not None
+    }
+    if not snapshot_ids:
+        return
+    snapshots = {
+        snapshot.id: snapshot
+        for snapshot in db.scalars(
+            select(WeatherSnapshot).where(WeatherSnapshot.id.in_(snapshot_ids))
+        ).all()
+    }
+    snapshot_by_day = {
+        day.id: snapshots[day.weather_snapshot_id]
+        for day in route.route_days
+        if day.weather_snapshot_id in snapshots
+    }
+    for response_day in detail.route_days:
+        snapshot = snapshot_by_day.get(response_day.id)
+        if snapshot is None:
+            continue
+        response_day.weather = RouteDayWeather(
+            condition=snapshot.condition,
+            temperature=float(snapshot.temperature) if snapshot.temperature is not None else None,
+            min_temperature=(
+                float(snapshot.min_temperature) if snapshot.min_temperature is not None else None
+            ),
+            max_temperature=(
+                float(snapshot.max_temperature) if snapshot.max_temperature is not None else None
+            ),
+            precipitation_probability=snapshot.precipitation_probability,
+        )
+
+
+def _pet_policies_by_place(
+    db: Session, place_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, RoutePlacePetPolicy]:
+    """장소별 동반 조건·근거 출처(응답 부분집합). 최신 행 선택은 latest_pet_policies 공용."""
+    return {
+        place_id: RoutePlacePetPolicy(
+            leash_required=row.leash_required,
+            carrier_required=row.carrier_required,
+            muzzle_required=row.muzzle_required,
+            food_area_allowed=row.food_area_allowed,
+            source=row.source,
+            source_url=row.source_url,
+            verified_at=row.verified_at,
+            reliability_score=(
+                float(row.reliability_score) if row.reliability_score is not None else None
+            ),
+            caution_note=row.caution_note,
+        )
+        for place_id, row in latest_pet_policies(db, place_ids).items()
+    }
+
+
+def _slot_summary(db: Session, route_id: uuid.UUID) -> RouteSlotSummary:
+    """방문 슬롯의 slot_status 집계(계산값). 출발지·숙소 앵커는 제외한다.
+
+    앵커는 _save_anchor 가 stay_minutes=0 으로 저장하므로 stay_minutes 로 걸러낸다
+    (빈 슬롯은 stay_minutes NULL 이라 포함).
+    """
+    rows = db.execute(
+        select(RouteItem.slot_status, func.count())
+        .join(RouteDay, RouteDay.id == RouteItem.route_day_id)
+        .where(
+            RouteDay.route_id == route_id,
+            RouteItem.stay_minutes.is_(None) | (RouteItem.stay_minutes > 0),
+        )
+        .group_by(RouteItem.slot_status)
+    ).all()
+    counts = {status: count for status, count in rows}
+    filled = counts.get(RouteItemSlotStatus.FILLED, 0)
+    needs_verification = counts.get(RouteItemSlotStatus.NEEDS_VERIFICATION, 0)
+    unfilled = counts.get(RouteItemSlotStatus.UNFILLED, 0)
+    return RouteSlotSummary(
+        total=filled + needs_verification + unfilled,
+        filled=filled,
+        needs_verification=needs_verification,
+        unfilled=unfilled,
+    )
 
 
 def _item_coord(item: RouteItem) -> tuple[float, float] | None:

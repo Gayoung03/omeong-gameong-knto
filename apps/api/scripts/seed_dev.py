@@ -50,6 +50,11 @@ KST = timezone(timedelta(hours=9))
 SEED_USER_ID = DEV_USER_ID
 SEED_USER_EMAIL = "seed@omeong.local"
 
+# 관리자 웹 확인용 별도 계정. 시드 사용자(율무)는 일반 사용자로 두어
+# "사용자로 문의를 남기고 관리자로 답한다"를 한 DB 에서 헷갈리지 않게 시연한다.
+SEED_ADMIN_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
+SEED_ADMIN_EMAIL = "admin@omeong.local"
+
 # 데모 로그인용 비밀번호. 환경변수로 받는다(코드·저장소에 평문 비밀번호를 두지 않는다).
 # 없으면 시드를 실패시킨다 — local 계정은 password_hash 가 필수라서다(_apply_dev_password).
 SEED_DEV_PASSWORD = os.environ.get("SEED_DEV_PASSWORD")
@@ -224,12 +229,13 @@ def _apply_dev_password(user: User) -> None:
 
 
 def seed_user(db: Session) -> User:
-    """씨앗 사용자 한 명. 이미 있으면 그대로 돌려준다."""
+    """씨앗 사용자 한 명(율무). 관리자 아님 — 문의를 남기는 쪽이다."""
     user = db.get(User, SEED_USER_ID)
     if user is not None:
         _warn_if_changed("user", "nickname", user.nickname, "율무")
         _warn_if_changed("user", "email", user.email, SEED_USER_EMAIL)
         _apply_dev_password(user)
+        user.is_admin = False
         print(f"  사용자   건너뜀 ({user.nickname})")
         return user
 
@@ -237,12 +243,36 @@ def seed_user(db: Session) -> User:
         id=SEED_USER_ID,
         email=SEED_USER_EMAIL,
         nickname="율무",
+        is_admin=False,
     )
     _apply_dev_password(user)
     db.add(user)
     db.flush()
     print(f"  사용자   생성 ({user.nickname})")
     return user
+
+
+def seed_admin(db: Session) -> User:
+    """관리자 웹 로그인용 계정(admin@omeong.local). is_admin=True."""
+    admin = db.get(User, SEED_ADMIN_ID)
+    if admin is not None:
+        _warn_if_changed("admin", "email", admin.email, SEED_ADMIN_EMAIL)
+        _apply_dev_password(admin)
+        admin.is_admin = True
+        print(f"  관리자   건너뜀 ({admin.nickname})")
+        return admin
+
+    admin = User(
+        id=SEED_ADMIN_ID,
+        email=SEED_ADMIN_EMAIL,
+        nickname="관리자",
+        is_admin=True,
+    )
+    _apply_dev_password(admin)
+    db.add(admin)
+    db.flush()
+    print(f"  관리자   생성 ({admin.nickname})")
+    return admin
 
 
 def seed_pet(db: Session, user: User) -> Pet:
@@ -452,6 +482,7 @@ def main() -> None:
     print("씨앗 데이터 심는 중...")
     with SessionLocal() as db:
         user = seed_user(db)
+        seed_admin(db)
         pet = seed_pet(db, user)
         places = seed_places(db)
         route = seed_route(db, user, pet, places)

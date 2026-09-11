@@ -6,14 +6,18 @@ from datetime import date, datetime
 from pydantic import Field, computed_field, model_validator
 
 from app.db.models.enums import (
+    DataProvider,
+    PetEnergyLevel,
     PetPolicyType,
     PetSize,
     PetSpecies,
     RouteCreationType,
+    RouteItemSlotStatus,
     RouteStatus,
     ScheduleItemType,
     TransportType,
     TripPace,
+    WeatherCondition,
 )
 from app.schemas.base import APISchema
 from app.schemas.validators import OptionalImageUrl
@@ -73,6 +77,24 @@ class RouteListResponse(APISchema):
 # 리뷰·즐겨찾기 API 를 만들면서 집계식(services/place_query.py)이 생겼기 때문이다.
 
 
+class RoutePlacePetPolicy(APISchema):
+    """장소 요약에 붙는 동반 조건·근거 출처. `place_pet_policies` 의 부분집합.
+
+    [`places.md`](./places.md) 상세 `petPolicy` 중 근거 문장·표시에 필요한 필드만 내린다.
+    조건·확인 컬럼은 3값 의미(True/False/미확인=null)를 그대로 유지한다.
+    """
+
+    leash_required: bool | None
+    carrier_required: bool | None
+    muzzle_required: bool | None
+    food_area_allowed: bool | None
+    source: DataProvider
+    source_url: str | None
+    verified_at: datetime | None
+    reliability_score: float | None
+    caution_note: str | None
+
+
 class PlaceSummary(APISchema):
     """일정에 담긴 장소 요약.
 
@@ -84,6 +106,8 @@ class PlaceSummary(APISchema):
     id: uuid.UUID
     name: str
     category: str
+    cuisine: str | None = None
+    phone: str | None = None
     address: str | None
     description: str | None
     primary_image_url: str | None
@@ -95,14 +119,18 @@ class PlaceSummary(APISchema):
     rating: float | None = None
     review_count: int = 0
     pet_policy_type: PetPolicyType = PetPolicyType.UNKNOWN
+    #: 동반 조건·근거 출처. place_pet_policies 조인으로 엔드포인트가 채운다. 없으면 null.
+    pet_policy: RoutePlacePetPolicy | None = None
 
 
 class RouteMoveResponse(APISchema):
-    """다음 일정까지의 이동 정보. TMAP 계산 캐시에서 채운다."""
+    """다음 일정까지의 이동 정보. TMAP 계산 캐시가 있으면 그 값, 없으면 추정값."""
 
     transport: TransportType
     distance_meters: int
     duration_minutes: int
+    #: 캐시가 없어 직선거리 추정으로 채운 값이면 True(응답 isEstimated).
+    is_estimated: bool = False
 
 
 class RouteDistanceSummary(APISchema):
@@ -123,12 +151,36 @@ class TourAPIPlaceResponse(APISchema):
     image_url: str | None
 
 
+class RouteSlotSummary(APISchema):
+    """slot_status 집계(계산값). total = filled + needs_verification + unfilled."""
+
+    total: int = 0
+    filled: int = 0
+    needs_verification: int = 0
+    unfilled: int = 0
+
+
+class RouteItemCandidateResponse(APISchema):
+    """슬롯별 대안 후보. edit-suggestions 항목 모양 + requiresVerification."""
+
+    place_id: uuid.UUID
+    name: str
+    category: str
+    address: str | None
+    primary_image_url: str | None
+    phone: str | None
+    recommendation_score: float | None
+    recommendation_reason: str | None
+    requires_verification: bool
+
+
 class RouteItemResponse(APISchema):
     """하루 안의 방문 한 건. DB 의 route_items 한 줄이다."""
 
     id: uuid.UUID
     sort_order: int
     item_type: ScheduleItemType
+    slot_status: RouteItemSlotStatus
     starts_at: datetime | None
     ends_at: datetime | None
     stay_minutes: int | None
@@ -141,7 +193,18 @@ class RouteItemResponse(APISchema):
     latitude: float | None = None
     longitude: float | None = None
     place: PlaceSummary | None
+    candidates: list[RouteItemCandidateResponse] = Field(default_factory=list)
     move_to_next: RouteMoveResponse | None = None
+
+
+class RouteDayWeather(APISchema):
+    """그날 적용한 날씨 스냅샷(route_days.weather_snapshot_id 조인). 계산값."""
+
+    condition: WeatherCondition
+    temperature: float | None
+    min_temperature: float | None
+    max_temperature: float | None
+    precipitation_probability: int | None
 
 
 class RouteDayResponse(APISchema):
@@ -151,6 +214,8 @@ class RouteDayResponse(APISchema):
     day_number: int
     route_date: date
     title: str | None
+    #: 계산값. weather_snapshots 조인으로 엔드포인트가 채운다. 없으면 null.
+    weather: RouteDayWeather | None = None
     items: list[RouteItemResponse]
 
 
@@ -164,6 +229,19 @@ class RoutePetResponse(APISchema):
     size: PetSize | None
 
 
+class NearbyAnimalHospital(APISchema):
+    """동선·숙소 근처 동물병원 안전망 항목(계산값, 저장 안 함). `id` 는 `places.id`."""
+
+    id: uuid.UUID
+    name: str
+    address: str | None
+    phone: str | None
+    latitude: float
+    longitude: float
+    distance_meters: int
+    is_24_hours: bool
+
+
 class RouteDetail(RouteListItem):
     """목록 필드 + 상세 전용 필드."""
 
@@ -173,6 +251,8 @@ class RouteDetail(RouteListItem):
     share_token: str | None
     pets: list[RoutePetResponse]
     distance_summary: RouteDistanceSummary = Field(default_factory=RouteDistanceSummary)
+    slot_summary: RouteSlotSummary = Field(default_factory=RouteSlotSummary)
+    nearby_animal_hospitals: list[NearbyAnimalHospital] = Field(default_factory=list)
     tour_api_places: list[TourAPIPlaceResponse] = Field(default_factory=list)
     route_days: list[RouteDayResponse]
 
@@ -275,6 +355,8 @@ class SharedRouteDetail(RouteListItem):
     total_score: float | None
     pets: list[RoutePetResponse]
     distance_summary: RouteDistanceSummary = Field(default_factory=RouteDistanceSummary)
+    slot_summary: RouteSlotSummary = Field(default_factory=RouteSlotSummary)
+    nearby_animal_hospitals: list[NearbyAnimalHospital] = Field(default_factory=list)
     tour_api_places: list[TourAPIPlaceResponse] = Field(default_factory=list)
     route_days: list[RouteDayResponse]
 
@@ -411,6 +493,13 @@ class RouteRequestStayCreate(APISchema):
         return self
 
 
+class RouteRequestPetInput(APISchema):
+    """이번 여행에 데려갈 반려동물과 이번 여행 컨디션(energyLevel)."""
+
+    pet_id: uuid.UUID
+    energy_level: PetEnergyLevel | None = None
+
+
 class RouteRequestCreate(APISchema):
     title: str | None = Field(default=None, max_length=150)
     start_at: datetime
@@ -425,6 +514,8 @@ class RouteRequestCreate(APISchema):
     user_criteria: list[str] = Field(default_factory=list)
     request_text: str | None = None
     pet_ids: list[uuid.UUID] = Field(default_factory=list)
+    #: 반려동물별 이번 여행 컨디션. petIds 와 함께 오면 pets 가 우선(routes.md).
+    pets: list[RouteRequestPetInput] = Field(default_factory=list)
     stays: list[RouteRequestStayCreate] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -434,6 +525,9 @@ class RouteRequestCreate(APISchema):
         has_departure = self.departure_place_id or (self.departure_location or "").strip()
         if not has_departure and not self.stays:
             raise ValueError("출발 장소나 숙소가 하나 이상 필요합니다")
+        pet_ids = [pet.pet_id for pet in self.pets]
+        if len(pet_ids) != len(set(pet_ids)):
+            raise ValueError("pets에 중복된 petId가 있습니다")
         return self
 
 
@@ -449,6 +543,8 @@ class RouteGenerationStatus(APISchema):
     status: RouteStatus
     version: int
     failure_reason: str | None = None
+    #: 계산값. 생성 완료 시에만 채운다(그 외 null).
+    slot_summary: RouteSlotSummary | None = None
 
 
 class RouteEditSuggestionRequest(APISchema):
