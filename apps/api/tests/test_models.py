@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from app.db import models  # noqa: F401
 from app.db.base import Base
-from app.db.models.enums import RouteCreationType
+from app.db.models.enums import DataProvider, RouteCreationType
 
 EXPECTED_TABLES = {
     "admin_editorial_audit_logs",
@@ -138,6 +138,15 @@ def test_unverifiable_place_scores_are_removed() -> None:
         "crowd_level",
         "weather_sensitivity",
     }.intersection(places.c.keys())
+
+
+def test_place_enrichment_schema() -> None:
+    places = Base.metadata.tables["places"]
+    policies = Base.metadata.tables["place_pet_policies"]
+
+    assert places.c.closed_days_raw.nullable is True
+    assert policies.c.required_items.nullable is True
+    assert DataProvider.MFDS.value == "mfds"
 
 
 def test_route_request_stores_applied_weight_snapshot() -> None:

@@ -65,8 +65,10 @@ _CATEGORY_ALIASES: dict[str, tuple[str, ...]] = {
 
 #: 카테고리를 지정하지 않은 검색에서 **빼는** 카테고리.
 #:
-#: `etc` 278건은 여행지가 아니라 **반려동물 인프라**다 — 동물약국 126 · 동물병원 75 ·
-#: 용품 51 · 미용 26(2026-08-29 팀 DB 확인). `vocabulary.py` 에서 `etc` 를 뺀 것은
+#: `etc`의 용품·미용과 `veterinary_hospital`의 동물병원·동물약국은
+#: 여행지가 아니라 **반려동물 인프라**다. 카테고리를 지정하지 않은 일반 추천에서는
+#: 빼지만, 동물병원이나 약국을 직접 요청하면 검색된다.
+#: `vocabulary.py` 에서 `etc` 를 뺀 것은
 #: **모델이 `etc` 를 고를 수 없게** 한 것이지, **결과에 안 나오게** 한 것이 아니다.
 #: 그래서 카테고리를 안 넘긴 검색에는 그대로 섞여 나왔다.
 #:
@@ -75,7 +77,7 @@ _CATEGORY_ALIASES: dict[str, tuple[str, ...]] = {
 #:
 #: **카테고리를 집어 물으면 그때는 나온다.** 동물병원을 찾아달라는 요청은 막지 않는다 —
 #: A5(의료 금지)가 "제주 동물병원을 찾아드릴 수 있다"로 빠져나가는 통로다.
-_EXCLUDED_WITHOUT_CATEGORY: tuple[str, ...] = ("etc",)
+_EXCLUDED_WITHOUT_CATEGORY: tuple[str, ...] = ("etc", "veterinary_hospital")
 
 
 def _expand_category(category: str) -> tuple[str, ...]:

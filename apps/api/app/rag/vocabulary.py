@@ -46,7 +46,7 @@ CATEGORY_LABELS: dict[str, str] = {
     "beach": "해변",
     "oreum": "오름",
     "walking_trail": "산책로",
-    "veterinary_hospital": "동물병원",
+    "veterinary_hospital": "동물병원·동물약국",
     "pet_service": "반려동물 서비스(미용·용품 등)",
     "rental_experience": "대여·체험",
 }

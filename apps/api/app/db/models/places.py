@@ -43,8 +43,8 @@ class Place(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False)
-    # etc 세부 분류(동물약국·동물병원 등)를 description 에서 추출해 담는 자리.
-    # category enum 은 불변(API 계약 보호) — 세분화는 이 컬럼으로만. 값은 파싱 배치가 채운다.
+    # 상위 카테고리 안의 세부 분류(동물병원·동물약국 등).
+    # 검색은 category, 세부 표시는 이 컬럼을 사용하며 값은 파싱 배치가 채운다.
     category_detail: Mapped[str | None] = mapped_column(String(50))
     # 음식점·카페의 세부 음식 종류(한식·중식·일식·양식·분식·카페·술집·간식 …).
     # enum 아님 — 카카오 로컬 category_name 의 2단계에서 파싱 배치가 채운다. NULL 허용.
@@ -57,6 +57,7 @@ class Place(Base):
     phone: Mapped[str | None] = mapped_column(String(50))
     homepage_url: Mapped[str | None] = mapped_column(Text)
     primary_image_url: Mapped[str | None] = mapped_column(Text)
+    image_urls: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     description: Mapped[str | None] = mapped_column(Text)
     description_source: Mapped[DataProvider | None] = mapped_column(
         db_enum(DataProvider, "data_provider")
@@ -67,8 +68,8 @@ class Place(Base):
     amenities: Mapped[list[str] | None] = mapped_column(ARRAY(String))
     average_stay_minutes: Mapped[int | None] = mapped_column(Integer)
     # 영업시간 raw_text 의 장소당 1값 이관 목적지(place_business_hours 정규화 후 드롭 예정).
-    # 아직 응답 노출 안 함 — 기존 요일별 rawText 대체는 명세·프론트 조율 게이트 뒤(8.1).
     business_hours_raw: Mapped[str | None] = mapped_column(Text)
+    closed_days_raw: Mapped[str | None] = mapped_column(Text)
     # 숙박 체크인/아웃. hours 파싱 대상에서 분리한 신규 가산 필드. 한쪽만 알 수 있어 CHECK 없음.
     check_in_time: Mapped[time | None] = mapped_column(Time)
     check_out_time: Mapped[time | None] = mapped_column(Time)
@@ -179,6 +180,7 @@ class PlacePetPolicy(Base):
     max_pets_per_person: Mapped[int | None] = mapped_column(SmallInteger)  # 1인당 동반 마리수 상한
     # 정제된 주의사항. 원본 notes 는 그대로 두고(AI 등급 X) 이 컬럼만 관찰에 쓴다.
     caution_note: Mapped[str | None] = mapped_column(String(150))
+    required_items: Mapped[list[str] | None] = mapped_column(ARRAY(String))
 
 
 class PlaceTag(Base):

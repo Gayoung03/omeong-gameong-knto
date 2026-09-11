@@ -78,6 +78,11 @@ export type PlacePetPolicyResponse = {
   verifiedAt: string | null;
   /** 0~100. 출처와 확인 시점에 따라 달라지는 신뢰도. */
   reliabilityScore: number | null;
+  muzzleRequired: boolean | null;
+  foodAreaAllowed: boolean | null;
+  maxPetsPerPerson: number | null;
+  cautionNote: string | null;
+  requiredItems: string[] | null;
 };
 
 /** 영업시간 한 줄. `dayOfWeek` 는 0(일요일) ~ 6(토요일). */
@@ -104,11 +109,14 @@ export type PlaceDetailResponse = {
   phone: string | null;
   homepageUrl: string | null;
   primaryImageUrl: string | null;
+  imageUrls: string[] | null;
   description: string | null;
   descriptionSource: string | null;
   environment: PlaceEnvironment | null;
   amenities: string[] | null;
   averageStayMinutes: number | null;
+  businessHoursRaw: string | null;
+  closedDaysRaw: string | null;
   reservationRequired: boolean;
   /** `created_by_user_id` 가 있으면 true. 사용자 id 자체는 내려오지 않는다. */
   isUserCreated: boolean;
