@@ -7,7 +7,7 @@ REHEARSAL_COMPOSE = docker compose -f infra/docker-compose.rehearsal.yml
 	db-migrate db-migrate-check db-migrate-local db-seed db-seed-local \
 	db-migration-smoke db-dump-dev db-rehearsal-up db-rehearsal-restore \
 	db-rehearsal-migrate db-rehearsal-down chat-check chat-check-places \
-	chat-check-guardrails \
+	chat-check-guardrails chat-measure \
 	lint typecheck test check
 
 setup: mobile-install admin-install api-install
@@ -138,6 +138,18 @@ chat-check-places:
 		--set places $(if $(MODELS),--models $(MODELS)) $(if $(REPEAT),--repeat $(REPEAT)) \
 		> ../../tmp/chat-quality-places.md
 	@echo "→ tmp/chat-quality-places.md"
+
+# 성능(응답시간·라운드)·비용(토큰·달러)·쿼리 정확도(인자·항목 누락) 측정.
+# 실제 OpenAI 호출이 나가 비용이 청구된다 — repeat 올리기 전에 횟수를 어림할 것.
+# .env 의 DATABASE_URL(dev RDS)로 붙는다 — search_* 는 전부 SELECT라 쓰기가 없어 안전하다.
+# 예) make chat-measure SET=guardrails MODELS=gpt-4o-mini
+chat-measure:
+	@mkdir -p tmp
+	@cd apps/api && uv run python -m scripts.measure_chat_llm \
+		--set $(if $(SET),$(SET),rules) $(if $(MODELS),--models $(MODELS)) $(if $(REPEAT),--repeat $(REPEAT)) \
+		--json ../../tmp/chat-measure-$(if $(SET),$(SET),rules).json \
+		> ../../tmp/chat-measure-$(if $(SET),$(SET),rules).md
+	@echo "→ tmp/chat-measure-$(if $(SET),$(SET),rules).md (+ .json)"
 
 lint:
 	cd apps/mobile && npm run lint
