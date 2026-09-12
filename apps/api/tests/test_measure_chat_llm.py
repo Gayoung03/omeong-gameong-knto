@@ -187,6 +187,21 @@ def test_malformed_json_does_not_crash_the_run() -> None:
     assert got["calls"][0]["raw_args"] == '{"region": "애월'
 
 
+@pytest.mark.parametrize("raw_args", ["null", "[]", "123", '"문자열"', "", None])
+def test_json_that_is_not_an_object_does_not_crash(raw_args) -> None:
+    """`null`·`[]` 는 JSON 으로는 멀쩡해 파싱을 통과한다 — 그 뒤에 터지면 안 된다."""
+    call = {"tool": "search_places", "args": raw_args, "hits": 0, "result": "[]"}
+    got = check_place_search(_expected(4), [call])
+    # 빈 값은 "인자 없이 불렀다"라 조건빠짐, 나머지는 인자오류다. 어느 쪽이든 예외는 안 난다.
+    assert got["verdict"] in (SEARCH_MALFORMED, SEARCH_MISSING)
+
+
+@pytest.mark.parametrize("raw_args", ["null", "[]", "{oops"])
+def test_weight_check_does_not_crash_on_odd_arguments(raw_args) -> None:
+    call = {"tool": "search_transport_rules", "args": raw_args, "hits": 0, "result": "[]"}
+    assert _weight_arg_status("강아지가 12kg인데 갈 수 있나요?", [call]) == "누락"
+
+
 def test_a_good_retry_after_a_broken_call_is_still_recorded() -> None:
     """`chat.py` 는 깨진 호출을 받아도 다시 고르게 한다 — 그 실행을 통째로 버리지 않는다."""
     broken = {"tool": "search_places", "args": "not json", "hits": 0, "result": "[]"}

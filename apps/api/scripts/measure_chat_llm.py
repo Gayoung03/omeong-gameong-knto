@@ -188,11 +188,8 @@ def _weight_arg_status(question: str, trace: list[dict]) -> str | None:
     for step in calls:
         # 읽을 수 없는 호출에서 멈추지 않는다 — `chat.py` 는 이걸 받아도 모델에게
         # 다시 고르게 하므로, 뒤에 제대로 부른 호출이 있을 수 있다.
-        try:
-            arguments = json.loads(step["args"] or "{}")
-        except (json.JSONDecodeError, TypeError):
-            continue
-        if "pet_weight_kg" not in arguments:
+        arguments = _parse_args(step["args"])["args"]
+        if arguments is None or "pet_weight_kg" not in arguments:
             continue
         try:
             return "정확" if float(arguments["pet_weight_kg"]) == expected else "값틀림"
@@ -263,6 +260,26 @@ def _as_values(raw) -> list:
     return list(raw) if isinstance(raw, list) else [raw]
 
 
+def _parse_args(raw: str | None) -> dict:
+    """도구 호출 인자를 읽는다. **어떤 입력에도 예외를 내지 않는다.**
+
+    깨진 JSON 만 막으면 모자란다 — `null`·`[]`·`3` 은 JSON 으로는 멀쩡해서 파싱을
+    통과하고, 그 다음에 `.get()` 을 부르다 터진다. 객체가 **아닌 것**까지 여기서
+    걸러야 검사기가 실행을 죽이지 않는다.
+    """
+    try:
+        parsed = json.loads(raw or "{}")
+    except (json.JSONDecodeError, TypeError) as error:
+        return {"args": None, "raw_args": raw, "error": f"JSON 을 읽을 수 없다({error})"}
+    if not isinstance(parsed, dict):
+        return {
+            "args": None,
+            "raw_args": raw,
+            "error": f"인자가 객체가 아니라 {type(parsed).__name__} 다",
+        }
+    return {"args": parsed}
+
+
 def _dimension_state(dimension: str, rule: dict, raw) -> tuple[str, str | None]:
     """한 호출의 조건 하나가 어떤 상태인지. (`맞음`/`없음`/`형식`/`다른값`, 설명)
 
@@ -311,12 +328,7 @@ def check_place_search(expected_search: dict | None, trace: list[dict]) -> dict:
         for dimension, rule in (expected_search or {}).items()
         if isinstance(rule, dict)
     }
-    detail: list[dict] = []
-    for step in (s for s in trace if s["tool"] == "search_places"):
-        try:
-            detail.append({"args": json.loads(step["args"] or "{}")})
-        except (json.JSONDecodeError, TypeError) as error:
-            detail.append({"args": None, "raw_args": step["args"], "error": str(error)})
+    detail = [_parse_args(step["args"]) for step in trace if step["tool"] == "search_places"]
 
     if not checkable:
         return {
@@ -338,7 +350,7 @@ def check_place_search(expected_search: dict | None, trace: list[dict]) -> dict:
 
     for index, call in enumerate(detail, start=1):
         if call["args"] is None:
-            malformed.append(f"{index}번째 호출 인자를 읽을 수 없다({call['error']})")
+            malformed.append(f"{index}번째 호출 {call['error']}")
             satisfied.append({dimension: False for dimension in checkable})
             continue
         states = {}
