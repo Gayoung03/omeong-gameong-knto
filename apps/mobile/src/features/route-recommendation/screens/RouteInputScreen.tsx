@@ -1,9 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
+  Animated,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -37,15 +39,16 @@ import { getAuthSession } from '@/src/features/auth/services/authStorage';
 import { searchAccommodations } from '@/src/features/places/api/placesApi';
 import type { Place } from '@/src/features/places/types/place';
 import { usePets } from '@/src/features/profile/hooks/usePets';
-import { createRouteRecommendation } from '@/src/features/trips/api/tripsApi';
+import { createManualTrip, createRouteRecommendation } from '@/src/features/trips/api/tripsApi';
+import { tripQueryKeys } from '@/src/features/trips/hooks/useTrips';
 import type { ServerTransportType, ServerTripPace } from '@/src/features/trips/types/routeApi';
 import { colors as theme, overlayColors, radius, spacing, typography } from '@/src/theme';
 
 const LEGACY_DRAFT_KEY = 'route-input-draft';
 const DRAFT_KEY_PREFIX = 'route-input-draft:';
 
-function routeDraftKey(userId: string): string {
-  return `${DRAFT_KEY_PREFIX}${userId}`;
+function routeDraftKey(userId: string, mode: RouteInputMode): string {
+  return mode === 'manual' ? `${DRAFT_KEY_PREFIX}manual:${userId}` : `${DRAFT_KEY_PREFIX}${userId}`;
 }
 
 /**
@@ -67,10 +70,22 @@ const colors = {
 };
 
 type Trip = { title: string; startAt: string; endAt: string };
+export type RouteInputMode = 'recommendation' | 'manual';
 type Stay = { id: string; placeId?: string; name: string; period: string; address: string };
 type EditTarget = 'stay' | null;
 type TripPhase = 'dates' | 'details';
 type FirstDayStart = 'stay' | 'other' | null;
+type RequiredField =
+  | 'tripDates'
+  | 'tripName'
+  | 'tripTimes'
+  | 'transport'
+  | 'departureMode'
+  | 'departureLocation'
+  | 'pets'
+  | 'places'
+  | 'criteria';
+type StayRequiredField = 'name' | 'period' | 'address';
 
 type RouteDraft = {
   trip: Trip;
@@ -148,6 +163,8 @@ const STEPS = [
 ] as const;
 
 const REVIEW_STEP = STEPS.length;
+const RECOMMENDATION_STEP_INDEXES = STEPS.map((_, index) => index);
+const MANUAL_STEP_INDEXES = [0, 1, 2, 3];
 
 const formatShortDate = (iso: string) => {
   const date = new Date(iso);
@@ -356,38 +373,9 @@ function restoreDraft(saved: string): { draft: RouteDraft; currentStep: number }
   };
 }
 
-function validateStep(index: number, draft: RouteDraft): string | null {
-  if (index === 0 && !draft.trip.title.trim()) {
-    return '여행 이름을 입력해주세요.';
-  }
-  if (index === 0 && new Date(draft.trip.endAt) <= new Date(draft.trip.startAt)) {
-    return '여행 일정을 다시 확인해주세요.';
-  }
-  if (index === 1 && !draft.transport) return '이동수단을 하나 선택해주세요.';
-  if (
-    index === 2 &&
-    (draft.stays.length === 0 || draft.firstDayStart === 'other') &&
-    !draft.departureLocation.trim()
-  ) {
-    return '첫날 여행을 시작할 장소를 골라주세요.';
-  }
-  if (index === 2 && draft.stays.length > 0 && draft.firstDayStart === null) {
-    return '첫날 숙소에서 출발할지 다른 장소에서 출발할지 골라주세요.';
-  }
-  if (index === 3 && draft.selectedPetIds.length === 0) {
-    return '함께 여행할 반려동물을 한 마리 이상 골라주세요.';
-  }
-  if (index === 4 && draft.places.length === 0) {
-    return '가고 싶은 장소 유형을 한 개 이상 선택해주세요.';
-  }
-  if (index === 6 && draft.priorityMode === 'manual' && draft.userCriteria.length === 0) {
-    return '중요한 기준을 하나 이상 고르거나 건너뛰어주세요.';
-  }
-  return null;
-}
-
-export function RouteInputScreen() {
+export function RouteInputScreen({ mode = 'recommendation' }: { mode?: RouteInputMode }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: pets = [], isPending: isPetsPending } = usePets();
   const [draft, setDraft] = useState<RouteDraft>(initialDraft);
   const [draftStorageKey, setDraftStorageKey] = useState<string | null>(null);
@@ -415,36 +403,106 @@ export function RouteInputScreen() {
   const [pendingStayDelete, setPendingStayDelete] = useState<Stay | null>(null);
   const [formError, setFormError] = useState('');
   const [pageError, setPageError] = useState('');
+  const [fieldError, setFieldError] = useState<{ field: RequiredField; message: string } | null>(
+    null,
+  );
+  const [fieldShake] = useState(() => new Animated.Value(0));
+  const [stayFieldErrors, setStayFieldErrors] = useState<StayRequiredField[]>([]);
+  const [stayFormShake] = useState(() => new Animated.Value(0));
   const [isSubmitting, setIsSubmitting] = useState(false);
   /** 현재 표시하는 단계. STEPS.length 면 최종 확인 화면이다. */
   const [openIndex, setOpenIndex] = useState(0);
   const [returnToReview, setReturnToReview] = useState(false);
 
+  const isManual = mode === 'manual';
+  const activeStepIndexes = isManual ? MANUAL_STEP_INDEXES : RECOMMENDATION_STEP_INDEXES;
   const isReviewStep = openIndex === REVIEW_STEP;
+
+  const moveFromStep = (index: number, direction: 1 | -1) => {
+    const position = activeStepIndexes.indexOf(index);
+    const nextPosition = position + direction;
+    if (nextPosition < 0) return activeStepIndexes[0] ?? 0;
+    if (nextPosition >= activeStepIndexes.length) return REVIEW_STEP;
+    return activeStepIndexes[nextPosition];
+  };
+
+  const runShake = (value: Animated.Value) => {
+    value.stopAnimation();
+    value.setValue(0);
+    Animated.sequence([
+      Animated.timing(value, { duration: 55, toValue: -7, useNativeDriver: true }),
+      Animated.timing(value, { duration: 55, toValue: 7, useNativeDriver: true }),
+      Animated.timing(value, { duration: 50, toValue: -4, useNativeDriver: true }),
+      Animated.timing(value, { duration: 50, toValue: 4, useNativeDriver: true }),
+      Animated.timing(value, { duration: 45, toValue: 0, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const showFieldError = (field: RequiredField, message: string) => {
+    setPageError('');
+    setFieldError({ field, message });
+    runShake(fieldShake);
+  };
+
+  const clearFieldError = (field: RequiredField) => {
+    setFieldError((current) => (current?.field === field ? null : current));
+  };
 
   const goNextStep = (index: number) => {
     if (index === 0 && tripPhase === 'dates') {
       if (!draft.trip.startAt || !draft.trip.endAt) {
-        setPageError('도착일과 출발일을 모두 골라주세요.');
+        showFieldError('tripDates', '도착일과 출발일을 모두 선택해주세요.');
         return;
       }
       setPageError('');
       setTripPhase('details');
       return;
     }
-    const error = validateStep(index, draft);
-    if (error) {
-      setPageError(error);
+    if (index === 0 && !draft.trip.title.trim()) {
+      showFieldError('tripName', '여행 이름을 입력해주세요.');
+      return;
+    }
+    if (index === 0 && new Date(draft.trip.endAt) <= new Date(draft.trip.startAt)) {
+      showFieldError('tripTimes', '출발 시간을 도착 시간보다 늦게 입력해주세요.');
+      return;
+    }
+    if (index === 1 && !draft.transport) {
+      showFieldError('transport', '이동수단을 선택해주세요.');
+      return;
+    }
+    if (
+      index === 2 &&
+      (draft.stays.length === 0 || draft.firstDayStart === 'other') &&
+      !draft.departureLocation.trim()
+    ) {
+      showFieldError('departureLocation', '여행 시작 장소를 입력해주세요.');
+      return;
+    }
+    if (index === 2 && draft.stays.length > 0 && draft.firstDayStart === null) {
+      showFieldError('departureMode', '첫날 출발 방식을 선택해주세요.');
+      return;
+    }
+    if (index === 3 && draft.selectedPetIds.length === 0) {
+      showFieldError('pets', '함께 여행할 반려동물을 선택해주세요.');
+      return;
+    }
+    if (index === 4 && draft.places.length === 0) {
+      showFieldError('places', '가고 싶은 장소 유형을 선택해주세요.');
+      return;
+    }
+    if (index === 6 && draft.priorityMode === 'manual' && draft.userCriteria.length === 0) {
+      showFieldError('criteria', '중요한 기준을 선택하거나 건너뛰어주세요.');
       return;
     }
     setPageError('');
-    setOpenIndex(returnToReview ? REVIEW_STEP : Math.min(REVIEW_STEP, index + 1));
+    setOpenIndex(returnToReview ? REVIEW_STEP : moveFromStep(index, 1));
     setReturnToReview(false);
+    setFieldError(null);
   };
 
   const nextStepLabel = (index: number) => {
     if (index === 0 && tripPhase === 'dates') return '시간 선택';
-    return index === STEPS.length - 1 ? '확인' : '다음';
+    return index === activeStepIndexes.at(-1) ? '확인' : '다음';
   };
 
   const skipCurrentStep = () => {
@@ -463,7 +521,8 @@ export function RouteInputScreen() {
       }));
     }
     setPageError('');
-    setOpenIndex(returnToReview ? REVIEW_STEP : Math.min(REVIEW_STEP, openIndex + 1));
+    setFieldError(null);
+    setOpenIndex(returnToReview ? REVIEW_STEP : moveFromStep(openIndex, 1));
     setReturnToReview(false);
   };
   const stayNightOptions = getStayNightOptions(draft.trip);
@@ -480,7 +539,7 @@ export function RouteInputScreen() {
           return;
         }
 
-        const storageKey = routeDraftKey(accountKey);
+        const storageKey = routeDraftKey(accountKey, mode);
         setDraftStorageKey(storageKey);
 
         // 예전 공용 키는 계정 사이에 입력 정보가 섞일 수 있으므로 복원하지 않는다.
@@ -489,7 +548,11 @@ export function RouteInputScreen() {
         if (saved) {
           const restored = restoreDraft(saved);
           setDraft(restored.draft);
-          setOpenIndex(restored.currentStep);
+          setOpenIndex(
+            restored.currentStep === REVIEW_STEP || activeStepIndexes.includes(restored.currentStep)
+              ? restored.currentStep
+              : activeStepIndexes[0],
+          );
         }
       } catch {
         setPageError('저장한 입력 정보를 불러오지 못했어요. 새로 입력해주세요.');
@@ -497,7 +560,7 @@ export function RouteInputScreen() {
         setHydrated(true);
       }
     })();
-  }, []);
+  }, [activeStepIndexes, mode]);
 
   useEffect(() => {
     if (!hydrated || !draftStorageKey) return;
@@ -570,6 +633,7 @@ export function RouteInputScreen() {
     setStaySearchAttempted(false);
     setStaySearchLoading(false);
     setFormError('');
+    setStayFieldErrors([]);
     setEditingStayId(stay?.id ?? null);
     setFormValues(stay ?? { id: '', placeId: '', name: '', period: '', address: '' });
     setStaySearchQuery(stay?.name ?? '');
@@ -585,6 +649,7 @@ export function RouteInputScreen() {
       : [...selectedPeriods, period];
     setFormValues((values) => ({ ...values, period: formatStayPeriods(nextPeriods) }));
     setFormError('');
+    setStayFieldErrors((current) => current.filter((field) => field !== 'period'));
   };
 
   const updateTripTime = (field: 'startAt' | 'endAt', hour: number, minute: number) => {
@@ -616,6 +681,7 @@ export function RouteInputScreen() {
     setEditingStayId(null);
     setFormValues({});
     setFormError('');
+    setStayFieldErrors([]);
     setStaySearchQuery('');
     setStaySearchResults([]);
     setStaySearchError('');
@@ -625,12 +691,14 @@ export function RouteInputScreen() {
     if (editTarget === 'stay') {
       const stayName = formValues.name?.trim() ?? '';
       const stayAddress = formValues.address?.trim() ?? '';
-      if (!stayName || !formValues.period) {
-        setFormError('숙소 이름과 숙박 일차를 입력해주세요.');
-        return;
-      }
-      if (!formValues.placeId && !stayAddress) {
-        setFormError('숙소 위치를 정확히 찾을 수 있도록 주소를 입력해주세요.');
+      const missingFields: StayRequiredField[] = [];
+      if (!stayName) missingFields.push('name');
+      if (!formValues.period) missingFields.push('period');
+      if (!formValues.placeId && !stayAddress) missingFields.push('address');
+      if (missingFields.length > 0) {
+        setFormError('');
+        setStayFieldErrors(missingFields);
+        runShake(stayFormShake);
         return;
       }
       const selectedPeriods = parseStayPeriods(formValues.period);
@@ -665,6 +733,7 @@ export function RouteInputScreen() {
   };
 
   const togglePlaceType = (place: string) => {
+    clearFieldError('places');
     if (draft.places.includes(place)) {
       updateDraft(
         'places',
@@ -680,6 +749,7 @@ export function RouteInputScreen() {
   };
 
   const switchPriorityMode = (mode: PriorityMode) => {
+    clearFieldError('criteria');
     setDraft((current) => ({
       ...current,
       priorityMode: mode,
@@ -690,6 +760,7 @@ export function RouteInputScreen() {
   };
 
   const toggleUserCriterion = (criterion: UserCriterion) => {
+    clearFieldError('criteria');
     if (draft.userCriteria.includes(criterion)) {
       updateDraft(
         'userCriteria',
@@ -729,6 +800,7 @@ export function RouteInputScreen() {
     setTripPhase('dates');
     setReturnToReview(false);
     setPageError('');
+    setFieldError(null);
     try {
       if (draftStorageKey) {
         await AsyncStorage.removeItem(draftStorageKey);
@@ -738,44 +810,58 @@ export function RouteInputScreen() {
     }
   };
 
-  const requestRecommendation = async () => {
+  const submitTrip = async () => {
+    if (!draft.trip.startAt || !draft.trip.endAt) {
+      setOpenIndex(0);
+      setTripPhase('dates');
+      showFieldError('tripDates', '도착일과 출발일을 모두 선택해주세요.');
+      return;
+    }
     if (!draft.trip.title.trim()) {
-      setPageError('여행 이름을 입력해주세요.');
+      setOpenIndex(0);
+      setTripPhase('details');
+      showFieldError('tripName', '여행 이름을 입력해주세요.');
       return;
     }
     if (new Date(draft.trip.endAt) <= new Date(draft.trip.startAt)) {
-      setPageError('여행 일정을 다시 확인해주세요.');
+      setOpenIndex(0);
+      setTripPhase('details');
+      showFieldError('tripTimes', '출발 시간을 도착 시간보다 늦게 입력해주세요.');
       return;
     }
     if (!draft.transport) {
-      setPageError('이동수단을 하나 선택해주세요.');
-      return;
-    }
-    if (draft.selectedPetIds.length === 0) {
-      setPageError('함께 여행할 반려동물을 한 마리 이상 골라주세요.');
+      setOpenIndex(1);
+      showFieldError('transport', '이동수단을 선택해주세요.');
       return;
     }
     if (
       (draft.stays.length === 0 || draft.firstDayStart === 'other') &&
       !draft.departureLocation.trim()
     ) {
-      setPageError('첫날 여행을 시작할 장소를 입력해주세요.');
+      setOpenIndex(2);
+      showFieldError('departureLocation', '여행 시작 장소를 입력해주세요.');
       return;
     }
     if (draft.stays.length > 0 && draft.firstDayStart === null) {
-      setPageError('첫날 숙소에서 출발할지 다른 장소에서 출발할지 골라주세요.');
+      setOpenIndex(2);
+      showFieldError('departureMode', '첫날 출발 방식을 선택해주세요.');
       return;
     }
-    if (draft.places.length === 0) {
-      setPageError('가고 싶은 장소 유형을 한 개 이상 선택해주세요.');
+    if (draft.selectedPetIds.length === 0) {
+      setOpenIndex(3);
+      showFieldError('pets', '함께 여행할 반려동물을 선택해주세요.');
       return;
     }
-    const personalization = toPersonalizationPayload(
-      draft.priorityMode,
-      draft.priorityPreset,
-      draft.userCriteria,
-    );
-
+    if (!isManual && draft.places.length === 0) {
+      setOpenIndex(4);
+      showFieldError('places', '가고 싶은 장소 유형을 선택해주세요.');
+      return;
+    }
+    if (!isManual && draft.priorityMode === 'manual' && draft.userCriteria.length === 0) {
+      setOpenIndex(6);
+      showFieldError('criteria', '중요한 기준을 선택하거나 건너뛰어주세요.');
+      return;
+    }
     try {
       if (draftStorageKey) {
         await AsyncStorage.setItem(draftStorageKey, serializeDraft(draft, REVIEW_STEP));
@@ -803,8 +889,34 @@ export function RouteInputScreen() {
     setIsSubmitting(true);
     setPageError('');
     try {
+      if (isManual) {
+        const created = await createManualTrip({
+          title: draft.trip.title.trim(),
+          startAt: draft.trip.startAt,
+          endAt: draft.trip.endAt,
+          pace: 'normal',
+          transport: transportMap[draft.transport],
+          petIds: selectedPets.map((pet) => pet.petId),
+          departureLocation:
+            draft.stays.length === 0 || draft.firstDayStart === 'other'
+              ? draft.departureLocation.trim()
+              : draft.stays[0]?.name,
+          stays: draft.stays.map((stay) => toStayRequest(stay, draft.trip)),
+        });
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        if (draftStorageKey) await AsyncStorage.removeItem(draftStorageKey);
+        await queryClient.invalidateQueries({ queryKey: tripQueryKeys.list() });
+        router.replace({ pathname: '/trips/[tripId]', params: { tripId: created.id } });
+        return;
+      }
+
+      const personalization = toPersonalizationPayload(
+        draft.priorityMode,
+        draft.priorityPreset,
+        draft.userCriteria,
+      );
       const request = {
-        title: draft.trip.title,
+        title: draft.trip.title.trim(),
         startAt: draft.trip.startAt,
         endAt: draft.trip.endAt,
         departureLocation:
@@ -831,7 +943,12 @@ export function RouteInputScreen() {
       });
     } catch (error) {
       const detail = isAxiosError<{ detail?: string }>(error) ? error.response?.data?.detail : null;
-      setPageError(detail ?? '루트 추천을 시작하지 못했어요. 잠시 후 다시 시도해주세요.');
+      setPageError(
+        detail ??
+          (isManual
+            ? '여행을 만들지 못했어요. 잠시 후 다시 시도해주세요.'
+            : '루트 추천을 시작하지 못했어요. 잠시 후 다시 시도해주세요.'),
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -846,7 +963,7 @@ export function RouteInputScreen() {
             <Text style={styles.flowBrandText}>오멍가멍</Text>
           </View>
           <Pressable
-            accessibilityLabel="루트 추천 입력 닫기"
+            accessibilityLabel={isManual ? '여행 직접 만들기 닫기' : '루트 추천 입력 닫기'}
             hitSlop={10}
             onPress={() => void closeFlow()}
             style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
@@ -871,22 +988,49 @@ export function RouteInputScreen() {
                 title={tripPhase === 'dates' ? '여행 날짜를 골라주세요' : '여행 시간을 알려주세요'}
               >
                 {tripPhase === 'dates' ? (
-                  <CalendarRangePicker
-                    endValue={draft.trip.endAt ? new Date(draft.trip.endAt) : null}
-                    onChange={updateTripDates}
-                    startValue={draft.trip.startAt ? new Date(draft.trip.startAt) : null}
-                  />
+                  <View style={styles.inputGroup}>
+                    <InlineFieldError error={fieldError} field="tripDates" />
+                    <Animated.View
+                      style={[
+                        fieldError?.field === 'tripDates' && styles.selectionGroupError,
+                        { transform: [{ translateX: fieldShake }] },
+                      ]}
+                    >
+                      <CalendarRangePicker
+                        endValue={draft.trip.endAt ? new Date(draft.trip.endAt) : null}
+                        onChange={(start, end) => {
+                          clearFieldError('tripDates');
+                          updateTripDates(start, end);
+                        }}
+                        startValue={draft.trip.startAt ? new Date(draft.trip.startAt) : null}
+                      />
+                    </Animated.View>
+                  </View>
                 ) : (
                   <View style={styles.formSections}>
                     <View style={styles.inputGroup}>
-                      <Text style={styles.formGroupTitle}>여행 이름</Text>
-                      <TextInput
-                        onChangeText={(title) => updateDraft('trip', { ...draft.trip, title })}
-                        placeholder="예: 우리 아이와 첫 제주 여행"
-                        placeholderTextColor={theme.textTertiary}
-                        style={styles.formInput}
-                        value={draft.trip.title}
-                      />
+                      <View style={styles.formGroupTitleRow}>
+                        <Text style={styles.formGroupTitle}>여행 이름</Text>
+                        <InlineFieldError error={fieldError} field="tripName" />
+                      </View>
+                      <Animated.View style={{ transform: [{ translateX: fieldShake }] }}>
+                        <TextInput
+                          accessibilityHint={
+                            fieldError?.field === 'tripName' ? fieldError.message : undefined
+                          }
+                          onChangeText={(title) => {
+                            if (title.length > 0) clearFieldError('tripName');
+                            updateDraft('trip', { ...draft.trip, title });
+                          }}
+                          placeholder="예: 우리 아이와 첫 제주 여행"
+                          placeholderTextColor={theme.textTertiary}
+                          style={[
+                            styles.formInput,
+                            fieldError?.field === 'tripName' && styles.formInputError,
+                          ]}
+                          value={draft.trip.title}
+                        />
+                      </Animated.View>
                     </View>
                     <View style={styles.inlineDateSummary}>
                       <Ionicons color={colors.orange} name="calendar-outline" size={18} />
@@ -898,18 +1042,33 @@ export function RouteInputScreen() {
                       </Text>
                     </View>
                     <View style={styles.inputGroup}>
-                      <Text style={styles.formGroupTitle}>도착 시간</Text>
-                      <TimeNumberInput
-                        onChange={(hour, minute) => updateTripTime('startAt', hour, minute)}
-                        value={draft.trip.startAt}
-                      />
+                      <View style={styles.formGroupTitleRow}>
+                        <Text style={styles.formGroupTitle}>도착 시간</Text>
+                        <InlineFieldError error={fieldError} field="tripTimes" />
+                      </View>
+                      <Animated.View style={{ transform: [{ translateX: fieldShake }] }}>
+                        <TimeNumberInput
+                          error={fieldError?.field === 'tripTimes'}
+                          onChange={(hour, minute) => {
+                            clearFieldError('tripTimes');
+                            updateTripTime('startAt', hour, minute);
+                          }}
+                          value={draft.trip.startAt}
+                        />
+                      </Animated.View>
                     </View>
                     <View style={styles.inputGroup}>
                       <Text style={styles.formGroupTitle}>출발 시간</Text>
-                      <TimeNumberInput
-                        onChange={(hour, minute) => updateTripTime('endAt', hour, minute)}
-                        value={draft.trip.endAt}
-                      />
+                      <Animated.View style={{ transform: [{ translateX: fieldShake }] }}>
+                        <TimeNumberInput
+                          error={fieldError?.field === 'tripTimes'}
+                          onChange={(hour, minute) => {
+                            clearFieldError('tripTimes');
+                            updateTripTime('endAt', hour, minute);
+                          }}
+                          value={draft.trip.endAt}
+                        />
+                      </Animated.View>
                     </View>
                   </View>
                 )}
@@ -923,16 +1082,26 @@ export function RouteInputScreen() {
                 icon="car-outline"
                 title="이동수단"
               >
-                <View style={styles.chipRow}>
+                <InlineFieldError error={fieldError} field="transport" />
+                <Animated.View
+                  style={[
+                    styles.chipRow,
+                    fieldError?.field === 'transport' && styles.selectionGroupError,
+                    { transform: [{ translateX: fieldShake }] },
+                  ]}
+                >
                   {draft.transportOptions.slice(0, 4).map((item) => (
                     <ChoiceChip
                       key={item}
                       label={item}
-                      onPress={() => updateDraft('transport', item)}
+                      onPress={() => {
+                        clearFieldError('transport');
+                        updateDraft('transport', item);
+                      }}
                       selected={draft.transport === item}
                     />
                   ))}
-                </View>
+                </Animated.View>
               </QuestionStep>
             ) : null}
 
@@ -965,41 +1134,70 @@ export function RouteInputScreen() {
                 </Pressable>
                 {draft.stays.length > 0 ? (
                   <View style={styles.inputGroup}>
-                    <Text style={styles.formGroupTitle}>첫날 출발 장소</Text>
-                    <View style={styles.chipRow}>
+                    <View style={styles.formGroupTitleRow}>
+                      <Text style={styles.formGroupTitle}>첫날 출발 장소</Text>
+                      <InlineFieldError error={fieldError} field="departureMode" />
+                    </View>
+                    <Animated.View
+                      style={[
+                        styles.chipRow,
+                        fieldError?.field === 'departureMode' && styles.selectionGroupError,
+                        { transform: [{ translateX: fieldShake }] },
+                      ]}
+                    >
                       <ChoiceChip
                         label="숙소에서 출발"
-                        onPress={() => updateDraft('firstDayStart', 'stay')}
+                        onPress={() => {
+                          clearFieldError('departureMode');
+                          updateDraft('firstDayStart', 'stay');
+                        }}
                         selected={draft.firstDayStart === 'stay'}
                       />
                       <ChoiceChip
                         label="다른 장소에서 출발"
-                        onPress={() => updateDraft('firstDayStart', 'other')}
+                        onPress={() => {
+                          clearFieldError('departureMode');
+                          updateDraft('firstDayStart', 'other');
+                        }}
                         selected={draft.firstDayStart === 'other'}
                       />
-                    </View>
+                    </Animated.View>
                   </View>
                 ) : null}
                 {draft.stays.length === 0 || draft.firstDayStart === 'other' ? (
                   <View style={styles.inputGroup}>
-                    <Text style={styles.formGroupTitle}>여행 시작 장소</Text>
+                    <View style={styles.formGroupTitleRow}>
+                      <Text style={styles.formGroupTitle}>여행 시작 장소</Text>
+                      <InlineFieldError error={fieldError} field="departureLocation" />
+                    </View>
                     <View style={styles.chipRow}>
                       {['제주국제공항', '제주항', '서귀포항'].map((place) => (
                         <ChoiceChip
                           key={place}
                           label={place}
-                          onPress={() => updateDraft('departureLocation', place)}
+                          onPress={() => {
+                            clearFieldError('departureLocation');
+                            updateDraft('departureLocation', place);
+                          }}
                           selected={draft.departureLocation === place}
                         />
                       ))}
                     </View>
-                    <TextInput
-                      onChangeText={(value) => updateDraft('departureLocation', value)}
-                      placeholder="다른 시작 장소 입력"
-                      placeholderTextColor={theme.textTertiary}
-                      style={styles.formInput}
-                      value={draft.departureLocation}
-                    />
+                    <Animated.View style={{ transform: [{ translateX: fieldShake }] }}>
+                      <TextInput
+                        onChangeText={(value) => {
+                          if (value.length > 0) clearFieldError('departureLocation');
+                          updateDraft('departureLocation', value);
+                        }}
+                        placeholder="다른 시작 장소 입력"
+                        placeholderTextColor={theme.textTertiary}
+                        style={[
+                          styles.formInput,
+                          fieldError?.field === 'departureLocation' && styles.formInputError,
+                        ]}
+                        value={draft.departureLocation}
+                      />
+                    </Animated.View>
                   </View>
                 ) : null}
               </QuestionStep>
@@ -1012,6 +1210,7 @@ export function RouteInputScreen() {
                 icon="paw-outline"
                 title="반려동물 정보"
               >
+                <InlineFieldError error={fieldError} field="pets" />
                 {isPetsPending ? (
                   <Text style={styles.valueText}>반려동물을 불러오는 중이에요...</Text>
                 ) : null}
@@ -1019,20 +1218,27 @@ export function RouteInputScreen() {
                   <Text style={styles.valueText}>먼저 프로필에서 반려동물을 등록해주세요.</Text>
                 ) : null}
                 {pets.length > 0 ? (
-                  <View style={styles.petList}>
+                  <Animated.View
+                    style={[
+                      styles.petList,
+                      fieldError?.field === 'pets' && styles.selectionGroupError,
+                      { transform: [{ translateX: fieldShake }] },
+                    ]}
+                  >
                     {pets.map((pet) => {
                       const selected = draft.selectedPetIds.includes(pet.petId);
                       return (
                         <Pressable
                           key={pet.petId}
-                          onPress={() =>
+                          onPress={() => {
+                            clearFieldError('pets');
                             updateDraft(
                               'selectedPetIds',
                               selected
                                 ? draft.selectedPetIds.filter((id) => id !== pet.petId)
                                 : [...draft.selectedPetIds, pet.petId],
-                            )
-                          }
+                            );
+                          }}
                           style={[styles.petRow, selected && styles.presetCardSelected]}
                         >
                           <View style={styles.petAvatar}>
@@ -1052,7 +1258,7 @@ export function RouteInputScreen() {
                         </Pressable>
                       );
                     })}
-                  </View>
+                  </Animated.View>
                 ) : null}
               </QuestionStep>
             ) : null}
@@ -1063,7 +1269,14 @@ export function RouteInputScreen() {
                 icon="location-outline"
                 title="가고 싶은 장소 유형"
               >
-                <View style={styles.chipRow}>
+                <InlineFieldError error={fieldError} field="places" />
+                <Animated.View
+                  style={[
+                    styles.chipRow,
+                    fieldError?.field === 'places' && styles.selectionGroupError,
+                    { transform: [{ translateX: fieldShake }] },
+                  ]}
+                >
                   {PLACE_TYPE_OPTIONS.map((item) => (
                     <ChoiceChip
                       key={item}
@@ -1072,7 +1285,7 @@ export function RouteInputScreen() {
                       selected={draft.places.includes(item)}
                     />
                   ))}
-                </View>
+                </Animated.View>
               </QuestionStep>
             ) : null}
 
@@ -1114,7 +1327,14 @@ export function RouteInputScreen() {
               >
                 {draft.priorityMode === 'manual' ? (
                   <>
-                    <View style={styles.chipRow}>
+                    <InlineFieldError error={fieldError} field="criteria" />
+                    <Animated.View
+                      style={[
+                        styles.chipRow,
+                        fieldError?.field === 'criteria' && styles.selectionGroupError,
+                        { transform: [{ translateX: fieldShake }] },
+                      ]}
+                    >
                       {USER_CRITERIA_OPTIONS.map((criterion) => (
                         <ChoiceChip
                           key={criterion.value}
@@ -1123,7 +1343,7 @@ export function RouteInputScreen() {
                           selected={draft.userCriteria.includes(criterion.value)}
                         />
                       ))}
-                    </View>
+                    </Animated.View>
                     <Pressable
                       onPress={() => switchPriorityMode('preset')}
                       style={styles.modeSwitchButton}
@@ -1191,12 +1411,14 @@ export function RouteInputScreen() {
                   와 함께하는 {draft.trip.title}
                 </Text>
                 <Text style={styles.reviewDescription}>
-                  추천 전에 입력한 내용을 한 번만 확인해주세요.
+                  {isManual
+                    ? '여행을 만들기 전에 입력한 내용을 한 번만 확인해주세요.'
+                    : '추천 전에 입력한 내용을 한 번만 확인해주세요.'}
                 </Text>
                 <View style={styles.reviewList}>
-                  {STEPS.map((step, index) => (
+                  {activeStepIndexes.map((index) => (
                     <Pressable
-                      key={step.key}
+                      key={STEPS[index].key}
                       onPress={() => {
                         setReturnToReview(true);
                         if (index === 0) setTripPhase('dates');
@@ -1262,10 +1484,11 @@ export function RouteInputScreen() {
                 accessibilityLabel="이전 단계"
                 onPress={() => {
                   setPageError('');
+                  setFieldError(null);
                   if (openIndex === 0 && tripPhase === 'details') {
                     setTripPhase('dates');
                   } else {
-                    setOpenIndex((current) => Math.max(0, current - 1));
+                    setOpenIndex((current) => moveFromStep(current, -1));
                   }
                 }}
                 style={({ pressed }) => [styles.footerBackButton, pressed && styles.pressed]}
@@ -1276,16 +1499,26 @@ export function RouteInputScreen() {
             ) : null}
             <Pressable
               disabled={isSubmitting}
-              onPress={() => (isReviewStep ? void requestRecommendation() : goNextStep(openIndex))}
+              onPress={() => (isReviewStep ? void submitTrip() : goNextStep(openIndex))}
               style={({ pressed }) => [styles.footerNextButton, pressed && styles.pressed]}
-              testID={isReviewStep ? 'recommend-route-button' : 'route-next-button'}
+              testID={
+                isReviewStep
+                  ? isManual
+                    ? 'create-manual-trip-button'
+                    : 'recommend-route-button'
+                  : 'route-next-button'
+              }
             >
               {isReviewStep ? <Ionicons color={colors.white} name="paw" size={18} /> : null}
               <Text style={styles.footerNextText}>
                 {isSubmitting
-                  ? '추천을 준비하는 중...'
+                  ? isManual
+                    ? '여행을 만드는 중...'
+                    : '추천을 준비하는 중...'
                   : isReviewStep
-                    ? '루트 추천받기'
+                    ? isManual
+                      ? '여행 만들기'
+                      : '루트 추천받기'
                     : nextStepLabel(openIndex)}
               </Text>
             </Pressable>
@@ -1376,6 +1609,7 @@ export function RouteInputScreen() {
                                       address: place.address,
                                     }));
                                     setFormError('');
+                                    setStayFieldErrors([]);
                                     setStayEditorPhase('details');
                                   }}
                                   style={[
@@ -1415,6 +1649,7 @@ export function RouteInputScreen() {
                               address: '',
                             }));
                             setFormError('');
+                            setStayFieldErrors([]);
                             setStayEditorPhase('details');
                           }}
                         >
@@ -1441,16 +1676,36 @@ export function RouteInputScreen() {
                       <FormInput
                         label="숙소 이름"
                         name="name"
-                        onChange={() => setFormValues((current) => ({ ...current, placeId: '' }))}
+                        error={stayFieldErrors.includes('name') ? '숙소 이름을 입력해주세요.' : ''}
+                        onChange={() => {
+                          setStayFieldErrors((current) =>
+                            current.filter((field) => field !== 'name'),
+                          );
+                          setFormValues((current) => ({ ...current, placeId: '' }));
+                        }}
                         setValues={setFormValues}
+                        shake={stayFormShake}
                         values={formValues}
                       />
                       <View style={styles.formField}>
-                        <Text style={styles.formLabel}>숙박 일차</Text>
+                        <View style={styles.formLabelRow}>
+                          <Text style={styles.formLabel}>숙박 일차</Text>
+                          {stayFieldErrors.includes('period') ? (
+                            <Text accessibilityRole="alert" style={styles.inlineFieldError}>
+                              숙박 일차를 선택해주세요.
+                            </Text>
+                          ) : null}
+                        </View>
                         <Text style={styles.formHelper}>
                           여행 일정 중 이 숙소에서 머무는 밤을 선택해주세요.
                         </Text>
-                        <View style={styles.stayPeriodChips}>
+                        <Animated.View
+                          style={[
+                            styles.stayPeriodChips,
+                            stayFieldErrors.includes('period') && styles.selectionGroupError,
+                            { transform: [{ translateX: stayFormShake }] },
+                          ]}
+                        >
                           {stayNightOptions.map((option) => {
                             const selected = parseStayPeriods(formValues.period ?? '').includes(
                               option.value,
@@ -1485,7 +1740,7 @@ export function RouteInputScreen() {
                               </Pressable>
                             );
                           })}
-                        </View>
+                        </Animated.View>
                         {stayNightOptions.length === 0 ? (
                           <Text style={styles.emptyStayPeriod}>숙박이 없는 당일 여행이에요.</Text>
                         ) : null}
@@ -1493,8 +1748,19 @@ export function RouteInputScreen() {
                       <FormInput
                         label="주소"
                         name="address"
-                        onChange={() => setFormValues((current) => ({ ...current, placeId: '' }))}
+                        error={
+                          stayFieldErrors.includes('address')
+                            ? '숙소 주소를 입력해주세요.'
+                            : ''
+                        }
+                        onChange={() => {
+                          setStayFieldErrors((current) =>
+                            current.filter((field) => field !== 'address'),
+                          );
+                          setFormValues((current) => ({ ...current, placeId: '' }));
+                        }}
                         setValues={setFormValues}
+                        shake={stayFormShake}
                         values={formValues}
                         required={!formValues.placeId}
                       />
@@ -1556,12 +1822,28 @@ export function RouteInputScreen() {
   );
 }
 
+function InlineFieldError({
+  error,
+  field,
+}: {
+  error: { field: RequiredField; message: string } | null;
+  field: RequiredField;
+}) {
+  return error?.field === field ? (
+    <Text accessibilityRole="alert" style={styles.inlineFieldError}>
+      {error.message}
+    </Text>
+  ) : null;
+}
+
 function TimeNumberInput({
   value,
   onChange,
+  error = false,
 }: {
   value: string;
   onChange: (hour: number, minute: number) => void;
+  error?: boolean;
 }) {
   const currentValue = new Date(value);
   const [hour, setHour] = useState(String(currentValue.getHours()).padStart(2, '0'));
@@ -1576,7 +1858,10 @@ function TimeNumberInput({
   };
 
   return (
-    <View accessibilityLabel="시간 숫자 입력" style={styles.timeNumberGroup}>
+    <View
+      accessibilityLabel="시간 숫자 입력"
+      style={[styles.timeNumberGroup, error && styles.formInputError]}
+    >
       <Ionicons color={colors.gray} name="time-outline" size={18} />
       <TextInput
         accessibilityLabel="시"
@@ -1608,36 +1893,49 @@ function TimeNumberInput({
 }
 
 function FormInput({
+  error = '',
   label,
   name,
   onChange,
   required = false,
+  shake,
   values,
   setValues,
 }: {
+  error?: string;
   label: string;
   name: string;
   onChange?: () => void;
   required?: boolean;
+  shake?: Animated.Value;
   values: Record<string, string>;
   setValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }) {
   return (
     <View style={styles.formField}>
-      <Text style={styles.formLabel}>
-        {label}
-        {required ? <Text style={styles.requiredMark}> *</Text> : null}
-      </Text>
-      <TextInput
-        onChangeText={(value) => {
-          onChange?.();
-          setValues((current) => ({ ...current, [name]: value }));
-        }}
-        placeholder={`${label} 입력`}
-        placeholderTextColor={theme.textTertiary}
-        style={styles.formInput}
-        value={values[name] ?? ''}
-      />
+      <View style={styles.formLabelRow}>
+        <Text style={styles.formLabel}>
+          {label}
+          {required ? <Text style={styles.requiredMark}> *</Text> : null}
+        </Text>
+        {error ? (
+          <Text accessibilityRole="alert" style={styles.inlineFieldError}>
+            {error}
+          </Text>
+        ) : null}
+      </View>
+      <Animated.View style={shake ? { transform: [{ translateX: shake }] } : undefined}>
+        <TextInput
+          onChangeText={(value) => {
+            onChange?.();
+            setValues((current) => ({ ...current, [name]: value }));
+          }}
+          placeholder={`${label} 입력`}
+          placeholderTextColor={theme.textTertiary}
+          style={[styles.formInput, Boolean(error) && styles.formInputError]}
+          value={values[name] ?? ''}
+        />
+      </Animated.View>
     </View>
   );
 }
@@ -2076,6 +2374,16 @@ const styles = StyleSheet.create({
     outlineStyle: 'none',
     paddingHorizontal: 12,
   } as never,
+  formInputError: {
+    borderColor: colors.red,
+    borderWidth: 1.5,
+  },
+  selectionGroupError: {
+    borderColor: colors.red,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    padding: spacing.xs,
+  },
   staySearchRow: { flexDirection: 'row', gap: 8 },
   staySearchInput: {
     borderColor: colors.line,
@@ -2172,6 +2480,21 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: typography.subtitle.fontSize,
     fontWeight: '800',
+  },
+  formGroupTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  formLabelRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  inlineFieldError: {
+    color: colors.red,
+    fontSize: typography.caption.fontSize,
+    fontWeight: '700',
   },
   inlineDateSummary: {
     alignItems: 'center',
