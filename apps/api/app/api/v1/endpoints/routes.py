@@ -24,6 +24,7 @@ from app.db.models import (
     RouteRequest,
     RouteRequestPet,
     RouteRequestStay,
+    RouteStay,
     WeatherSnapshot,
 )
 from app.db.models.enums import RouteCreationType, RouteItemSlotStatus, RouteStatus
@@ -59,6 +60,7 @@ from app.schemas.route import (
     RouteRequestPetInput,
     RouteShareResponse,
     RouteSlotSummary,
+    RouteStayResponse,
     RouteUpdate,
     SharedRouteDetail,
     TourAPIPlaceResponse,
@@ -151,10 +153,16 @@ def create_route_request(
         for place_id in [payload.departure_place_id, *(stay.place_id for stay in payload.stays)]
         if place_id is not None
     }
-    if place_ids:
-        found_ids = set(db.scalars(select(Place.id).where(Place.id.in_(place_ids))).all())
-        if found_ids != place_ids:
-            raise HTTPException(status_code=404, detail="출발지 또는 숙소 장소를 찾을 수 없습니다")
+    places_by_id = (
+        {
+            place.id: place
+            for place in db.scalars(select(Place).where(Place.id.in_(place_ids))).all()
+        }
+        if place_ids
+        else {}
+    )
+    if set(places_by_id) != place_ids:
+        raise HTTPException(status_code=404, detail="출발지 또는 숙소 장소를 찾을 수 없습니다")
 
     preferred_tags = normalize_preferred_tags(payload.preferred_tags)
     request = RouteRequest(
@@ -190,6 +198,12 @@ def create_route_request(
                 place_id=stay.place_id,
                 name=stay.name,
                 address=stay.address,
+                latitude=(
+                    places_by_id[stay.place_id].latitude if stay.place_id is not None else None
+                ),
+                longitude=(
+                    places_by_id[stay.place_id].longitude if stay.place_id is not None else None
+                ),
                 check_in_at=stay.check_in_at,
                 check_out_at=stay.check_out_at,
             )
@@ -204,12 +218,38 @@ def create_route_request(
         version=1,
         start_at=payload.start_at,
         end_at=payload.end_at,
+        departure_location=(
+            payload.departure_location
+            or (
+                places_by_id[payload.departure_place_id].name
+                if payload.departure_place_id is not None
+                else None
+            )
+        ),
+        departure_place_id=payload.departure_place_id,
         pace=payload.pace,
         transport=payload.transport,
         style_keywords=payload.preferred_tags,
     )
     db.add(route)
     db.flush()
+    for stay in payload.stays:
+        db.add(
+            RouteStay(
+                route_id=route.id,
+                place_id=stay.place_id,
+                name=stay.name,
+                address=stay.address,
+                latitude=(
+                    places_by_id[stay.place_id].latitude if stay.place_id is not None else None
+                ),
+                longitude=(
+                    places_by_id[stay.place_id].longitude if stay.place_id is not None else None
+                ),
+                check_in_at=stay.check_in_at,
+                check_out_at=stay.check_out_at,
+            )
+        )
     for pet in pets:
         db.add(RoutePet(route_id=route.id, pet_id=pet.id))
     db.commit()
@@ -249,6 +289,7 @@ def regenerate_route(
         raise HTTPException(status_code=404, detail="추천 요청을 찾을 수 없습니다")
 
     new_route = _insert_next_version(db, original)
+    _copy_route_stays(db, original.id, new_route.id)
     pet_ids = db.scalars(
         select(RouteRequestPet.pet_id).where(RouteRequestPet.route_request_id == request.id)
     ).all()
@@ -289,6 +330,8 @@ def _insert_next_version(db: Session, original: Route) -> Route:
             version=_next_version(db, original.route_request_id),
             start_at=original.start_at,
             end_at=original.end_at,
+            departure_location=original.departure_location,
+            departure_place_id=original.departure_place_id,
             pace=original.pace,
             transport=original.transport,
             style_keywords=original.style_keywords,
@@ -306,6 +349,28 @@ def _insert_next_version(db: Session, original: Route) -> Route:
     raise HTTPException(
         status_code=409, detail="재생성이 동시에 요청되었어요. 잠시 후 다시 시도해 주세요"
     )
+
+
+def _copy_route_stays(db: Session, source_route_id: uuid.UUID, target_route_id: uuid.UUID) -> None:
+    """재추천 결과에도 원본 최종 여행의 숙소 스냅샷을 복사한다."""
+    stays = db.scalars(
+        select(RouteStay)
+        .where(RouteStay.route_id == source_route_id)
+        .order_by(RouteStay.check_in_at.nulls_last(), RouteStay.id)
+    ).all()
+    for stay in stays:
+        db.add(
+            RouteStay(
+                route_id=target_route_id,
+                place_id=stay.place_id,
+                name=stay.name,
+                address=stay.address,
+                latitude=stay.latitude,
+                longitude=stay.longitude,
+                check_in_at=stay.check_in_at,
+                check_out_at=stay.check_out_at,
+            )
+        )
 
 
 @router.get("/routes", response_model=RouteListResponse, summary="내 여행 목록")
@@ -350,7 +415,8 @@ def list_routes(
 def create_route(payload: RouteCreate, current_user: CurrentUser, db: DbSession) -> RouteDetail:
     """추천을 받지 않고 사용자가 직접 만드는 여행.
 
-    **여행 껍데기만 만들고 일정은 비워둔다.** 일정은 만든 뒤 일정 편집 API 로
+    **여행 껍데기만 만들고 일정은 비워둔다.** 숙소와 출발지는 입력 스냅샷으로만
+    저장하고, 실제 일정은 만든 뒤 일정 편집 API 로
     채운다(docs/api/routes.md "수동 생성" 절의 유력안). 작성 도중 앱이 꺼져도
     만든 여행이 남고, 일정 추가·수정 API 를 그대로 재사용한다.
 
@@ -379,16 +445,40 @@ def create_route(payload: RouteCreate, current_user: CurrentUser, db: DbSession)
             if pet.user_id != current_user.id:
                 raise HTTPException(status_code=403, detail="다른 사용자의 반려동물입니다")
 
+    place_ids = {
+        place_id
+        for place_id in [payload.departure_place_id, *(stay.place_id for stay in payload.stays)]
+        if place_id is not None
+    }
+    places_by_id = (
+        {
+            place.id: place
+            for place in db.scalars(select(Place).where(Place.id.in_(place_ids))).all()
+        }
+        if place_ids
+        else {}
+    )
+    if set(places_by_id) != place_ids:
+        raise HTTPException(status_code=404, detail="출발지 또는 숙소 장소를 찾을 수 없습니다")
+
     route = Route(
+        route_request_id=None,
         user_id=current_user.id,
         title=payload.title,
         status=RouteStatus.SAVED,
-        # route_request_id 는 비워둔다. routes 의 CHECK 제약이
-        # "추천이면 요청서 필수, 수동이면 요청서 금지"를 강제한다.
         creation_type=RouteCreationType.MANUAL,
         version=1,
         start_at=payload.start_at,
         end_at=payload.end_at,
+        departure_location=(
+            payload.departure_location
+            or (
+                places_by_id[payload.departure_place_id].name
+                if payload.departure_place_id is not None
+                else None
+            )
+        ),
+        departure_place_id=payload.departure_place_id,
         pace=payload.pace,
         transport=payload.transport,
         style_keywords=payload.style_keywords,
@@ -397,6 +487,24 @@ def create_route(payload: RouteCreate, current_user: CurrentUser, db: DbSession)
     )
     db.add(route)
     db.flush()
+
+    for stay in payload.stays:
+        db.add(
+            RouteStay(
+                route_id=route.id,
+                place_id=stay.place_id,
+                name=stay.name,
+                address=stay.address,
+                latitude=(
+                    places_by_id[stay.place_id].latitude if stay.place_id is not None else None
+                ),
+                longitude=(
+                    places_by_id[stay.place_id].longitude if stay.place_id is not None else None
+                ),
+                check_in_at=stay.check_in_at,
+                check_out_at=stay.check_out_at,
+            )
+        )
 
     for offset in range(day_count):
         db.add(
@@ -636,10 +744,13 @@ def _fill_computed(
     `model_validate(route)` 는 ORM 객체에 있는 것만 옮겨온다. 이 값들은 세어야
     나오는 것이라 만들어진 응답에 나중에 넣는다.
 
-    **아직 못 채우는 것** — weather(기상청), stays(추천 요청서).
+    **아직 못 채우는 것** — weather(기상청).
     데이터 소스가 생기면 여기에 같이 붙인다.
     """
     detail.log_count = log_counts_of(db, [route.id]).get(route.id, 0)
+
+    detail.departure_location = route.departure_location
+    detail.stays = [RouteStayResponse.model_validate(stay) for stay in route.stays]
 
     places = [
         item.place for day in detail.route_days for item in day.items if item.place is not None

@@ -45,7 +45,7 @@ from app.recommend.schemas import CandidateTier, PetPolicy, ScoredCandidate, Wei
 from app.recommend.tmap import RouteLeg, TMapError
 from app.recommend.weights import resolve_weights
 from app.schemas.pet import calculate_age
-from app.schemas.route import RouteRequestCreate, RouteRequestStayCreate
+from app.schemas.route import RouteRequestCreate, RouteStayCreate
 from app.services import route_recommendation as rr
 from app.services.route_recommendation import (
     _cascade_item_times,
@@ -149,7 +149,7 @@ def test_resolve_location_geocodes_address_without_place_id() -> None:
 
 def test_stay_requires_db_place_or_address() -> None:
     with pytest.raises(ValidationError, match="placeId 또는 address"):
-        RouteRequestStayCreate(name="좌표 없는 숙소")
+        RouteStayCreate(name="좌표 없는 숙소")
 
 
 def test_route_request_accepts_stay_as_start_location() -> None:

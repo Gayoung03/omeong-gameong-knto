@@ -1,5 +1,6 @@
 import { toPetPolicy } from '@/src/types/place';
 import type { PlaceListItemResponse } from '@/src/features/places/types/placeApi';
+import type { PlaceDetail } from '@/src/features/places/types/placeDetail';
 
 import type { PlaceCandidate, PlaceCategory } from '../types/trip';
 
@@ -33,14 +34,14 @@ const CATEGORY_BY_SERVER_CODE: Record<string, PlaceCategory> = {
  * `etc` 는 어떤 필터 칩에도 안 들어가서 '맛집·관광·숙소' 를 누르면 사라지고
  * 필터를 끄면 다시 보인다. 억지로 관광지에 넣으면 관광 필터가 거짓말을 한다.
  */
-function toCategory(serverCategory: string): PlaceCategory {
+export function toTripPlaceCategory(serverCategory: string): PlaceCategory {
   return CATEGORY_BY_SERVER_CODE[serverCategory] ?? 'etc';
 }
 
 export function toPlaceCandidate(response: PlaceListItemResponse): PlaceCandidate {
   return {
     address: response.address ?? response.roadAddress ?? '',
-    category: toCategory(response.category),
+    category: toTripPlaceCategory(response.category),
     // 목록 응답에는 소개글이 없다(상세 조회에만 있다). 카드가 설명 줄을 그리지 않는다.
     description: '',
     id: response.id,
@@ -55,5 +56,25 @@ export function toPlaceCandidate(response: PlaceListItemResponse): PlaceCandidat
     regionLabel: response.region ?? '',
     reviewCount: response.reviewCount,
     savedCount: response.savedCount,
+  };
+}
+
+/** 장소 상세 모델을 일정 등록 바텀시트가 사용하는 후보 모델로 바꾼다. */
+export function placeDetailToCandidate(place: PlaceDetail): PlaceCandidate {
+  return {
+    address: place.address,
+    category: toTripPlaceCategory(place.serverCategory),
+    description: place.description ?? '',
+    id: place.id,
+    imageUrl: place.imageUrl,
+    isReservable: place.isReservable,
+    latitude: place.latitude,
+    longitude: place.longitude,
+    name: place.name,
+    petPolicy: place.petPolicy,
+    rating: place.rating,
+    regionLabel: place.region ?? '',
+    reviewCount: place.reviewCount ?? 0,
+    savedCount: place.savedCount ?? 0,
   };
 }

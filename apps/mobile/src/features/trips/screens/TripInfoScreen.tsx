@@ -203,6 +203,16 @@ function TripInfoView({ trip }: { trip: Trip }) {
       </TripInfoRow>
 
       <TripInfoRow
+        iconBackgroundColor={colors.primarySoft}
+        iconColor={colors.primary}
+        iconName="navigate-outline"
+        isFirst={false}
+        label="출발지"
+      >
+        <Text style={styles.valueText}>{trip.departureLocation || '미입력'}</Text>
+      </TripInfoRow>
+
+      <TripInfoRow
         iconBackgroundColor={colors.leafSoft}
         iconColor={colors.leaf}
         iconName="paw-outline"
@@ -219,18 +229,20 @@ function TripInfoView({ trip }: { trip: Trip }) {
         isFirst={false}
         label="숙소"
       >
-        <Text style={styles.valueText}>{trip.accommodationSummary}</Text>
+        <Text style={styles.valueText}>{trip.accommodationSummary || '미입력'}</Text>
       </TripInfoRow>
 
-      <TripInfoRow
-        iconBackgroundColor={colors.basaltSoft}
-        iconColor={colors.basalt}
-        iconName="leaf-outline"
-        isFirst={false}
-        label="여행 스타일"
-      >
-        <Text style={styles.valueText}>{trip.travelStyle}</Text>
-      </TripInfoRow>
+      {trip.creationType === 'recommended' ? (
+        <TripInfoRow
+          iconBackgroundColor={colors.basaltSoft}
+          iconColor={colors.basalt}
+          iconName="leaf-outline"
+          isFirst={false}
+          label="여행 스타일"
+        >
+          <Text style={styles.valueText}>{trip.travelStyle}</Text>
+        </TripInfoRow>
+      ) : null}
 
       <TripInfoRow
         iconBackgroundColor={colors.primarySoft}

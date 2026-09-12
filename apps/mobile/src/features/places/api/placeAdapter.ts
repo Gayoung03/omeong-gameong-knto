@@ -149,6 +149,7 @@ export function toPlaceDetail(response: PlaceDetailResponse): PlaceDetail {
   return {
     address: response.address ?? response.roadAddress ?? '',
     categoryLabel: toCategoryLabel(response.category),
+    serverCategory: response.category,
     description: response.description,
     environment: toEnvironmentLabel(response.environment),
     id: response.id,
