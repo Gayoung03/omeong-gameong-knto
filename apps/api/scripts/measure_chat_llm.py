@@ -1,8 +1,15 @@
 """챗봇 답변 생성 — 성능·비용·쿼리 정확도 측정 (실제 OpenAI 호출).
 
 `chat_quality_check.py`가 "내용이 맞는지"(사람이 읽음)를 본다면, 이 스크립트는
-**숫자로 잴 수 있는 것**— 응답시간, 라운드 수, 토큰, 비용, 도구 인자/항목 누락 —을 본다.
-문항은 `chat_quality_check.py`의 것을 그대로 재사용한다(정답 기준을 두 곳에 따로 관리하지 않는다).
+**숫자로 잴 수 있는 것**— 첫 글자까지 걸린 시간, 전체 완료 시간, 라운드 수, 토큰,
+비용, 도구 인자 —을 본다. 문항은 `chat_quality_check.py`의 것을 그대로 재사용한다
+(정답 기준을 두 곳에 따로 관리하지 않는다).
+
+## 시간은 두 개를 따로 잰다
+
+엔드포인트가 SSE 로 조각을 흘려보내므로 **사용자가 기다리는 시간은 전체 완료가
+아니라 첫 글자까지**다. 그래서 `generate_answer()`(조각을 버린다) 대신
+`stream_answer()` 를 엔드포인트와 같은 길로 돌려 둘을 나눠 기록한다.
 
 ## 실제로 돈이 나간다
 
@@ -25,22 +32,23 @@
 기존 루프가 이미 `continue`로 건너뛴다 — 화면 출력에는 영향이 없다)를 옆에서
 가로채 기록한다.
 
-## 쿼리 정확도 — 자동으로 잡는 두 가지
+## 쿼리 정확도 — 판정이 아니라 **의심 신호**다
 
 베이스라인 점검(2026-09-12)에서 gpt-4o-mini 가 재현 가능하게 놓치는 걸 두 개 봤다.
-사람이 매번 답을 읽지 않고도 기계로 잡을 수 있어 여기 넣었다.
+사람이 매번 답을 읽지 않고도 좁힐 수 있어 여기 넣었다. **둘 다 오답률이 아니다** —
+세는 방법이 문자열 대조뿐이라, 숫자를 그대로 "틀린 비율"로 옮기면 안 된다.
 
-1. **인자 누락** — 질문에 `숫자+kg`가 있는데 `search_transport_rules` 호출 인자에
-   `pet_weight_kg`이 없다. 무게를 넣어야 판정(가능/불가) 문장이 함께 오는데, 안 넣으면
-   모델이 결론 없이 애매하게 답한다(설계 결정 A7과 반대 방향의 실패).
-2. **항목 누락** — 조회된 운송사 중 **일부만** 답변에 이름이 나온 것. 다건 응답을
-   요약하며 몇 곳을 빠뜨리는 경우다. 빠진 회사는 "안 되는 곳"으로 읽히므로
-   시스템 프롬프트가 "하나도 빠뜨리지 말라"고 못 박은 자리다.
-
-둘 다 **완전하지 않다** — 인자 누락은 숫자가 하나뿐인 질문에서만 신뢰할 수 있고(복수
-숫자면 어느 것을 채워야 하는지 이 스크립트는 모른다), 항목 누락은 이름이 답변에
-안 보여도 실제로는 다른 표기로 언급됐을 수 있다. 그래도 사람이 매번 다 읽는 것보다는
-빠르게 의심 지점을 좁혀준다.
+1. **무게 인자**(`정확`/`값틀림`/`누락`) — 질문이 반려동물 무게를 말했는데
+   `search_transport_rules` 가 `pet_weight_kg` 을 제대로 실었는지. 무게를 실어야
+   회사별 판정 문장이 함께 오고, 안 실으면 모델이 결론 없이 애매하게 답한다.
+   **무게 대상이 모호하면 아예 판단하지 않는다**(`_pet_weight_in_question` 참고) —
+   "기내 제한이 7kg인가요?" 의 7kg 은 반려동물 무게가 아니고, "강아지 6kg,
+   케이지 2kg" 은 어느 쪽인지 가릴 수 없다.
+2. **항목 누락 의심** — 조회된 운송사 중 **일부만** 답변에 이름이 나온 것. 빠진
+   회사는 "안 되는 곳"으로 읽히므로 시스템 프롬프트가 "하나도 빠뜨리지 말라"고 못
+   박은 자리다. 다만 회사명을 약칭으로 쓰면 누락으로 잡히고, 아무 회사도 언급하지
+   않으면 오히려 통과한다(나열이 정답이 아닌 질문을 봐주려고 그렇게 두었다).
+   **원문을 열어 확인해야 확정된다.**
 
     uv run python -m scripts.measure_chat_llm \
         [--set rules|guardrails|places] [--models gpt-4o-mini,gpt-4o] \
@@ -74,7 +82,16 @@ PRICING_USD_PER_1M = {
     "gpt-4o-mini": {"input": 0.15, "cached_input": 0.075, "output": 0.60},
 }
 
-WEIGHT_PATTERN = re.compile(r"(\d+(?:\.\d+)?)\s*kg")
+ANY_WEIGHT_PATTERN = re.compile(r"\d+(?:\.\d+)?\s*kg")
+
+#: 반려동물을 가리키는 말. 무게가 **누구 것인지** 가리는 데 쓴다.
+PET_NOUNS = "강아지|고양이|반려동물|반려견|반려묘|대형견|중형견|소형견|아이|애기"
+
+#: `강아지가 12kg`, `20kg 대형견` 둘 다 잡는다. 반려동물과 붙어 있는 무게만 본다.
+WEIGHT_NEAR_PET_PATTERN = re.compile(
+    rf"(?:{PET_NOUNS})[^.?!]{{0,12}}?(\d+(?:\.\d+)?)\s*kg"
+    rf"|(\d+(?:\.\d+)?)\s*kg[^.?!]{{0,12}}?(?:{PET_NOUNS})"
+)
 
 
 def _record_usage(stream, sink: list) -> Iterator:
@@ -138,15 +155,45 @@ def _cost_usd(model: str, usage_list: list) -> float:
     ) / 1_000_000
 
 
-def _missing_weight_arg(question: str, trace: list[dict]) -> bool:
-    """질문에 무게가 하나만 언급됐는데 `search_transport_rules` 인자에 안 실렸으면 True."""
-    weights = WEIGHT_PATTERN.findall(question)
-    if len(weights) != 1:
-        return False  # 없거나 여러 개면(어느 걸 채워야 할지 모호) 판단하지 않는다
+def _pet_weight_in_question(question: str) -> float | None:
+    """질문이 **반려동물의 무게**를 분명히 말했을 때만 그 값을 돌려준다.
+
+    숫자+kg 라고 다 반려동물 무게가 아니다. "기내 제한이 7kg인가요?" 의 7kg 은
+    항공사 상한이고, "강아지 6kg, 케이지 2kg" 은 어느 쪽을 실어야 하는지 이
+    스크립트가 가릴 수 없다. 그래서 **숫자가 하나뿐이고 그 숫자가 반려동물을
+    가리키는 말 옆에 있을 때만** 판단한다. 나머지는 `None`(판단 보류)이다.
+
+    좁게 잡는 쪽이 맞다 — 엉뚱한 숫자를 "빠뜨렸다"고 세면 그 지표를 못 믿게 된다.
+    """
+    if len(ANY_WEIGHT_PATTERN.findall(question)) != 1:
+        return None
+    match = WEIGHT_NEAR_PET_PATTERN.search(question)
+    if match is None:
+        return None
+    return float(next(group for group in match.groups() if group))
+
+
+def _weight_arg_status(question: str, trace: list[dict]) -> str | None:
+    """무게 인자를 제대로 실었는지. `None` 이면 판단하지 않은 문항이다.
+
+    키가 있는지만 보지 않고 **값까지 맞는지** 본다 — 12kg 질문에 다른 숫자를
+    실으면 판정이 통째로 틀리는데, 키만 세면 그게 통과로 잡힌다.
+    """
+    expected = _pet_weight_in_question(question)
+    if expected is None:
+        return None
     calls = [step for step in trace if step["tool"] == "search_transport_rules"]
     if not calls:
-        return False
-    return all("pet_weight_kg" not in json.loads(step["args"] or "{}") for step in calls)
+        return None
+    for step in calls:
+        arguments = json.loads(step["args"] or "{}")
+        if "pet_weight_kg" not in arguments:
+            continue
+        try:
+            return "정확" if float(arguments["pet_weight_kg"]) == expected else "값틀림"
+        except (TypeError, ValueError):
+            return "값틀림"
+    return "누락"
 
 
 def _tool_result_names(trace: list[dict]) -> set[str]:
@@ -193,6 +240,9 @@ class Measurement:
     question_id: int
     model: str
     run: int
+    #: 첫 글자가 화면에 뜨기까지. 스트리밍이라 **사용자가 체감하는 속도는 이쪽**이다.
+    first_token_seconds: float | None = None
+    #: 답변이 끝까지 나오기까지.
     seconds: float = 0.0
     rounds: int = 0
     prompt_tokens: int = 0
@@ -200,12 +250,36 @@ class Measurement:
     cached_tokens: int = 0
     cost_usd: float = 0.0
     tool_calls: int = 0
-    weight_arg_missing: bool = False
-    missing_items: list[str] = field(default_factory=list)
+    #: `정확` / `값틀림` / `누락` / `None`(무게 대상이 모호해 판단하지 않음)
+    weight_arg: str | None = None
+    #: 이름이 답변에 안 보인 운송사. **누락 의심**이지 오답 확정이 아니다.
+    suspected_missing_items: list[str] = field(default_factory=list)
+    #: 모델이 실제로 보낸 도구 인자. 의심 신호를 원문으로 확인하려면 이게 있어야 한다 —
+    #: 없으면 확인하러 갈 때마다 다시 호출해서 또 요금을 낸다. 장소 질문의 지역·카테고리
+    #: 인자가 맞는지도 지금은 여기를 사람이 읽어서 본다.
+    tool_args: list[dict] = field(default_factory=list)
+    #: 답변 원문. 같은 이유로 남긴다.
+    answer: str | None = None
     error: str | None = None
 
 
-def _ask(db, model: str, question: str) -> tuple[object | None, list[dict], list, float]:
+@dataclass
+class _Run:
+    result: object
+    trace: list[dict]
+    usage: list
+    seconds: float
+    first_token_seconds: float | None
+
+
+def _ask(db, model: str, question: str) -> _Run:
+    """`stream_answer()` 를 직접 돌린다.
+
+    `generate_answer()` 는 조각을 다 버리고 최종 답만 주므로 **첫 글자가 언제 떴는지를
+    알 수 없다.** 엔드포인트는 SSE 로 조각을 그대로 흘려보내니, 사용자가 기다리는
+    시간은 전체 완료가 아니라 첫 조각까지다. 그래서 여기서는 엔드포인트와 같은 길로
+    돌려 두 시간을 따로 잰다.
+    """
     trace: list[dict] = []
     traced, original_dispatch = _trace_dispatch(trace)
     chat_module._dispatch = traced
@@ -221,9 +295,16 @@ def _ask(db, model: str, question: str) -> tuple[object | None, list[dict], list
 
     chat_module.OpenAI = factory
 
+    result: object = chat_module.ChatGenerationError("답변을 받지 못했습니다")
+    first_token_at: float | None = None
     started = time.perf_counter()
     try:
-        result: object = chat_module.generate_answer(db, [], question)
+        for piece in chat_module.stream_answer(db, [], question):
+            if isinstance(piece, chat_module.AnswerDelta):
+                if first_token_at is None:
+                    first_token_at = time.perf_counter()
+            else:
+                result = piece
     except Exception as error:  # noqa: BLE001 - 한 문항이 죽어도 나머지는 돌린다
         result = error
     finally:
@@ -232,17 +313,27 @@ def _ask(db, model: str, question: str) -> tuple[object | None, list[dict], list
         chat_module.OpenAI = original_openai
 
     client = holder.get("client")
-    return result, trace, client.usage if client else [], elapsed
+    return _Run(
+        result=result,
+        trace=trace,
+        usage=client.usage if client else [],
+        seconds=elapsed,
+        first_token_seconds=(first_token_at - started) if first_token_at else None,
+    )
 
 
-def _measure(spec: dict, model: str, run: int, db) -> tuple[Measurement, object | None]:
-    result, trace, usage, seconds = _ask(db, model, spec["question"])
-    is_error = isinstance(result, Exception)
+def _measure(spec: dict, model: str, run: int, db) -> Measurement:
+    got = _ask(db, model, spec["question"])
+    usage = got.usage
+    is_error = isinstance(got.result, Exception)
     measurement = Measurement(
         question_id=spec["id"],
         model=model,
         run=run,
-        seconds=round(seconds, 2),
+        first_token_seconds=(
+            round(got.first_token_seconds, 2) if got.first_token_seconds else None
+        ),
+        seconds=round(got.seconds, 2),
         rounds=len(usage),
         prompt_tokens=sum(u.prompt_tokens for u in usage),
         completion_tokens=sum(u.completion_tokens for u in usage),
@@ -251,13 +342,15 @@ def _measure(spec: dict, model: str, run: int, db) -> tuple[Measurement, object 
             for u in usage
         ),
         cost_usd=_cost_usd(model, usage),
-        tool_calls=len(trace),
-        error=f"{type(result).__name__}: {result}" if is_error else None,
+        tool_calls=len(got.trace),
+        tool_args=[{"tool": step["tool"], "args": step["args"]} for step in got.trace],
+        error=f"{type(got.result).__name__}: {got.result}" if is_error else None,
     )
     if not is_error:
-        measurement.weight_arg_missing = _missing_weight_arg(spec["question"], trace)
-        measurement.missing_items = _missing_items(result.content, trace)
-    return measurement, (None if is_error else result)
+        measurement.answer = got.result.content
+        measurement.weight_arg = _weight_arg_status(spec["question"], got.trace)
+        measurement.suspected_missing_items = _missing_items(got.result.content, got.trace)
+    return measurement
 
 
 def _print_report(question_set: str, measurements: list[Measurement]) -> None:
@@ -268,20 +361,20 @@ def _print_report(question_set: str, measurements: list[Measurement]) -> None:
     print(f"실행: {datetime.now(KST):%Y-%m-%d %H:%M} KST · 대상 DB: `{host}`")
     print()
     header = (
-        f"{'#':>3} {'모델':<14} {'회차':>4} {'초':>6} {'라운드':>6} "
+        f"{'#':>3} {'모델':<14} {'회차':>4} {'첫글자':>7} {'완료':>6} {'라운드':>6} "
         f"{'prompt':>8} {'cached':>7} {'completion':>10} {'비용(USD)':>10} "
-        f"{'인자누락':>8} {'항목누락'}"
+        f"{'무게인자':>8} {'항목누락의심'}"
     )
     print(header)
     print("-" * len(header))
     for m in measurements:
-        flag_weight = "예" if m.weight_arg_missing else ""
-        flag_items = ",".join(m.missing_items) if m.missing_items else ""
+        first = f"{m.first_token_seconds:.2f}" if m.first_token_seconds else "-"
+        flag_items = ",".join(m.suspected_missing_items) if m.suspected_missing_items else ""
         status = f"오류:{m.error}" if m.error else ""
         print(
-            f"{m.question_id:>3} {m.model:<14} {m.run:>4} {m.seconds:>6.2f} {m.rounds:>6} "
-            f"{m.prompt_tokens:>8} {m.cached_tokens:>7} {m.completion_tokens:>10} "
-            f"{m.cost_usd:>10.5f} {flag_weight:>8} {flag_items}{status}"
+            f"{m.question_id:>3} {m.model:<14} {m.run:>4} {first:>7} {m.seconds:>6.2f} "
+            f"{m.rounds:>6} {m.prompt_tokens:>8} {m.cached_tokens:>7} {m.completion_tokens:>10} "
+            f"{m.cost_usd:>10.5f} {m.weight_arg or '-':>8} {flag_items}{status}"
         )
     print()
 
@@ -292,22 +385,52 @@ def _print_report(question_set: str, measurements: list[Measurement]) -> None:
     print("## 모델별 합계")
     print()
     print(
-        f"{'모델':<14}{'문항수':>6}{'평균초':>8}{'평균라운드':>10}{'총비용(USD)':>12}{'인자누락':>8}{'항목누락있음':>10}"
+        f"{'모델':<14}{'문항':>5}{'첫글자':>8}{'완료':>7}{'라운드':>8}"
+        f"{'질문당(USD)':>13}{'입력비용%':>10}"
     )
     for model, rows in by_model.items():
         n = len(rows)
-        avg_seconds = sum(r.seconds for r in rows) / n
-        avg_rounds = sum(r.rounds for r in rows) / n
+        firsts = [r.first_token_seconds for r in rows if r.first_token_seconds]
+        avg_first = f"{sum(firsts) / len(firsts):.2f}" if firsts else "-"
         total_cost = sum(r.cost_usd for r in rows)
-        weight_misses = sum(1 for r in rows if r.weight_arg_missing)
-        item_misses = sum(1 for r in rows if r.missing_items)
         print(
-            f"{model:<14}{n:>6}{avg_seconds:>8.2f}{avg_rounds:>10.2f}"
-            f"{total_cost:>12.5f}{weight_misses:>8}{item_misses:>10}"
+            f"{model:<14}{n:>5}{avg_first:>8}{sum(r.seconds for r in rows) / n:>7.2f}"
+            f"{sum(r.rounds for r in rows) / n:>8.2f}{total_cost / n:>13.6f}"
+            f"{_input_cost_share(model, rows) * 100:>9.1f}%"
         )
     print()
-    total_cost_all = sum(m.cost_usd for m in measurements)
-    print(f"전체 예상 비용: ${total_cost_all:.4f}")
+
+    # 인자·항목은 **판정이 아니라 의심 신호**다. 세는 방식이 문자열 대조뿐이라
+    # 오답률로 읽으면 안 된다 — 원문을 봐야 확정된다.
+    print("## 쿼리 정확도 (의심 신호 — 원문 확인 필요)")
+    print()
+    print(
+        f"{'모델':<14}{'무게인자 정확':>14}{'값틀림':>8}{'누락':>7}"
+        f"{'판단보류':>10}{'항목누락의심':>14}"
+    )
+    for model, rows in by_model.items():
+        counts = {"정확": 0, "값틀림": 0, "누락": 0}
+        for row in rows:
+            if row.weight_arg in counts:
+                counts[row.weight_arg] += 1
+        skipped = sum(1 for r in rows if r.weight_arg is None)
+        suspected = sum(1 for r in rows if r.suspected_missing_items)
+        print(
+            f"{model:<14}{counts['정확']:>14}{counts['값틀림']:>8}{counts['누락']:>7}"
+            f"{skipped:>10}{suspected:>14}"
+        )
+    print()
+    print(f"전체 예상 비용: ${sum(m.cost_usd for m in measurements):.4f}")
+
+
+def _input_cost_share(model: str, rows: list[Measurement]) -> float:
+    """비용에서 입력이 차지하는 몫. **토큰 개수 비중과 다르다** — 출력 단가가 4배다."""
+    prices = PRICING_USD_PER_1M.get(model)
+    total = sum(r.cost_usd for r in rows)
+    if prices is None or not total:
+        return 0.0
+    output_cost = sum(r.completion_tokens for r in rows) * prices["output"] / 1_000_000
+    return (total - output_cost) / total
 
 
 def main() -> None:
@@ -340,10 +463,15 @@ def main() -> None:
                 for run in range(1, args.repeat + 1):
                     sys.stderr.write(f"  [{spec['id']}] {model} · {run}/{args.repeat} … ")
                     sys.stderr.flush()
-                    measurement, _ = _measure(spec, model, run, db)
+                    measurement = _measure(spec, model, run, db)
                     measurements.append(measurement)
+                    first = (
+                        f"{measurement.first_token_seconds:.1f}s→"
+                        if measurement.first_token_seconds
+                        else ""
+                    )
                     sys.stderr.write(
-                        f"{measurement.seconds:.1f}s · ${measurement.cost_usd:.5f}"
+                        f"{first}{measurement.seconds:.1f}s · ${measurement.cost_usd:.5f}"
                         f"{' · 오류' if measurement.error else ''}\n"
                     )
 
