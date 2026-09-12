@@ -229,6 +229,16 @@ class RoutePetResponse(APISchema):
     size: PetSize | None
 
 
+class RouteStayResponse(APISchema):
+    """여행 입력 단계에서 저장한 숙소 정보."""
+
+    place_id: uuid.UUID | None
+    name: str
+    address: str | None
+    check_in_at: datetime | None
+    check_out_at: datetime | None
+
+
 class NearbyAnimalHospital(APISchema):
     """동선·숙소 근처 동물병원 안전망 항목(계산값, 저장 안 함). `id` 는 `places.id`."""
 
@@ -250,6 +260,8 @@ class RouteDetail(RouteListItem):
     memo: str | None
     share_token: str | None
     pets: list[RoutePetResponse]
+    departure_location: str | None = None
+    stays: list[RouteStayResponse] = Field(default_factory=list)
     distance_summary: RouteDistanceSummary = Field(default_factory=RouteDistanceSummary)
     slot_summary: RouteSlotSummary = Field(default_factory=RouteSlotSummary)
     nearby_animal_hospitals: list[NearbyAnimalHospital] = Field(default_factory=list)
@@ -354,6 +366,8 @@ class SharedRouteDetail(RouteListItem):
     explanation: str | None
     total_score: float | None
     pets: list[RoutePetResponse]
+    departure_location: str | None = None
+    stays: list[RouteStayResponse] = Field(default_factory=list)
     distance_summary: RouteDistanceSummary = Field(default_factory=RouteDistanceSummary)
     slot_summary: RouteSlotSummary = Field(default_factory=RouteSlotSummary)
     nearby_animal_hospitals: list[NearbyAnimalHospital] = Field(default_factory=list)
@@ -437,6 +451,27 @@ class MemoUpdate(APISchema):
 
 
 # ---------------------------------------------------------------------------
+# 추천·수동 생성 공통 숙소 입력
+# ---------------------------------------------------------------------------
+
+
+class RouteStayCreate(APISchema):
+    place_id: uuid.UUID | None = None
+    name: str = Field(min_length=1, max_length=200)
+    address: str | None = None
+    check_in_at: datetime | None = None
+    check_out_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _check_location_and_period(self) -> "RouteStayCreate":
+        if self.place_id is None and not (self.address or "").strip():
+            raise ValueError("숙소는 placeId 또는 address 중 하나가 있어야 합니다")
+        if self.check_in_at and self.check_out_at and self.check_out_at <= self.check_in_at:
+            raise ValueError("숙소 checkOutAt은 checkInAt보다 뒤여야 합니다")
+        return self
+
+
+# ---------------------------------------------------------------------------
 # 수동 생성 (POST /routes)
 # ---------------------------------------------------------------------------
 
@@ -449,8 +484,8 @@ class RouteCreate(APISchema):
     작성 도중 앱이 꺼져도 만든 여행이 남고, 일정 추가·수정 API 가 어차피 필요해
     재사용된다.
 
-    `pace` 와 `transport` 는 DB 가 NOT NULL 이라 필수다. 추천 여행에서는
-    추천 요청서에서 가져오지만 수동 여행은 요청서가 없어서 직접 받는다.
+    `pace` 와 `transport` 는 DB 가 NOT NULL 이라 필수다. 화면에서 여행 속도를
+    따로 묻지 않는 수동 여행은 `pace=normal` 을 기본 정책으로 보낸다.
     """
 
     title: str = Field(min_length=1, max_length=150)
@@ -458,6 +493,9 @@ class RouteCreate(APISchema):
     end_at: datetime
     pace: TripPace
     transport: TransportType
+    departure_location: str | None = Field(default=None, max_length=100)
+    departure_place_id: uuid.UUID | None = None
+    stays: list[RouteStayCreate] = Field(default_factory=list)
     #: 함께 가는 반려동물. 본인 소유가 아니면 403.
     pet_ids: list[uuid.UUID] = Field(default_factory=list)
     style_keywords: list[str] | None = None
@@ -475,22 +513,6 @@ class RouteCreate(APISchema):
 # ---------------------------------------------------------------------------
 # 추천 생성 (POST /route-requests)
 # ---------------------------------------------------------------------------
-
-
-class RouteRequestStayCreate(APISchema):
-    place_id: uuid.UUID | None = None
-    name: str = Field(min_length=1, max_length=200)
-    address: str | None = None
-    check_in_at: datetime | None = None
-    check_out_at: datetime | None = None
-
-    @model_validator(mode="after")
-    def _check_location_and_period(self) -> "RouteRequestStayCreate":
-        if self.place_id is None and not (self.address or "").strip():
-            raise ValueError("숙소는 placeId 또는 address 중 하나가 있어야 합니다")
-        if self.check_in_at and self.check_out_at and self.check_out_at <= self.check_in_at:
-            raise ValueError("숙소 checkOutAt은 checkInAt보다 뒤여야 합니다")
-        return self
 
 
 class RouteRequestPetInput(APISchema):
@@ -516,7 +538,7 @@ class RouteRequestCreate(APISchema):
     pet_ids: list[uuid.UUID] = Field(default_factory=list)
     #: 반려동물별 이번 여행 컨디션. petIds 와 함께 오면 pets 가 우선(routes.md).
     pets: list[RouteRequestPetInput] = Field(default_factory=list)
-    stays: list[RouteRequestStayCreate] = Field(default_factory=list)
+    stays: list[RouteStayCreate] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _check_request(self) -> "RouteRequestCreate":

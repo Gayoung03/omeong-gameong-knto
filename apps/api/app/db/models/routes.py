@@ -151,6 +151,10 @@ class Route(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    departure_location: Mapped[str | None] = mapped_column(String(100))
+    departure_place_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("places.id", ondelete="SET NULL")
+    )
     pace: Mapped[TripPace] = mapped_column(db_enum(TripPace, "trip_pace"), nullable=False)
     transport: Mapped[TransportType] = mapped_column(
         db_enum(TransportType, "transport_type"), nullable=False
@@ -178,7 +182,39 @@ class Route(Base):
         order_by="RouteDay.day_number",
         cascade="all, delete-orphan",
     )
+    stays: Mapped[list["RouteStay"]] = relationship(
+        "RouteStay",
+        order_by="RouteStay.check_in_at, RouteStay.id",
+        cascade="all, delete-orphan",
+    )
     pets: Mapped[list["Pet"]] = relationship("Pet", secondary="route_pets", viewonly=True)
+
+
+class RouteStay(Base):
+    """추천 방식과 무관하게 최종 여행에 저장된 숙소."""
+
+    __tablename__ = "route_stays"
+    __table_args__ = (
+        CheckConstraint(
+            "check_out_at IS NULL OR check_in_at IS NULL OR check_out_at > check_in_at",
+            name="date_order",
+        ),
+        Index("ix_route_stays_route", "route_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    route_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("routes.id", ondelete="CASCADE"), nullable=False
+    )
+    place_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("places.id", ondelete="SET NULL")
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    address: Mapped[str | None] = mapped_column(Text)
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    check_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    check_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class RoutePet(Base):

@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.v1.endpoints import routes
-from app.db.models import Pet, Place, Route, RouteRequest, RouteRequestPet
+from app.db.models import Pet, Place, Route, RouteRequest, RouteRequestPet, RouteStay
 from app.db.models.enums import PetEnergyLevel
 from app.integrations.tour_api.kto import TourPlace
 from app.recommend.tmap import RouteLeg
@@ -80,6 +80,10 @@ def test_route_request_saves_resolved_weight_snapshot(
     request = db.get(RouteRequest, uuid.UUID(body["routeRequestId"]))
     assert request is not None
     assert request.applied_weights == pytest.approx(resolve_weights("pet", []).model_dump())
+    created_route = db.get(Route, uuid.UUID(body["routeId"]))
+    assert created_route is not None
+    assert created_route.departure_place_id == place.id
+    assert created_route.departure_location == place.name
 
 
 def test_route_request_rejects_transport_without_route_provider(
@@ -93,6 +97,25 @@ def test_route_request_rejects_transport_without_route_provider(
 
     assert response.status_code == 422
     assert "지원하지 않는 이동수단" in response.json()["detail"]
+
+
+def test_route_request_copies_stays_to_final_route(
+    client: TestClient,
+    db: Session,
+    place: Place,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(routes, "run_route_generation", lambda _route_id, _open: None)
+    payload = _payload(place.id)
+    payload["stays"] = [{"name": "애월 숙소", "address": "제주시 애월읍 애월로 1"}]
+
+    created = client.post("/api/v1/route-requests", json=payload).json()
+    route_id = uuid.UUID(created["routeId"])
+    stay = db.scalar(select(RouteStay).where(RouteStay.route_id == route_id))
+
+    assert stay is not None
+    assert stay.name == "애월 숙소"
+    assert stay.address == "제주시 애월읍 애월로 1"
 
 
 def test_route_request_generates_db_place_itinerary(
@@ -189,9 +212,7 @@ def test_route_request_before_dinner_time_does_not_require_restaurant(
     assert route is not None
     assert route.status.value == "generated"
     assert all(
-        item.item_type.value != "restaurant"
-        for day in route.route_days
-        for item in day.items
+        item.item_type.value != "restaurant" for day in route.route_days for item in day.items
     )
 
 
@@ -341,9 +362,7 @@ def _seed_departure(db: Session) -> Place:
     return place
 
 
-def test_route_request_pets_saves_energy_level_snapshot(
-    client: TestClient, db: Session
-) -> None:
+def test_route_request_pets_saves_energy_level_snapshot(client: TestClient, db: Session) -> None:
     place = _seed_departure(db)
     pet = client.post("/api/v1/pets", json={"name": "몽이", "species": "dog"}).json()
 
@@ -354,9 +373,7 @@ def test_route_request_pets_saves_energy_level_snapshot(
     assert response.status_code == 202
     request_id = uuid.UUID(response.json()["routeRequestId"])
     rows = list(
-        db.scalars(
-            select(RouteRequestPet).where(RouteRequestPet.route_request_id == request_id)
-        )
+        db.scalars(select(RouteRequestPet).where(RouteRequestPet.route_request_id == request_id))
     )
     assert len(rows) == 1
     assert rows[0].pet_id == uuid.UUID(pet["id"])
@@ -377,9 +394,7 @@ def test_route_request_prefers_pets_over_pet_ids(client: TestClient, db: Session
     request_id = uuid.UUID(response.json()["routeRequestId"])
     pet_ids = set(
         db.scalars(
-            select(RouteRequestPet.pet_id).where(
-                RouteRequestPet.route_request_id == request_id
-            )
+            select(RouteRequestPet.pet_id).where(RouteRequestPet.route_request_id == request_id)
         )
     )
     assert pet_ids == {uuid.UUID(chosen["id"])}  # pets 가 우선, petIds 는 무시
@@ -415,16 +430,12 @@ def test_route_request_empty_pets_means_no_pets_ignoring_pet_ids(
     assert response.status_code == 202
     request_id = uuid.UUID(response.json()["routeRequestId"])
     rows = list(
-        db.scalars(
-            select(RouteRequestPet).where(RouteRequestPet.route_request_id == request_id)
-        )
+        db.scalars(select(RouteRequestPet).where(RouteRequestPet.route_request_id == request_id))
     )
     assert rows == []
 
 
-def test_route_request_rejects_duplicate_pet_id_in_pets(
-    client: TestClient, db: Session
-) -> None:
+def test_route_request_rejects_duplicate_pet_id_in_pets(client: TestClient, db: Session) -> None:
     place = _seed_departure(db)
     pet = client.post("/api/v1/pets", json={"name": "몽이", "species": "dog"}).json()
 
