@@ -282,7 +282,7 @@ function QuestionStep({
           </Pressable>
         ) : null}
       </View>
-      {children}
+      <View style={styles.questionFields}>{children}</View>
     </View>
   );
 }
@@ -357,10 +357,10 @@ function restoreDraft(saved: string): { draft: RouteDraft; currentStep: number }
 }
 
 function validateStep(index: number, draft: RouteDraft): string | null {
-  if (
-    index === 0 &&
-    (!draft.trip.title || new Date(draft.trip.endAt) <= new Date(draft.trip.startAt))
-  ) {
+  if (index === 0 && !draft.trip.title.trim()) {
+    return '여행 이름을 입력해주세요.';
+  }
+  if (index === 0 && new Date(draft.trip.endAt) <= new Date(draft.trip.startAt)) {
     return '여행 일정을 다시 확인해주세요.';
   }
   if (index === 1 && !draft.transport) return '이동수단을 하나 선택해주세요.';
@@ -396,6 +396,9 @@ export function RouteInputScreen() {
   const [editingStayId, setEditingStayId] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [staySearchQuery, setStaySearchQuery] = useState('');
+  const [stayEditorPhase, setStayEditorPhase] = useState<'search' | 'details'>('search');
+  const [staySearchAttempted, setStaySearchAttempted] = useState(false);
+  const staySearchRequest = useRef(0);
   const [staySearchResults, setStaySearchResults] = useState<Place[]>([]);
   const [staySearchLoading, setStaySearchLoading] = useState(false);
   const [staySearchError, setStaySearchError] = useState('');
@@ -544,19 +547,28 @@ export function RouteInputScreen() {
   };
 
   const loadStayOptions = async (query = '') => {
+    if (!query.trim()) return;
+    const request = ++staySearchRequest.current;
+    setStaySearchAttempted(true);
     setStaySearchLoading(true);
     setStaySearchError('');
     try {
-      setStaySearchResults(await searchAccommodations(query));
+      const results = await searchAccommodations(query.trim());
+      if (request === staySearchRequest.current) setStaySearchResults(results);
     } catch {
+      if (request !== staySearchRequest.current) return;
       setStaySearchResults([]);
       setStaySearchError('숙소 목록을 불러오지 못했어요. 직접 입력하거나 다시 시도해주세요.');
     } finally {
-      setStaySearchLoading(false);
+      if (request === staySearchRequest.current) setStaySearchLoading(false);
     }
   };
 
   const openStayEditor = (stay?: Stay) => {
+    staySearchRequest.current += 1;
+    setStayEditorPhase(stay ? 'details' : 'search');
+    setStaySearchAttempted(false);
+    setStaySearchLoading(false);
     setFormError('');
     setEditingStayId(stay?.id ?? null);
     setFormValues(stay ?? { id: '', placeId: '', name: '', period: '', address: '' });
@@ -564,7 +576,6 @@ export function RouteInputScreen() {
     setStaySearchResults([]);
     setStaySearchError('');
     setEditTarget('stay');
-    void loadStayOptions(stay?.name ?? '');
   };
 
   const toggleStayPeriod = (period: string) => {
@@ -600,6 +611,7 @@ export function RouteInputScreen() {
   };
 
   const closeEditor = () => {
+    staySearchRequest.current += 1;
     setEditTarget(null);
     setEditingStayId(null);
     setFormValues({});
@@ -611,8 +623,14 @@ export function RouteInputScreen() {
 
   const saveEditor = () => {
     if (editTarget === 'stay') {
-      if (!formValues.name || !formValues.period) {
+      const stayName = formValues.name?.trim() ?? '';
+      const stayAddress = formValues.address?.trim() ?? '';
+      if (!stayName || !formValues.period) {
         setFormError('숙소 이름과 숙박 일차를 입력해주세요.');
+        return;
+      }
+      if (!formValues.placeId && !stayAddress) {
+        setFormError('숙소 위치를 정확히 찾을 수 있도록 주소를 입력해주세요.');
         return;
       }
       const selectedPeriods = parseStayPeriods(formValues.period);
@@ -629,11 +647,11 @@ export function RouteInputScreen() {
       const nextStay: Stay = {
         id:
           editingStayId ??
-          `stay-${formValues.period.replace(/\s+/g, '-')}-${formValues.name.replace(/\s+/g, '-')}`,
-        name: formValues.name,
+          `stay-${formValues.period.replace(/\s+/g, '-')}-${stayName.replace(/\s+/g, '-')}`,
+        name: stayName,
         placeId: formValues.placeId || undefined,
         period: formValues.period,
-        address: formValues.address,
+        address: stayAddress,
       };
       updateDraft(
         'stays',
@@ -721,7 +739,11 @@ export function RouteInputScreen() {
   };
 
   const requestRecommendation = async () => {
-    if (!draft.trip.title || new Date(draft.trip.endAt) <= new Date(draft.trip.startAt)) {
+    if (!draft.trip.title.trim()) {
+      setPageError('여행 이름을 입력해주세요.');
+      return;
+    }
+    if (new Date(draft.trip.endAt) <= new Date(draft.trip.startAt)) {
       setPageError('여행 일정을 다시 확인해주세요.');
       return;
     }
@@ -808,9 +830,7 @@ export function RouteInputScreen() {
         },
       });
     } catch (error) {
-      const detail = isAxiosError<{ detail?: string }>(error)
-        ? error.response?.data?.detail
-        : null;
+      const detail = isAxiosError<{ detail?: string }>(error) ? error.response?.data?.detail : null;
       setPageError(detail ?? '루트 추천을 시작하지 못했어요. 잠시 후 다시 시도해주세요.');
     } finally {
       setIsSubmitting(false);
@@ -857,9 +877,9 @@ export function RouteInputScreen() {
                     startValue={draft.trip.startAt ? new Date(draft.trip.startAt) : null}
                   />
                 ) : (
-                  <View>
-                    <View style={styles.formField}>
-                      <Text style={styles.formLabel}>여행 이름</Text>
+                  <View style={styles.formSections}>
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.formGroupTitle}>여행 이름</Text>
                       <TextInput
                         onChangeText={(title) => updateDraft('trip', { ...draft.trip, title })}
                         placeholder="예: 우리 아이와 첫 제주 여행"
@@ -877,16 +897,20 @@ export function RouteInputScreen() {
                         {formatTripDuration(draft.trip.startAt, draft.trip.endAt)}
                       </Text>
                     </View>
-                    <Text style={styles.formGroupTitle}>도착 시간</Text>
-                    <TimeNumberInput
-                      onChange={(hour, minute) => updateTripTime('startAt', hour, minute)}
-                      value={draft.trip.startAt}
-                    />
-                    <Text style={styles.formGroupTitle}>출발 시간</Text>
-                    <TimeNumberInput
-                      onChange={(hour, minute) => updateTripTime('endAt', hour, minute)}
-                      value={draft.trip.endAt}
-                    />
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.formGroupTitle}>도착 시간</Text>
+                      <TimeNumberInput
+                        onChange={(hour, minute) => updateTripTime('startAt', hour, minute)}
+                        value={draft.trip.startAt}
+                      />
+                    </View>
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.formGroupTitle}>출발 시간</Text>
+                      <TimeNumberInput
+                        onChange={(hour, minute) => updateTripTime('endAt', hour, minute)}
+                        value={draft.trip.endAt}
+                      />
+                    </View>
                   </View>
                 )}
               </QuestionStep>
@@ -940,7 +964,7 @@ export function RouteInputScreen() {
                   <Text style={styles.dashedButtonText}>숙소 추가</Text>
                 </Pressable>
                 {draft.stays.length > 0 ? (
-                  <>
+                  <View style={styles.inputGroup}>
                     <Text style={styles.formGroupTitle}>첫날 출발 장소</Text>
                     <View style={styles.chipRow}>
                       <ChoiceChip
@@ -954,10 +978,10 @@ export function RouteInputScreen() {
                         selected={draft.firstDayStart === 'other'}
                       />
                     </View>
-                  </>
+                  </View>
                 ) : null}
                 {draft.stays.length === 0 || draft.firstDayStart === 'other' ? (
-                  <>
+                  <View style={styles.inputGroup}>
                     <Text style={styles.formGroupTitle}>여행 시작 장소</Text>
                     <View style={styles.chipRow}>
                       {['제주국제공항', '제주항', '서귀포항'].map((place) => (
@@ -976,7 +1000,7 @@ export function RouteInputScreen() {
                       style={styles.formInput}
                       value={draft.departureLocation}
                     />
-                  </>
+                  </View>
                 ) : null}
               </QuestionStep>
             ) : null}
@@ -994,38 +1018,42 @@ export function RouteInputScreen() {
                 {!isPetsPending && pets.length === 0 ? (
                   <Text style={styles.valueText}>먼저 프로필에서 반려동물을 등록해주세요.</Text>
                 ) : null}
-                {pets.map((pet) => {
-                  const selected = draft.selectedPetIds.includes(pet.petId);
-                  return (
-                    <Pressable
-                      key={pet.petId}
-                      onPress={() =>
-                        updateDraft(
-                          'selectedPetIds',
-                          selected
-                            ? draft.selectedPetIds.filter((id) => id !== pet.petId)
-                            : [...draft.selectedPetIds, pet.petId],
-                        )
-                      }
-                      style={[styles.petRow, selected && styles.presetCardSelected]}
-                    >
-                      <View style={styles.petAvatar}>
-                        <Text style={styles.petEmoji}>🐾</Text>
-                      </View>
-                      <View style={styles.flexOne}>
-                        <Text style={styles.petName}>{pet.name}</Text>
-                        <Text style={styles.petDescription}>
-                          {pet.species} · {pet.size ?? '크기 미입력'}
-                        </Text>
-                      </View>
-                      <Ionicons
-                        color={selected ? colors.deepMint : colors.gray}
-                        name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-                        size={20}
-                      />
-                    </Pressable>
-                  );
-                })}
+                {pets.length > 0 ? (
+                  <View style={styles.petList}>
+                    {pets.map((pet) => {
+                      const selected = draft.selectedPetIds.includes(pet.petId);
+                      return (
+                        <Pressable
+                          key={pet.petId}
+                          onPress={() =>
+                            updateDraft(
+                              'selectedPetIds',
+                              selected
+                                ? draft.selectedPetIds.filter((id) => id !== pet.petId)
+                                : [...draft.selectedPetIds, pet.petId],
+                            )
+                          }
+                          style={[styles.petRow, selected && styles.presetCardSelected]}
+                        >
+                          <View style={styles.petAvatar}>
+                            <Text style={styles.petEmoji}>🐾</Text>
+                          </View>
+                          <View style={styles.flexOne}>
+                            <Text style={styles.petName}>{pet.name}</Text>
+                            <Text style={styles.petDescription}>
+                              {pet.species} · {pet.size ?? '크기 미입력'}
+                            </Text>
+                          </View>
+                          <Ionicons
+                            color={selected ? colors.deepMint : colors.gray}
+                            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={20}
+                          />
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
               </QuestionStep>
             ) : null}
 
@@ -1278,148 +1306,203 @@ export function RouteInputScreen() {
           <Pressable onPress={closeEditor} style={styles.modalDismissArea} />
           <View style={styles.modalSheet}>
             <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>숙소 정보</Text>
+            <Text style={styles.modalTitle}>
+              {stayEditorPhase === 'search' ? '숙소 찾기' : '숙소 정보'}
+            </Text>
 
-            {editTarget === 'stay' ? (
-              <>
-                <View style={styles.formField}>
-                  <Text style={styles.formLabel}>등록된 숙소 찾기</Text>
-                  <Text style={styles.formHelper}>
-                    숙소를 선택하면 저장된 주소와 위치를 루트 추천에 반영해요.
-                  </Text>
-                  <View style={styles.staySearchRow}>
-                    <TextInput
-                      onChangeText={setStaySearchQuery}
-                      onSubmitEditing={() => void loadStayOptions(staySearchQuery)}
-                      placeholder="숙소 이름으로 검색"
-                      placeholderTextColor={theme.textTertiary}
-                      returnKeyType="search"
-                      style={styles.staySearchInput}
-                      value={staySearchQuery}
-                    />
-                    <Pressable
-                      accessibilityLabel="숙소 검색"
-                      disabled={staySearchLoading}
-                      onPress={() => void loadStayOptions(staySearchQuery)}
-                      style={styles.staySearchButton}
-                    >
-                      <Ionicons color={colors.white} name="search" size={20} />
-                    </Pressable>
-                  </View>
-                  {staySearchLoading ? (
-                    <Text style={styles.staySearchMessage}>숙소를 찾고 있어요…</Text>
-                  ) : staySearchError ? (
-                    <Text style={styles.staySearchError}>{staySearchError}</Text>
-                  ) : staySearchResults.length === 0 ? (
-                    <Text style={styles.staySearchMessage}>
-                      검색 결과가 없어요. 아래에서 직접 입력할 수 있어요.
-                    </Text>
-                  ) : (
-                    <ScrollView
-                      keyboardShouldPersistTaps="handled"
-                      nestedScrollEnabled
-                      style={styles.staySearchList}
-                    >
-                      {staySearchResults.map((place) => {
-                        const selected = formValues.placeId === place.id;
-                        return (
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.stayEditorContent}
+            >
+              {editTarget === 'stay' ? (
+                <>
+                  {stayEditorPhase === 'search' ? (
+                    <>
+                      <View style={styles.formField}>
+                        <Text style={styles.formLabel}>등록된 숙소 찾기</Text>
+                        <Text style={styles.formHelper}>
+                          숙소를 선택하면 저장된 주소와 위치를 루트 추천에 반영해요.
+                        </Text>
+                        <View style={styles.staySearchRow}>
+                          <TextInput
+                            onChangeText={setStaySearchQuery}
+                            onSubmitEditing={() => void loadStayOptions(staySearchQuery)}
+                            placeholder="숙소 이름으로 검색"
+                            placeholderTextColor={theme.textTertiary}
+                            returnKeyType="search"
+                            style={styles.staySearchInput}
+                            value={staySearchQuery}
+                          />
                           <Pressable
-                            accessibilityRole="button"
-                            accessibilityState={{ selected }}
-                            key={place.id}
-                            onPress={() => {
-                              setFormValues((current) => ({
-                                ...current,
-                                placeId: place.id,
-                                name: place.name,
-                                address: place.address,
-                              }));
-                              setFormError('');
-                            }}
-                            style={[
-                              styles.staySearchItem,
-                              selected && styles.staySearchItemSelected,
-                            ]}
+                            accessibilityLabel="숙소 검색"
+                            disabled={staySearchLoading}
+                            onPress={() => void loadStayOptions(staySearchQuery)}
+                            style={styles.staySearchButton}
                           >
-                            <View style={styles.staySearchItemCopy}>
-                              <Text style={styles.staySearchItemName}>{place.name}</Text>
-                              <Text numberOfLines={1} style={styles.staySearchItemAddress}>
-                                {place.address || '주소 정보 없음'}
-                              </Text>
-                            </View>
-                            {selected ? (
-                              <Ionicons color={colors.deepMint} name="checkmark-circle" size={22} />
-                            ) : null}
+                            <Ionicons color={colors.white} name="search" size={20} />
                           </Pressable>
-                        );
-                      })}
-                    </ScrollView>
-                  )}
-                </View>
+                        </View>
+                        {staySearchLoading ? (
+                          <Text style={styles.staySearchMessage}>숙소를 찾고 있어요…</Text>
+                        ) : staySearchError ? (
+                          <Text style={styles.staySearchError}>{staySearchError}</Text>
+                        ) : !staySearchAttempted ? (
+                          <Text style={styles.staySearchMessage}>
+                            머무실 숙소의 이름을 검색해 주세요.
+                          </Text>
+                        ) : staySearchResults.length === 0 ? (
+                          <Text style={styles.staySearchMessage}>
+                            검색한 이름과 일치하는 숙소가 아직 없어요. 이름을 바꿔 검색하거나 직접
+                            입력해 주세요.
+                          </Text>
+                        ) : (
+                          <ScrollView
+                            keyboardShouldPersistTaps="handled"
+                            nestedScrollEnabled
+                            style={styles.staySearchList}
+                          >
+                            {staySearchResults.map((place) => {
+                              const selected = formValues.placeId === place.id;
+                              return (
+                                <Pressable
+                                  accessibilityRole="button"
+                                  accessibilityState={{ selected }}
+                                  key={place.id}
+                                  onPress={() => {
+                                    setFormValues((current) => ({
+                                      ...current,
+                                      placeId: place.id,
+                                      name: place.name,
+                                      address: place.address,
+                                    }));
+                                    setFormError('');
+                                    setStayEditorPhase('details');
+                                  }}
+                                  style={[
+                                    styles.staySearchItem,
+                                    selected && styles.staySearchItemSelected,
+                                  ]}
+                                >
+                                  <View style={styles.staySearchItemCopy}>
+                                    <Text style={styles.staySearchItemName}>{place.name}</Text>
+                                    <Text numberOfLines={1} style={styles.staySearchItemAddress}>
+                                      {place.address || '주소 정보 없음'}
+                                    </Text>
+                                  </View>
+                                  {selected ? (
+                                    <Ionicons
+                                      color={colors.deepMint}
+                                      name="checkmark-circle"
+                                      size={22}
+                                    />
+                                  ) : null}
+                                </Pressable>
+                              );
+                            })}
+                          </ScrollView>
+                        )}
+                      </View>
 
-                <View style={styles.manualStayDivider}>
-                  <View style={styles.manualStayDividerLine} />
-                  <Text style={styles.manualStayDividerText}>목록에 없다면 직접 입력</Text>
-                  <View style={styles.manualStayDividerLine} />
-                </View>
-                <FormInput
-                  label="숙소 이름"
-                  name="name"
-                  onChange={() => setFormValues((current) => ({ ...current, placeId: '' }))}
-                  setValues={setFormValues}
-                  values={formValues}
-                />
-                <View style={styles.formField}>
-                  <Text style={styles.formLabel}>숙박 일차</Text>
-                  <Text style={styles.formHelper}>
-                    여행 일정 중 이 숙소에서 머무는 밤을 선택해주세요.
-                  </Text>
-                  <View style={styles.stayPeriodChips}>
-                    {stayNightOptions.map((option) => {
-                      const selected = parseStayPeriods(formValues.period ?? '').includes(
-                        option.value,
-                      );
-                      return (
+                      {staySearchAttempted && !staySearchLoading ? (
                         <Pressable
                           accessibilityRole="button"
-                          accessibilityState={{ selected }}
-                          key={option.value}
-                          onPress={() => toggleStayPeriod(option.value)}
-                          style={[styles.stayPeriodChip, selected && styles.stayPeriodChipSelected]}
+                          style={styles.manualStayButton}
+                          onPress={() => {
+                            setFormValues((current) => ({
+                              ...current,
+                              placeId: '',
+                              name: staySearchQuery.trim(),
+                              address: '',
+                            }));
+                            setFormError('');
+                            setStayEditorPhase('details');
+                          }}
                         >
-                          <Text
-                            style={[
-                              styles.stayPeriodChipTitle,
-                              selected && styles.stayPeriodChipTitleSelected,
-                            ]}
-                          >
-                            {option.label}
+                          <Text style={styles.manualStayButtonText}>
+                            찾으시는 숙소가 없나요? 직접 입력할 수 있어요
                           </Text>
-                          <Text
-                            style={[
-                              styles.stayPeriodChipDate,
-                              selected && styles.stayPeriodChipDateSelected,
-                            ]}
-                          >
-                            {option.dateLabel}
-                          </Text>
+                          <Ionicons name="chevron-forward" size={18} color={colors.deepMint} />
                         </Pressable>
-                      );
-                    })}
-                  </View>
-                  {stayNightOptions.length === 0 ? (
-                    <Text style={styles.emptyStayPeriod}>숙박이 없는 당일 여행이에요.</Text>
-                  ) : null}
-                </View>
-                <FormInput
-                  label="주소"
-                  name="address"
-                  onChange={() => setFormValues((current) => ({ ...current, placeId: '' }))}
-                  setValues={setFormValues}
-                  values={formValues}
-                />
-              </>
-            ) : null}
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => {
+                          setFormError('');
+                          setStayEditorPhase('search');
+                        }}
+                        style={styles.stayBackButton}
+                      >
+                        <Ionicons name="chevron-back" size={18} color={colors.deepMint} />
+                        <Text style={styles.manualStayButtonText}>다시 검색하기</Text>
+                      </Pressable>
+                      <FormInput
+                        label="숙소 이름"
+                        name="name"
+                        onChange={() => setFormValues((current) => ({ ...current, placeId: '' }))}
+                        setValues={setFormValues}
+                        values={formValues}
+                      />
+                      <View style={styles.formField}>
+                        <Text style={styles.formLabel}>숙박 일차</Text>
+                        <Text style={styles.formHelper}>
+                          여행 일정 중 이 숙소에서 머무는 밤을 선택해주세요.
+                        </Text>
+                        <View style={styles.stayPeriodChips}>
+                          {stayNightOptions.map((option) => {
+                            const selected = parseStayPeriods(formValues.period ?? '').includes(
+                              option.value,
+                            );
+                            return (
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityState={{ selected }}
+                                key={option.value}
+                                onPress={() => toggleStayPeriod(option.value)}
+                                style={[
+                                  styles.stayPeriodChip,
+                                  selected && styles.stayPeriodChipSelected,
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.stayPeriodChipTitle,
+                                    selected && styles.stayPeriodChipTitleSelected,
+                                  ]}
+                                >
+                                  {option.label}
+                                </Text>
+                                <Text
+                                  style={[
+                                    styles.stayPeriodChipDate,
+                                    selected && styles.stayPeriodChipDateSelected,
+                                  ]}
+                                >
+                                  {option.dateLabel}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                        {stayNightOptions.length === 0 ? (
+                          <Text style={styles.emptyStayPeriod}>숙박이 없는 당일 여행이에요.</Text>
+                        ) : null}
+                      </View>
+                      <FormInput
+                        label="주소"
+                        name="address"
+                        onChange={() => setFormValues((current) => ({ ...current, placeId: '' }))}
+                        setValues={setFormValues}
+                        values={formValues}
+                        required={!formValues.placeId}
+                      />
+                    </>
+                  )}
+                </>
+              ) : null}
+            </ScrollView>
 
             {formError ? (
               <View style={styles.formErrorBox}>
@@ -1432,9 +1515,11 @@ export function RouteInputScreen() {
               <Pressable onPress={closeEditor} style={styles.cancelButton}>
                 <Text style={styles.cancelText}>취소</Text>
               </Pressable>
-              <Pressable onPress={saveEditor} style={styles.saveButton}>
-                <Text style={styles.saveText}>저장</Text>
-              </Pressable>
+              {stayEditorPhase === 'details' ? (
+                <Pressable onPress={saveEditor} style={styles.saveButton}>
+                  <Text style={styles.saveText}>저장</Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -1526,18 +1611,23 @@ function FormInput({
   label,
   name,
   onChange,
+  required = false,
   values,
   setValues,
 }: {
   label: string;
   name: string;
   onChange?: () => void;
+  required?: boolean;
   values: Record<string, string>;
   setValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }) {
   return (
     <View style={styles.formField}>
-      <Text style={styles.formLabel}>{label}</Text>
+      <Text style={styles.formLabel}>
+        {label}
+        {required ? <Text style={styles.requiredMark}> *</Text> : null}
+      </Text>
       <TextInput
         onChangeText={(value) => {
           onChange?.();
@@ -1553,6 +1643,29 @@ function FormInput({
 }
 
 const styles = StyleSheet.create({
+  stayEditorContent: { paddingBottom: spacing.sm },
+  stayBackButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  manualStayButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: theme.seaSoftLight,
+  },
+  manualStayButtonText: {
+    flexShrink: 1,
+    color: colors.deepMint,
+    fontSize: typography.label.fontSize,
+    lineHeight: 22,
+  },
   safeArea: { backgroundColor: colors.white, flex: 1 },
   mobileFrame: { backgroundColor: colors.white, flex: 1 },
   flowBody: { flex: 1 },
@@ -1587,6 +1700,9 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
   },
   questionStep: { flex: 1 },
+  questionFields: { gap: spacing.lg },
+  formSections: { gap: spacing.lg },
+  inputGroup: { gap: spacing.sm + spacing.xs },
   questionIcon: {
     alignItems: 'center',
     borderRadius: 22,
@@ -1735,7 +1851,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     gap: spacing.sm + 2,
-    marginBottom: spacing.sm,
     padding: spacing.sm + 4,
   },
   stayDayBadge: {
@@ -1772,6 +1887,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm + 3,
     padding: spacing.sm + 4,
   },
+  petList: { gap: spacing.sm },
   petAvatar: {
     alignItems: 'center',
     backgroundColor: colors.cream,
@@ -1831,7 +1947,6 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     flexDirection: 'row',
     gap: spacing.xs,
-    marginTop: spacing.lg,
     minHeight: 42,
     paddingHorizontal: spacing.md,
   },
@@ -1918,6 +2033,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
+    maxHeight: '90%',
     maxWidth: 430,
     padding: 20,
     width: '100%',
@@ -1943,6 +2059,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: 6,
   },
+  requiredMark: { color: colors.orange },
   formHelper: {
     color: colors.gray,
     fontSize: typography.caption.fontSize,
@@ -2016,15 +2133,6 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     marginTop: 8,
   },
-  manualStayDivider: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-    marginTop: 2,
-  },
-  manualStayDividerLine: { backgroundColor: theme.divider, flex: 1, height: 1 },
-  manualStayDividerText: { color: theme.textTertiary, fontSize: typography.caption.fontSize },
   stayPeriodChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   stayPeriodChip: {
     backgroundColor: theme.neutralGray,
@@ -2064,8 +2172,6 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: typography.subtitle.fontSize,
     fontWeight: '800',
-    marginBottom: 7,
-    marginTop: 2,
   },
   inlineDateSummary: {
     alignItems: 'center',
@@ -2073,7 +2179,6 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 16,
     padding: 12,
   },
   inlineDateSummaryText: {

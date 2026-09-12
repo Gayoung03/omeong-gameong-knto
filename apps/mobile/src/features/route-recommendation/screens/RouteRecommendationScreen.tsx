@@ -60,6 +60,19 @@ const formatTime = (value: string | null) =>
       }).format(new Date(value))
     : '시간 미정';
 
+/** 이전에 저장된 추천 결과의 내부 데이터 출처 표기도 사용자 문구로 정리한다. */
+function publicRecommendationCopy(value: string): string {
+  return value
+    .replace(/한국관광공사\s*TourAPI\s*실시간 정보 확인/gi, '최신 관광정보 확인')
+    .replace(/한국관광공사\s*TourAPI\s*실시간 관광정보/gi, '최신 주변 관광정보')
+    .replace(/한국관광공사\s*TourAPI\s*실시간 조회/gi, '최신 주변 정보 조회')
+    .replace(/한국관광공사\s*TourAPI\s*/gi, '')
+    .replace(/TourAPI\s*/gi, '')
+    .replace(/DB 장소/g, '등록된 장소')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 const ITEM_TYPES = new Set<ServerScheduleItemType>([
   'accommodation',
   'attraction',
@@ -119,7 +132,9 @@ function RouteItemCard({
             {name}
           </Text>
           <Text numberOfLines={2} style={styles.itemReason}>
-            {item.recommendationReason ?? item.place?.address ?? '상세 정보를 확인해주세요.'}
+            {item.recommendationReason
+              ? publicRecommendationCopy(item.recommendationReason)
+              : (item.place?.address ?? '상세 정보를 확인해주세요.')}
           </Text>
           {item.recommendationScore !== null ? (
             <Text style={styles.scoreText}>추천 점수 {Math.round(item.recommendationScore)}점</Text>
@@ -277,11 +292,7 @@ export function RouteRecommendationScreen() {
     setActionLoading(true);
     setActionError('');
     try {
-      const result = await requestRouteEditSuggestions(
-        routeId,
-        editingItem.id,
-        instruction.trim(),
-      );
+      const result = await requestRouteEditSuggestions(routeId, editingItem.id, instruction.trim());
       setSuggestions(result);
       if (!result.suggestions.length) setActionError('조건에 맞는 대체 장소를 찾지 못했어요.');
     } catch (error) {
@@ -334,8 +345,7 @@ export function RouteRecommendationScreen() {
         editingItem.startsAt && editingItem.endsAt
           ? Math.max(
               0,
-              (new Date(editingItem.endsAt).getTime() -
-                new Date(editingItem.startsAt).getTime()) /
+              (new Date(editingItem.endsAt).getTime() - new Date(editingItem.startsAt).getTime()) /
                 60_000,
             )
           : (editingItem.stayMinutes ?? 0);
@@ -360,8 +370,7 @@ export function RouteRecommendationScreen() {
       return;
     }
     const last = activeDay.items.at(-1);
-    const position =
-      last?.itemType === 'accommodation' ? last.sortOrder : activeDay.items.length;
+    const position = last?.itemType === 'accommodation' ? last.sortOrder : activeDay.items.length;
     setActionLoading(true);
     setActionError('');
     try {
@@ -482,12 +491,14 @@ export function RouteRecommendationScreen() {
             {route.title}
           </Text>
           {route.explanation ? (
-            <Text style={styles.heroDescription}>{route.explanation}</Text>
+            <Text style={styles.heroDescription}>
+              {publicRecommendationCopy(route.explanation)}
+            </Text>
           ) : null}
-          {route.explanation?.includes('TourAPI 실시간 관광정보') ? (
+          {route.tourApiPlaces.length > 0 ? (
             <View style={styles.tourApiBadge}>
               <Ionicons color={colors.seaDeep} name="business-outline" size={14} />
-              <Text style={styles.tourApiBadgeText}>한국관광공사 TourAPI 실시간 반영</Text>
+              <Text style={styles.tourApiBadgeText}>최신 추천 정보 반영</Text>
             </View>
           ) : null}
         </View>
@@ -536,9 +547,9 @@ export function RouteRecommendationScreen() {
         </Pressable>
         {route.tourApiPlaces.length ? (
           <View style={styles.tourApiSection}>
-            <Text style={styles.tourApiSectionTitle}>한국관광공사 실시간 주변 관광정보</Text>
+            <Text style={styles.tourApiSectionTitle}>함께 둘러보기 좋은 곳</Text>
             <Text style={styles.tourApiSectionDescription}>
-              TourAPI에서 지금 조회한 정보이며 DB에는 저장하지 않아요.
+              여행 동선 주변에서 같이 방문하기 좋은 장소를 모았어요.
             </Text>
             {route.tourApiPlaces.map((place) => (
               <View key={place.contentId} style={styles.tourApiCard}>

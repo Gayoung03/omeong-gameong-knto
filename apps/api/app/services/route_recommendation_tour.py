@@ -51,5 +51,5 @@ def _with_tour_api_note(candidate: ScoredCandidate) -> ScoredCandidate:
     if candidate.pet_policy is not None and candidate.pet_policy.source == DataProvider.TOUR_API:
         return candidate
     return candidate.model_copy(
-        update={"reason": f"{candidate.reason} · 한국관광공사 TourAPI 실시간 정보 확인"}
+        update={"reason": f"{candidate.reason} · 최신 관광정보 확인"}
     )

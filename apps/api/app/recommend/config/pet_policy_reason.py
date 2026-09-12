@@ -25,7 +25,7 @@ POLICY_SENTENCES: dict[PetPolicyType, str] = {
 
 #: source -> 한글 출처 라벨. 정책 출처로 쓰지 않는 값(tmap·weather_api)은 폴백을 쓴다.
 SOURCE_LABELS: dict[DataProvider, str] = {
-    DataProvider.TOUR_API: "한국관광공사 반려동물 동반 정보",
+    DataProvider.TOUR_API: "확인된 반려동물 동반 정보",
     DataProvider.KCISA: "한국문화정보원 반려동물 동반 정보",
     DataProvider.VISITJEJU: "비짓제주 정보",
     DataProvider.KAKAO: "카카오 로컬 정보",

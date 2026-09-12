@@ -25,9 +25,7 @@ def test_verified_outdoor_with_leash_and_source_matches_spec_example() -> None:
 
     reason = reason_for(policy, CandidateTier.VERIFIED)
 
-    expected = (
-        "목줄 착용 시 야외 동반 가능 · 한국관광공사 반려동물 동반 정보 기준 (2026-07-20 확인)"
-    )
+    expected = "목줄 착용 시 야외 동반 가능 · 확인된 반려동물 동반 정보 기준 (2026-07-20 확인)"
     assert reason == expected
 
 

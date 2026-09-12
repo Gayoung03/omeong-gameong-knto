@@ -153,7 +153,7 @@ def test_route_request_generates_db_place_itinerary(
     assert recommended_items[0].place_id is not None
     assert db.get(Place, recommended_items[0].place_id) is not None
     assert all(item.place_id != accommodation.id for day in route.route_days for item in day.items)
-    assert "한국관광공사 TourAPI 실시간 관광정보 1건" in (route.explanation or "")
+    assert "최신 주변 관광정보 1건" in (route.explanation or "")
 
     status_response = client.get(f"/api/v1/routes/{route_id}/status")
     assert status_response.status_code == 200
