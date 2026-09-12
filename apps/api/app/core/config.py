@@ -100,6 +100,15 @@ class Settings(BaseSettings):
     #: 메일과 무관한 요청까지 밀린다.
     smtp_timeout_seconds: float = 10.0
 
+    # --- 메일 발송 (Brevo HTTP API) ----------------------------------------
+    #: Railway 같은 클라우드는 아웃바운드 SMTP(465/587)를 막는 경우가 많다.
+    #: 키가 채워져 있으면 SMTP 대신 Brevo HTTP API(https, 차단 안 됨)로 보낸다.
+    #: SMTP 보다 우선한다. 로컬은 키를 비워 두면 기존 SMTP 경로로 그대로 돈다.
+    brevo_api_key: str = ""
+    #: Brevo 발신 주소. Brevo 대시보드에서 **인증한 발신자 이메일**이어야 한다
+    #: (도메인 없이 이메일 하나만 인증 가능). 이름은 smtp_from_name 을 쓴다.
+    brevo_from_email: str = ""
+
     # --- 비밀번호 재설정 ---------------------------------------------------
     #: 인증 코드 유효 시간(분). 짧을수록 메일함이 나중에 털렸을 때 안전하고,
     #: 길수록 메일이 늦게 도착해도 쓸 수 있다. 10분은 그 절충이다.
@@ -114,6 +123,12 @@ class Settings(BaseSettings):
     # requestText → 표준 태그. 백그라운드 생성 단계라 짧게 자르고 실패는 무시한다.
     request_intent_model: str = "gpt-4o-mini"
     request_intent_timeout_seconds: float = 10.0
+
+    # --- 루트 여행 설명(explanation) -------------------------------------
+    # 규칙 결과 요약 → 여행 전체 한 문단. 생성 중 1회만, 실패·미설정 시 템플릿 폴백.
+    # 폴링 3분 예산 안에서 짧게 자른다(장소별 호출 없음).
+    route_explanation_model: str = "gpt-4o-mini"
+    route_explanation_timeout_seconds: float = 10.0
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../../.env"),

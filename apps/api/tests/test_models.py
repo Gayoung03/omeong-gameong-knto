@@ -36,6 +36,7 @@ EXPECTED_TABLES = {
     "route_calculation_cache",
     "route_checklist_items",
     "route_days",
+    "route_item_candidates",
     "route_items",
     "route_memos",
     "route_moves",

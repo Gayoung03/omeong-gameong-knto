@@ -411,7 +411,8 @@ const PET_SPECIES_LABEL = { dog: '강아지', cat: '고양이', other: '기타' 
 [`signupOptions.ts`](../../apps/mobile/src/features/auth/constants/signupOptions.ts)의
 `petTypeOptions`가 이미 이 방식입니다.
 
-`apps/api/app/db/models/enums.py`에 정의된 12개입니다.
+`apps/api/app/db/models/enums.py`에 정의되어 있습니다. **예정** 표시는 루트 추천 재설계
+([`route-redesign.md`](../planning/route-redesign.md)) 마이그레이션에서 추가될 값입니다.
 
 | Enum | 값 |
 | --- | --- |
@@ -427,6 +428,10 @@ const PET_SPECIES_LABEL = { dog: '강아지', cat: '고양이', other: '기타' 
 | `schedule_item_type` | `attraction` `restaurant` `cafe` `accommodation` `custom` |
 | `weather_condition` | `sunny` `partly_cloudy` `cloudy` `rainy` `snowy` `windy` |
 | `message_role` | `user` `assistant` `system` |
+| `route_item_slot_status` | `filled` `needs_verification` `unfilled` — **예정** (재설계 Phase 3) |
+| `pet_activity_level` | `low` `normal` `high` — **예정** (Phase 4) |
+| `pet_sociability_level` | `low` `normal` `high` — **예정** (Phase 4) |
+| `pet_energy_level` | `low` `normal` `high` — 이번 여행 컨디션 스냅샷, **예정** (Phase 4) |
 
 DB Enum 타입은 아니지만 값이 고정된 문자열 컬럼도 있습니다. 응답 처리 시 함께 맞춰야 합니다.
 
@@ -512,15 +517,15 @@ DB가 막아주지 않으므로 **서버가 아래 값만 넣는다는 약속**�
 | 항목 | 정해야 할 시점 |
 | --- | --- |
 | 에러 메시지 언어 (한국어 / 영문 + 앱이 문구 보유) | 첫 도메인 구현 시 |
-| 여행 취향 태그 **목록** (코드 표기는 7장에서 확정) | 추천 방식(규칙 기반 / AI) 확정 후 |
+| 여행 취향 태그 **목록** (코드 표기는 7장에서 확정) | ~~추천 방식 확정 후~~ 추천 방식 확정(2026-09-07). 재설계 Phase 1에서 DB 코드 7종(`sea` `cafe` `walk` `photo_spot` `experience` `rest` `indoor_tourism`)과 앱 라벨을 매핑하는 것으로 정리 |
 | 수동 여행 생성 엔드포인트 (경로·요청 범위·초기 `status`) | 직접 만들기 화면 확정 후 ([`routes.md`](./routes.md)) |
 | 여행 가이드 기능 (`guides`) | 화면 기획 후 ([`guides.md`](./guides.md)) |
 | 챗봇 RAG 검색 방식 (`app/rag/`가 비어 있음) | 챗봇 구현 시 ([`chatbot.md`](./chatbot.md)) |
 | 주인 없는 S3 파일 정리 배치의 주기·유예 시간 | 업로드 구현 후 ([`uploads.md`](./uploads.md)) |
 
-**추천 방식(규칙 기반 / AI)이 아직 정해지지 않았습니다.** 위 표의 태그 목록이 여기 걸려 있고,
-`route_requests` 처리 방식도 여기서 갈립니다. 저장소에 `app/rag/{ingestion,prompts,retrieval}`
-골격이 잡혀 있어 AI 방식으로 보이지만 확정된 적이 없습니다.
+**추천 방식은 규칙 기반으로 확정했습니다** (2026-09-07, [`route-redesign.md`](../planning/route-redesign.md)).
+필터 → 점수 → 일정 조립은 규칙이 하고, LLM은 요청 자유문의 태그 추출과 여행 전체 설명 1회에만 씁니다.
+장소별 LLM 호출은 하지 않습니다. `app/rag/`는 챗봇 몫이며 루트 추천과 무관합니다.
 
 ### 추가 확정 (2026-08-12, 팀 회의 외)
 
@@ -613,6 +618,25 @@ NOT NULL이라 업로드 없이는 여행기록 기능 자체가 성립하지 �
 - 수동 여행 생성 엔드포인트 — DB는 준비 완료. **"직접 만들기" 화면 기획 대기**
 - 여행 가이드 — **"반려동물과 여행할 때 도움이 되는 정보를 모아 보는 곳"** 으로 성격만 확정.
   화면 기획 대기 ([`guides.md`](./guides.md))
+
+### 추가 확정 (2026-09-07) — 루트 추천 재설계
+
+배경·리뷰·스키마 변경안은 [`route-redesign.md`](../planning/route-redesign.md).
+**팀 회의가 아니라 백엔드 담당자 판단이므로 추인이 필요합니다.**
+
+- [x] 추천 방식 — **규칙 기반**. LLM은 자유문 태그 추출과 여행 설명 1회만
+- [x] 개인화 중심 — **반려동물** (`pets.activity_level` `sociability` `car_sickness` + 이번 여행 `energy_level`)
+- [x] 후보 등급 — 확실히 동반 가능한 곳만 기본. `unknown`은 부족할 때만 "확인 필요"
+- [x] 부분 성공 — 빈 슬롯(`route_items.slot_status`)으로 남기고 `generated`. `failed`는 전일 공백일 때만. **상태 enum 값 추가 없음**
+- [x] 슬롯별 대안 — `route_item_candidates` 테이블, 최대 3개, 편집 시 그 날짜 후보 전부 무효화
+- [x] 날씨 — 점수 축이 아니라 하루 구성 규칙(강수 60~79% 과반 실내 선호, 80%↑ 전부, 최고기온 30℃↑ 정오~15시 실외 제외). 예보 밖이면 미적용. `healing` 프리셋·`weather` 기준은 가중치가 아니라 **실내 우선 규칙을 켜는 신호**로 재정의 (2026-09-08)
+- [x] 동물병원 안전망 — 응답 계산값 `nearbyAnimalHospitals`, 저장 안 함
+- [x] 관광공사 TourAPI — **저장 금지 유지**(실시간만). 카카오 로컬 — 음식 종류(`places.cuisine`) 저장 가능
+- [ ] 펫 맡김(펫호텔) 추천 — **보류**
+- [ ] `POST /route-requests`의 반려동물별 컨디션 입력 형태 — **앱 팀 협의** (유력안: `pets[]` 추가, `petIds` 유지)
+
+앱에서 함께 고쳐야 하는 것: 폴링 종료 조건에 부분 성공 반영, 빈 슬롯(`slotStatus`) 렌더링,
+`recommendationScore` 기반 체크 아이콘 조건 재검토, `candidates` 바텀시트, 상태 응답의 `slotSummary`.
 
 ### 앱 코드 수정이 필요한 것
 

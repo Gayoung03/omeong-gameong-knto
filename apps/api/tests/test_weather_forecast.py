@@ -13,6 +13,7 @@ from app.integrations.weather.kma import (
     CurrentWeather,
     _to_grid,
     get_current_weather,
+    get_daily_forecasts,
     get_precipitation_probabilities,
 )
 from app.main import app
@@ -61,6 +62,51 @@ def test_forecast_returns_daily_max_precipitation(monkeypatch: pytest.MonkeyPatc
         )
 
     assert result == {date(2026, 8, 29): 70}
+
+
+def test_daily_forecasts_parse_pop_temps_and_hourly(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "weather_api_key", "decoded-key")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        items = [
+            {"category": "POP", "fcstDate": "20260829", "fcstTime": "1200", "fcstValue": "20"},
+            {"category": "POP", "fcstDate": "20260829", "fcstTime": "1500", "fcstValue": "70"},
+            {"category": "TMX", "fcstDate": "20260829", "fcstTime": "1500", "fcstValue": "31.0"},
+            {"category": "TMN", "fcstDate": "20260829", "fcstTime": "0600", "fcstValue": "23.0"},
+            {"category": "TMP", "fcstDate": "20260829", "fcstTime": "1300", "fcstValue": "30"},
+            {"category": "TMP", "fcstDate": "20260829", "fcstTime": "1400", "fcstValue": "31"},
+            # 요청 범위 밖 날짜는 결과에 없어야 한다.
+            {"category": "POP", "fcstDate": "20260901", "fcstTime": "1200", "fcstValue": "10"},
+        ]
+        return httpx.Response(
+            200,
+            json={
+                "response": {
+                    "header": {"resultCode": "00", "resultMsg": "NORMAL_SERVICE"},
+                    "body": {"items": {"item": items}},
+                }
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = get_daily_forecasts(
+            33.505929,
+            126.495952,
+            {date(2026, 8, 29)},
+            now=datetime(2026, 8, 28, 14, 30, tzinfo=KST),
+            client=client,
+        )
+
+    assert set(result) == {date(2026, 8, 29)}
+    forecast = result[date(2026, 8, 29)]
+    assert forecast.pop_max == 70
+    assert forecast.tmax == 31.0
+    assert forecast.tmin == 23.0
+    assert forecast.hourly_tmp == {13: 30.0, 14: 31.0}
+
+
+def test_daily_forecasts_empty_dates_skips_call() -> None:
+    assert get_daily_forecasts(33.5, 126.5, set()) == {}
 
 
 def test_current_weather_uses_nearest_forecast(monkeypatch: pytest.MonkeyPatch) -> None:

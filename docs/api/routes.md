@@ -1,8 +1,10 @@
 # 루트 추천 · 내 여행 API
 
-작성일: 2026-08-12 · 갱신: 2026-08-18 · 상태: **수동 여행 생성만 보류 — 그 외 구현 착수 가능**
+작성일: 2026-08-12 · 갱신: 2026-09-07 · 상태: **재설계 반영 (구현 전) — 수동 여행 생성은 보류 유지**
 
 공통 규약은 [`README.md`](./README.md)를 따릅니다.
+2026-09-07 변경분은 루트 추천 재설계 문서 [`route-redesign.md`](../planning/route-redesign.md)의 추인에 따릅니다.
+**[재설계 2026-09-07]**·**[개정 2026-09-07]** 표시가 그 변경분입니다.
 
 관련 DB 테이블: `route_requests`, `route_request_pets`, `route_request_stays`,
 `routes`, `route_pets`, `route_days`, `route_items`, `route_moves`,
@@ -28,6 +30,13 @@ generating → generated → saved → ongoing → completed
 | `ongoing` | 여행 중 | 내 여행 상세 |
 | `completed` | 여행 종료 | 지난 여행 |
 | `failed` | 생성 실패 | 재시도 안내 |
+
+### 부분 성공 **[재설계 2026-09-07]**
+
+추천 생성은 채울 수 있는 슬롯만 채우고 나머지는 **빈 슬롯(`slotStatus: "unfilled"`)**으로 남깁니다.
+슬롯이 비어 있어도 `status`는 `generated`입니다. `failed`는 **모든 날이 비었을 때만** 씁니다.
+빈 슬롯에는 "동반 여부 확인 필요" 후보가 붙고, 사용자가 `PUT /route-items/{routeItemId}/place`로
+채웁니다. 완성도는 `slotSummary`(계산값)로 내려갑니다. 상태 enum에 값을 추가하지 않습니다.
 
 **요청(`route_requests`)과 결과(`routes`)는 별개 테이블**입니다.
 같은 요청으로 여러 번 추천을 생성할 수 있고, 그때마다 `routes.version`이 올라갑니다.
@@ -171,6 +180,9 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
   "userCriteria": ["pet", "proximity"],
   "requestText": "산책하기 좋은 곳 위주로 부탁해요",
   "petIds": ["550e8400-e29b-41d4-a716-446655440000"],
+  "pets": [
+    { "petId": "550e8400-e29b-41d4-a716-446655440000", "energyLevel": "low" }
+  ],
   "stays": [
     {
       "placeId": null,
@@ -190,6 +202,8 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 | `transport` | ✅ | `rental_car` `own_car` `taxi` `public_transport` `walk` `ferry` `airplane` |
 | `companionCount` | — | 기본 1. 1 이상 |
 | `petIds` | — | 본인 소유 반려동물 |
+| `pets[]` | — | **[구현 2026-09-08, 앱 팀 확인 필요]** 반려동물별 **이번 여행 컨디션**. `petId`는 본인 소유(타인 `403`, 없음 `404`), `energyLevel`은 `low` `normal` `high` 또는 생략. **`pets`를 보냈으면 `petIds`는 무시**하고, `pets: []`를 명시하면 반려동물 없음. `pets`를 아예 안 보내면 `petIds`를 씀. 중복 `petId`는 `422`. `energyLevel`을 생략하면 `pets.activityLevel` 기본값을 씀. `route_request_pets.energy_level`에 스냅샷 |
+| `preferredTags` | — | 화면 라벨(`바다·해변` `카페` `맛집` …)이나 DB 코드(`sea` `cafe` …) 어느 쪽이든 받고, 서버가 `place_tags.code` 7종(+`category:restaurant`)으로 정규화해 저장 (2026-09-07, [`users.md`](./users.md) 취향 태그 코드 표). 저장값은 항상 코드 |
 | `stays[].checkOutAt` | — | `checkInAt`보다 뒤 |
 | `requestText` | — | 자유 요청문. 202 응답 후 **백그라운드 생성 단계에서** LLM 으로 선호 태그를 추출해 `preferredTags`와 **합쳐서 이번 생성에만** 사용한다(요청 행은 바꾸지 않음). 추출은 표준 태그 어휘로 제한되고, 실패하면 무시하고 원래 값으로 진행한다. `pace` 등 다른 필드는 건드리지 않는다 |
 
@@ -205,17 +219,44 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 
 `priorityPreset`에서 기본 가중치 배수를 적용한 다음 `userCriteria`로 사용자가 고른
 항목을 추가 부스트하고, 합계가 1이 되도록 정규화합니다. 최종값만
-`route_requests.applied_weights`에 저장합니다.
+`route_requests.applied_weights`에 저장합니다. **[개정 2026-09-08]** 6개 키는 하위호환을 위해
+유지합니다. `rating`·`popularity`·`weather`는 0이고 기본값은 반려 0.50 · 근접 0.28 · 취향 0.22입니다.
+`healing` 프리셋과 `userCriteria: ["weather"]`는 배수가 아니라 **`applied_weights.weather`에 0.10을
+고정 신호로 남기고**, 생성기가 그 값이 0보다 크면 예보와 무관하게 실내 우선 규칙(아래)을 켭니다.
+취향·인기 축은 화면 전면에서 빠지고, 반려 점수는 장소 정책만이 아니라 **동반 반려동물의
+크기·체중·이용 조건 적합도**를 함께 봅니다.
 
 추천 생성 시 출발지(없으면 첫 숙소) 좌표를 기상청 5km 격자로 변환해 단기예보를
-조회합니다. 여행 날짜들의 최대 강수확률을 `weather` 점수에 반영하며, 예보 범위를
-벗어난 날짜이거나 기상청 호출이 실패하면 날씨 점수는 중립값으로 처리합니다.
+조회합니다. **[개정 2026-09-08]** 날씨는 점수 축이 아니라 **하루 구성 규칙**으로 씁니다.
+
+| 예보 | 규칙 |
+| --- | --- |
+| 강수확률 60~79% | 그날 활동 슬롯의 과반(앞쪽부터)을 **실내 선호**. 오전을 실내로 시작해 개면 오후에 실외로 바꾸기 쉽게 |
+| 강수확률 80% 이상 | 활동 슬롯 전부 실내 선호 |
+| 최고기온 30℃ 이상 | 예상 방문 구간이 정오~15시에 걸치는 **실외 후보 제외** (실내·복합은 허용) |
+| `healing` 프리셋 · `userCriteria: weather` | 예보와 무관하게 80% 규칙 적용 |
+| 예보 없음(범위 3일 밖·조회 실패) | 규칙 미적용. 중립 점수가 아니라 "실내 비중 상향 안 함" |
+
+전부 선호라 후보가 부족하면 완화 순서(다양성 → 환경 → 이동시간 상한 → 확인 필요)에서 풀려 빈 일정으로
+이어지지 않습니다. 적용한 날짜별 예보는 `weather_snapshots`(`region`은 기상청 5km 격자 키
+`kma:{nx},{ny}`, `forecast_at`은 그날 00:00 KST)에 저장해 `route_days.weather_snapshot_id`로 연결하고,
+상세 응답의 `weather`로 내려갑니다.
 
 일정 조립은 하루에 카페를 최대 한 곳만 배치하고, 저녁까지 이어지는 날짜의 마지막
 방문을 17시 이후의 식당으로 구성합니다. 마지막 날 종료 시각이 17시 이전이면 그날은
 저녁 식당을 강제하지 않습니다. `relaxed`는 장소 수만 줄이지 않고 방문 사이 여백과
-저녁 식사 시간까지 확보합니다. 저녁 식사가 필요한 날짜에 조건을 통과한 식당이
-부족하면 추천 생성을 실패로 처리하며, 식당이 아닌 장소로 조용히 대체하지 않습니다.
+저녁 식사 시간까지 확보합니다.
+
+**[개정 2026-09-07]** 저녁 식사가 필요한 날짜에 조건을 통과한 식당이 부족해도 추천 생성을
+실패로 처리하지 않습니다. 그 자리는 **빈 슬롯(`unfilled`, `itemType: "restaurant"`)**으로 남기고
+"동반 여부 확인 필요" 후보를 붙입니다. 식당이 아닌 장소로 조용히 대체하지 않는다는 원칙은
+그대로입니다 — 대체하지 않고 **비워 두고 알립니다**. (이전 규칙: 여행 전체를 실패 처리)
+
+후보는 세 등급으로 나뉩니다 **[재설계 2026-09-07]**. 확실히 동반 가능한 장소(`indoor_allowed`
+`partial_allowed` `outdoor_only`이고 반려동물 종·크기·체중 조건 통과)만 기본 후보이고, 정책
+`unknown` 장소는 기본 후보로 슬롯을 못 채울 때만 `needs_verification`으로 채웁니다. `not_allowed`는
+어디에도 쓰지 않습니다. 식당은 `outdoor_only`인 곳을 "야외 대기 가능" 대안으로 함께 제시합니다.
+반려동물의 나이·활동량·차멀미·이번 여행 컨디션은 하루 장소 수와 구간 이동시간 상한에 반영합니다.
 
 추천 생성 때마다 출발지와 숙소 주변의 한국관광공사 `KorService2/locationBasedList2`를
 실시간 호출합니다. 응답 원문은 DB나 캐시에 저장하지 않으며, 제목·좌표가 일치하는
@@ -267,7 +308,8 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 {
   "routeId": "550e8400-e29b-41d4-a716-446655440000",
   "status": "generating",
-  "version": 1
+  "version": 1,
+  "slotSummary": null
 }
 ```
 
@@ -279,6 +321,18 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
   "status": "failed",
   "version": 1,
   "failureReason": "추천할 장소를 찾지 못했습니다."
+}
+```
+
+생성이 끝난 경우입니다. `slotSummary`는 `route_items.slot_status`를 세어 만든 계산값입니다
+**[재설계 2026-09-07]**. `failed`는 모든 날이 비었을 때만이고, 하루라도 채워졌으면 `generated`입니다.
+
+```json
+{
+  "routeId": "...",
+  "status": "generated",
+  "version": 1,
+  "slotSummary": { "total": 11, "filled": 8, "needsVerification": 2, "unfilled": 1 }
 }
 ```
 
@@ -322,6 +376,9 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 
 후보를 고른 뒤에는 직접 장소를 선택했을 때와 동일하게
 `PUT /route-items/{routeItemId}/place`를 호출합니다.
+
+**[재설계 2026-09-07]** 생성 시 저장된 `candidates`가 있으면 앱은 LLM 없이 그 후보를 먼저
+보여주고, 자연어 조건이 있을 때만 이 엔드포인트를 씁니다.
 
 ---
 
@@ -403,6 +460,19 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
   "isPublic": false,
   "shareToken": null,
   "logCount": 5,
+  "slotSummary": { "total": 11, "filled": 8, "needsVerification": 2, "unfilled": 1 },
+  "nearbyAnimalHospitals": [
+    {
+      "id": "...",
+      "name": "24시동물병원",
+      "address": "제주특별자치도 제주시 ...",
+      "phone": "064-...",
+      "latitude": 33.49,
+      "longitude": 126.53,
+      "distanceMeters": 2300,
+      "is24Hours": true
+    }
+  ],
   "pets": [
     { "id": "...", "name": "몽이", "species": "dog", "speciesDetail": null, "size": "small" }
   ],
@@ -443,25 +513,82 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
           "stayMinutes": 90,
           "note": null,
           "isSelected": true,
+          "slotStatus": "filled",
           "recommendationScore": 91.0,
-          "recommendationReason": "반려동물 동반 가능하고 산책로가 넓습니다.",
+          "recommendationReason": "목줄 착용 시 야외 동반 가능 · 한국관광공사 반려동물 동반 정보 기준 (2026-07-20 확인)",
           "place": {
             "id": "...",
             "name": "함덕해수욕장",
             "category": "beach",
+            "cuisine": null,
+            "phone": "064-728-3989",
             "primaryImageUrl": "https://...",
             "latitude": 33.5432,
             "longitude": 126.6695,
             "petPolicyType": "outdoor_only",
+            "petPolicy": {
+              "leashRequired": true,
+              "carrierRequired": false,
+              "muzzleRequired": null,
+              "foodAreaAllowed": null,
+              "source": "tour_api",
+              "sourceUrl": "https://...",
+              "verifiedAt": "2026-07-20T10:00:00+09:00",
+              "reliabilityScore": 82.5,
+              "cautionNote": "대형견은 입마개를 착용해 주세요."
+            },
             "reviewCount": 37,
             "rating": 4.3
           },
+          "candidates": [
+            {
+              "placeId": "...",
+              "name": "김녕해수욕장",
+              "category": "beach",
+              "address": "제주특별자치도 ...",
+              "primaryImageUrl": "https://...",
+              "recommendationScore": 87.5,
+              "recommendationReason": "목줄 착용 시 야외 동반 가능 · 비짓제주 정보 기준",
+              "phone": null,
+              "requiresVerification": false
+            }
+          ],
           "customPlaceName": null,
           "moveToNext": {
             "transport": "rental_car",
             "distanceMeters": 8200,
-            "durationMinutes": 17
+            "durationMinutes": 17,
+            "isEstimated": false
           }
+        },
+        {
+          "id": "...",
+          "sortOrder": 3,
+          "itemType": "restaurant",
+          "slotStatus": "unfilled",
+          "startsAt": null,
+          "endsAt": null,
+          "stayMinutes": null,
+          "note": null,
+          "isSelected": true,
+          "recommendationScore": null,
+          "recommendationReason": "확실히 동반 가능한 식당을 찾지 못했어요. 아래 후보는 동반 여부 확인이 필요해요.",
+          "place": null,
+          "candidates": [
+            {
+              "placeId": "...",
+              "name": "산방산해물라면오빠네",
+              "category": "restaurant",
+              "address": "제주특별자치도 서귀포시 ...",
+              "primaryImageUrl": null,
+              "recommendationScore": null,
+              "recommendationReason": "동반 여부 확인 필요",
+              "phone": "064-...",
+              "requiresVerification": true
+            }
+          ],
+          "customPlaceName": null,
+          "moveToNext": null
         }
       ]
     }
@@ -475,15 +602,86 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
 | --- | --- |
 | `creationType` | `recommended` \| `manual`. `manual`이면 `pets`가 `route_pets` 기준이고 재생성이 불가합니다 |
 | `place` | `place_id`가 있을 때. 직접 입력한 장소면 `null`이고 `customPlaceName`에 이름이 들어감 |
-| `moveToNext` | 마지막 항목이면 `null`. `route_moves` + TMAP 계산 결과 |
-| `distanceMeters` `durationMinutes` | **DB에 영구 저장하지 않습니다.** `route_calculation_cache`에 최대 24시간만 캐시하고 만료되면 다시 계산합니다 |
+| `moveToNext` | 마지막 항목이면 `null`. `route_moves` + TMAP 계산 결과. **[개정 2026-09-07]** 캐시가 없으면(추정으로 만든 구간, 24시간 만료) 실측 보정 추정값으로 채우고 `isEstimated: true`를 붙임. 빈 슬롯 앞 항목과 추정을 지원하지 않는 이동수단(`public_transport` `ferry` `airplane`)만 `null` |
+| `distanceMeters` `durationMinutes` | **DB에 영구 저장하지 않습니다.** `route_calculation_cache`에 최대 24시간만 캐시합니다. 캐시가 없으면 외부 API를 부르지 않고 추정값(`isEstimated: true`)을 내립니다 |
+| `isEstimated` | 계산값. 추정식은 차량 **고정 7분 + 직선거리 ÷ 600m/min**, 도보 직선×1.3 ÷ 75m/min. TMAP 실측 38구간으로 보정해 평균 오차 17% (이전 직선÷500m/min 은 34%). 한라산 횡단 배율은 실측상 오차를 키워 두지 않음. 같은 식을 일정 조립의 후보 선택과 TMAP 상한·오류 폴백에도 씀 |
 | `weather` | `route_days.weather_snapshot_id` 조인. 없으면 `null` |
 | `isSelected` | 추천 항목 중 사용자가 뺀 것을 구분. 기본 `true` |
+| `slotStatus` | **[재설계 2026-09-07]** `filled` \| `needs_verification` \| `unfilled`. `unfilled`면 `place`·시각이 `null`이고 `candidates`에 확인 필요 후보가 붙음. `needs_verification`이면 장소는 있지만 동반 여부가 미확인 — 앱은 "확인 필요" 라벨과 `place.phone`을 함께 보여줌 |
+| `candidates` | **[재설계 2026-09-07]** 슬롯별 대안 후보 최대 3개 (`route_item_candidates`). 모양은 `edit-suggestions`의 `suggestions` 항목과 같고 `requiresVerification`과 `phone`(확인 전화용, `places.phone`)을 추가. 같은 날짜의 항목이 편집되면 그 날짜의 후보는 모두 지워져 빈 배열이 됨 |
+| `slotSummary` | 계산값. `route_items.slot_status` 집계. **출발지·숙소 앵커(체류시간 0인 항목)는 빼고 방문 슬롯만 센다** (2026-09-08 결정). 상태 조회 응답과 같음 |
+| `nearbyAnimalHospitals` | 계산값, 저장 안 함. 숙소와 각 날짜 동선에서 가까운 동물병원(`places.category_detail = '동물병원'`) 최대 3곳. `is24Hours`는 이름의 "24시"로 판정 (영업시간 데이터가 없음). 조립·한계는 아래 [`nearbyAnimalHospitals` 안전망 규칙] |
+| `place.petPolicy` | 동반 조건과 근거 출처. [`places.md`](./places.md) 상세의 `petPolicy` 부분집합 |
+| `place.cuisine` `place.phone` | 음식 종류(카카오 로컬 분류로 보강, 없으면 `null`)와 전화번호 |
+| `recommendationReason` | **[의미 변경 2026-09-07]** 내부 점수 나열("반려 편의 80점")이 아니라 **동반 조건 + 근거 출처 문장**. 규칙 템플릿으로 만들며 LLM을 쓰지 않음. 조립 형식은 아래 [`recommendationReason` 조립 규칙] |
+| `explanation` | 여행 전체 설명 한 문단. **[개정 2026-09-07]** 규칙 결과를 바탕으로 LLM이 **1회** 생성, 실패 시 템플릿 |
 | `distanceSummary` | 계산값. 하위 `moveToNext` 합계 |
 | `tourApiPlaces` | 상세 조회 시 한국관광공사 TourAPI에서 실시간 조회한 주변 장소 최대 3건. DB에 저장하지 않음 |
 | `logCount` | 계산값. 이 여행에 속한 `travel_logs` 개수. 여행 모아보기 화면 헤더가 씀 ([`travel-logs.md`](./travel-logs.md)) |
 
 `route_moves`에는 순서와 이동수단만 영구 저장하고, 거리·시간·polyline은 캐시에서 가져옵니다.
+
+### `recommendationReason` 조립 규칙 [재설계 Phase 6, 2026-09-09]
+
+동반 가능이 **확실한**(tier `verified`) 항목·후보는 규칙 템플릿으로 문장을 만든다. LLM은 쓰지 않는다.
+
+조립 형식:
+
+```
+{조건 접두 }{동반 문장} · {출처 라벨} 기준{ (YYYY-MM-DD 확인)}{ · 유의사항}
+```
+
+- **조건 접두** — `place_pet_policies`의 참인 조건을 고정 순서(목줄→입마개→케이지)로 모아 만든다. 같은 서술어(`착용`)를 공유하는 명사는 `·`로 잇고, 다른 서술어는 `, `로 잇는다. 마지막에 서술어를 한 번 붙이고 ` 시`로 닫는다. 참인 조건이 없으면 접두는 없다.
+
+  | 조건 컬럼 | 명사·서술어 |
+  | --- | --- |
+  | `leash_required` | 목줄 착용 |
+  | `muzzle_required` | 입마개 착용 |
+  | `carrier_required` | 케이지 이용 |
+
+  예: 목줄만 → `목줄 착용 시` / 목줄+입마개 → `목줄·입마개 착용 시` / 목줄+케이지 → `목줄 착용, 케이지 이용 시` / 목줄+입마개+케이지 → `목줄·입마개 착용, 케이지 이용 시`
+
+- **동반 문장** — `place_pet_policies.policy_type`(= `PetPolicyType`) 값별.
+
+  | `policy_type` | 동반 문장 |
+  | --- | --- |
+  | `indoor_allowed` | 실내외 동반 가능 |
+  | `outdoor_only` | 야외 동반 가능 |
+  | `partial_allowed` | 일부 구역 동반 가능 |
+  | `not_allowed` | (해당 없음 — 후보에서 제외되어 문장을 만들지 않음) |
+  | `unknown` | (해당 없음 — `needs_check` 경로) |
+
+  `unknown`·정책 없음 등 tier `needs_check` 항목은 문장을 만들지 않고 기존 안내(`동반 여부 확인 필요`, 빈 식사 슬롯은 전용 문구)를 유지한다.
+
+- **출처 라벨** — `place_pet_policies.source`(= `DataProvider`) 값별. 조립 시 라벨 뒤에 ` 기준`을 붙이고, `verified_at`이 있으면 ` (YYYY-MM-DD 확인)`(KST 날짜)을 잇는다. 없으면 괄호를 생략한다.
+
+  | `source` | 라벨 |
+  | --- | --- |
+  | `tour_api` | 한국관광공사 반려동물 동반 정보 |
+  | `kcisa` | 한국문화정보원 반려동물 동반 정보 |
+  | `visitjeju` | 비짓제주 정보 |
+  | `kakao` | 카카오 로컬 정보 |
+  | `internal` | 자체 확인 정보 |
+  | `tmap`·`weather_api` | 제공 정보 (정책 출처로 쓰지 않는 값의 폴백) |
+
+- **유의사항** — `caution_note`가 있으면 ` · {caution_note}`로 잇는다.
+
+- **TourAPI 실시간 대조** — 상세 생성 시 TourAPI 실시간 조회로 대조에 성공한 장소는 출처 문장 **뒤에 한 번만** `· 한국관광공사 TourAPI 실시간 정보 확인`을 덧붙인다(출처 라벨과 중복 표기하지 않음).
+
+예: `목줄 착용 시 야외 동반 가능 · 한국관광공사 반려동물 동반 정보 기준 (2026-07-20 확인)`
+
+> 이 문장을 만들려면 추천 엔진 내부 스냅샷(`recommend/schemas.py`의 `PetPolicy`)에 `source`·`source_url`·`verified_at`·`caution_note`를 실어야 한다. 기존 컬럼을 노출만 하는 것이라 **DB 스키마 변경은 없다**.
+
+### `nearbyAnimalHospitals` 안전망 규칙 [재설계 Phase 6, 2026-09-09]
+
+- 여행 항목(출발지·숙소 앵커 포함)의 **앵커 좌표**를 중심으로 `places.category_detail = '동물병원'`을 조회한다. 별도 좌표 조회 없이 이미 응답에 있는 좌표를 쓴다.
+- 좌표 인덱스로 **bounding-box(반경 5km)** 후 **haversine** 거리 정렬, 최대 **3곳**. 정렬은 `is24Hours` 우선 → 거리순.
+- `is24Hours`는 영업시간 데이터가 없어 **이름에 `24시` 포함** 여부로만 판정한다.
+- 저장하지 않는 계산값이다.
+
+> **판정 한계** (팀 RDS 실측, 2026-09-09): 동물병원 75곳(전부 제주·좌표 보유) 중 이름에 `24시`가 들어간 곳은 **2곳**(`24시동물병원`, `24시똑똑똑동물메디컬센터`)뿐이고 `24시간` 표기는 0곳이다. 따라서 `is24Hours: true`는 사실상 이 소수에만 붙으며, `24시 우선` 정렬은 데이터 보강 전까지 상징적이다.
+>
+> **데이터 caveat**: 같은 분류에 워크인 반려 병원이 아닌 5곳(`씨엔에프 팜테크`, 제주대학교 3개 기관, 한국마사회 육성목장)이 섞여 있다. 정정은 DB 적용 보류 대상이라 코드로 걸러내지 않는다.
 
 ### 에러
 
@@ -544,7 +742,12 @@ ongoing   → completed
 }
 ```
 
-`(route_request_id, version)`에 UNIQUE 제약이 있습니다.
+`(route_request_id, version)`에 UNIQUE 제약이 있습니다. 새 `version`은
+`max(version)+1`이며, 동시 재생성이 같은 값을 노려 충돌하면 한 번 다시 시도하고,
+그래도 부딪치면 `409`입니다.
+
+원본이 아직 `generating`이어도 재생성을 막지 않습니다(명세에 제한이 없어 그대로 허용 —
+[`route-redesign.md`](../planning/route-redesign.md) 열린 질문 참고).
 
 이 엔드포인트는 `creationType`이 `recommended`인 여행에만 씁니다.
 수동 여행은 `routeRequestId`가 `null`이라 재생성할 원본 조건이 없습니다.
@@ -662,6 +865,11 @@ AI 추천 후보 또는 사용자가 직접 고른 DB 장소로 일정 항목을
 `422`로 거절합니다. 교체 항목 앞뒤의 TMAP 경로는 다시 계산해 캐시에 저장합니다.
 숙소 항목은 숙소 후보로만 교체할 수 있으며, 숙박일의 도착 숙소와 다음 날 출발 숙소는
 같은 장소로 함께 변경됩니다.
+
+**[재설계 2026-09-07]** `unfilled` 슬롯에 호출하면 슬롯이 채워지고(`filled` 또는
+`needs_verification`) 앞뒤 이동과 시각을 새로 잇습니다. 정책 `unknown` 장소로 교체하면
+`needs_verification`이 됩니다. 교체·추가·삭제·순서 변경이 일어난 **날짜의 `candidates`는 모두
+지웁니다** — 앞 슬롯이 바뀌면 뒤 슬롯의 후보 순위가 무의미해지기 때문입니다.
 
 ### PUT /route-days/{routeDayId}/items/order
 
@@ -810,3 +1018,9 @@ AI 추천 후보 또는 사용자가 직접 고른 DB 장소로 일정 항목을
 | 2026-08-15 | PR #29 머지 반영 — 수동 여행 스키마(`creation_type`, nullable `route_request_id`, `route_pets`) 설명 추가, 응답에 `creationType` 추가, `regenerate`의 수동 여행 처리 명시. 수동 생성 엔드포인트는 확인 필요로 기록 |
 | 2026-08-18 | 미정 2건 확정 — 폴링 **2초 간격 / 3분 타임아웃**, `failureReason`은 컬럼 추가 없이 응답에만, 수동 여행 재생성은 **`422`**. 수동 생성 엔드포인트는 **보류 유지**하되 DB 준비 완료 사실과 유력안을 정리 |
 | 2026-09-02 | `requestText` write-only 해소 (ai-io-column-design 8.3-3) — 백그라운드 생성 단계에서 LLM 으로 태그를 추출해 `preferredTags`와 병합(이번 생성 한정, 요청 행 불변). `pace`는 스키마상 "미지정" 상태가 없어 병합 대상에서 제외. 실패 시 무시 |
+| 2026-09-07 | **루트 추천 재설계 반영** ([`route-redesign.md`](../planning/route-redesign.md)) — 부분 성공(빈 슬롯 `slotStatus`, `slotSummary`, `failed`는 전일 공백일 때만), 슬롯별 대안 `candidates`, 후보 3등급(확실/확인 필요/불가), 날씨를 하루 구성 규칙으로, 반려동물 중심 개인화(`pets[].energyLevel`, 반려 점수에 반려동물 반영), `recommendationReason` 의미 변경, `place.petPolicy`·`cuisine`·`phone` 노출, `nearbyAnimalHospitals`, `regenerate` 미구현 명시. "식당 부족 시 실패" 규칙 개정 |
+| 2026-09-08 | Phase 5 구현 반영 (#271) — 날씨 규칙 임계값 확정(60~79% 과반 실내 선호, 80%↑ 전부, 30℃↑ 정오~15시 실외 제외), `weather` 가중치 0(기본값 반려 .50 · 근접 .28 · 취향 .22), `healing`·`weather` 기준은 `applied_weights.weather` 0.10 고정 신호로 실내 우선, `weather_snapshots` 격자 키 저장으로 상세 `weather` 실제 채움 |
+| 2026-09-08 | Phase 4 구현 반영 (#270) — `pets[]` 의미 확정(보내면 `petIds` 무시, 빈 배열은 반려동물 없음, 중복 `422`). 반려 점수가 동반 반려동물의 크기·체중·이용 조건 적합도를 반영하고, 노령·저활동·컨디션 낮음은 하루 장소 수 −1·휴식 상향, 차멀미는 구간(숙소 복귀 포함) 이동시간 상한 40분 적용 후 완화 |
+| 2026-09-08 | Phase 3 구현 반영 (#269) — `slotSummary`는 출발지·숙소 앵커를 빼고 방문 슬롯만 집계, 후보 객체에 `phone` 추가(근거 문장에서 전화번호 분리). 식사 슬롯을 못 채우면 빈 슬롯을 남기고 남은 시간에 관광을 계속 배치 |
+| 2026-09-07 | Phase 1 검수 반영 (#263) — `weather` 가중치는 Phase 5 전까지 **0.10 유지**(healing 프리셋 무효화 방지), `preferredTags`는 라벨·코드 모두 받아 **코드로 저장**함을 명시. TMAP 호출은 하루 12회 상한(실제 호출만 카운트, 캐시 적중 제외), 오류 시 여행 단위로 추정 폴백. 추정식을 실측 기반(7분 + 직선÷600m/min)으로 교체하고 상세 응답 `moveToNext`에 `isEstimated` 추가 — 캐시 만료 후 이동 정보가 사라지던 문제 해소 |
+| 2026-09-09 | Phase 7 구현 반영 (#281) — `regenerate` 엔드포인트 구현("미구현" 문단 제거). 새 `version = max+1`, UNIQUE 충돌 시 1회 재시도 후 `409`, 원본이 `generating`이어도 허용(열린 질문 기록). 추천 서비스(`route_recommendation`)를 형제 모듈로 분해(동작 불변) |

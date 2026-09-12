@@ -117,3 +117,40 @@ def test_수정에서_필수값_null은_거부한다(client: TestClient) -> None
 
     assert client.patch(f"/api/v1/pets/{pet['id']}", json={"name": None}).status_code == 422
     assert client.patch(f"/api/v1/pets/{pet['id']}", json={"species": None}).status_code == 422
+
+
+def test_반려동물_여행특성을_저장하고_내려준다(client: TestClient) -> None:
+    created = _create(client, activityLevel="high", sociability="normal", carSickness=False)
+
+    assert created["activityLevel"] == "high"
+    assert created["sociability"] == "normal"
+    assert created["carSickness"] is False
+
+
+def test_여행특성은_선택이라_생략하면_null이다(client: TestClient) -> None:
+    created = _create(client)
+
+    assert created["activityLevel"] is None
+    assert created["sociability"] is None
+    assert created["carSickness"] is None
+
+
+def test_여행특성을_수정한다(client: TestClient) -> None:
+    pet = _create(client)
+
+    response = client.patch(
+        f"/api/v1/pets/{pet['id']}", json={"activityLevel": "low", "carSickness": True}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["activityLevel"] == "low"
+    assert body["carSickness"] is True
+    assert body["sociability"] is None  # 안 보낸 필드는 그대로
+
+
+def test_잘못된_activityLevel은_거부한다(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/pets", json={"name": "몽이", "species": "dog", "activityLevel": "매우높음"}
+    )
+    assert response.status_code == 422

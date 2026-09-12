@@ -27,7 +27,9 @@ from app.db.base import Base
 from app.db.models.enums import (
     AuthProvider,
     ConsentType,
+    PetActivityLevel,
     PetSize,
+    PetSociabilityLevel,
     PetSpecies,
     TransportType,
     TripPace,
@@ -146,6 +148,14 @@ class Pet(Base):
     birth_date: Mapped[date | None] = mapped_column(Date)
     image_url: Mapped[str | None] = mapped_column(Text)
     health_notes: Mapped[str | None] = mapped_column(Text)
+    # 반려동물 중심 개인화 여행 특성(NULL = 규칙 미적용). car_sickness 는 NULL=모름.
+    activity_level: Mapped[PetActivityLevel | None] = mapped_column(
+        db_enum(PetActivityLevel, "pet_activity_level")
+    )
+    sociability: Mapped[PetSociabilityLevel | None] = mapped_column(
+        db_enum(PetSociabilityLevel, "pet_sociability_level")
+    )
+    car_sickness: Mapped[bool | None] = mapped_column(Boolean)
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
