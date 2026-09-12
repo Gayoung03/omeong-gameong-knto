@@ -235,9 +235,101 @@ def _missing_items(content: str, trace: list[dict]) -> list[str]:
     return missing
 
 
+#: 검색 조건 검사 결과. 넷을 **구분해서** 낸다 — "틀렸다" 한 덩어리로 두면
+#: 검색을 아예 안 한 것과 지역을 잘못 고른 것이 같은 칸에 들어가 원인을 못 좁힌다.
+SEARCH_OK = "정확"
+SEARCH_NONE = "검색안함"
+SEARCH_MISSING = "조건빠짐"
+SEARCH_WRONG = "다른값"
+SEARCH_SKIP = "보류"
+
+
+def _as_values(raw) -> list:
+    """인자 하나를 값 목록으로. `tags` 는 배열이고 `region`·`category` 는 스칼라다."""
+    if raw is None:
+        return []
+    return list(raw) if isinstance(raw, list) else [raw]
+
+
+def check_place_search(expected_search: dict | None, trace: list[dict]) -> dict:
+    """기대 검색 조건과 **모델이 실제로 보낸 인자**를 대조한다.
+
+    묻는 것은 하나다 — *사용자가 말한 지역·종류로 실제로 검색했는가.*
+    장소가 몇 건 나왔는지는 보지 않는다(데이터가 바뀌면 개수도 바뀐다).
+
+    ## 빠진 것과 어긋난 것을 다르게 센다
+
+    - `조건빠짐` 은 **질문 단위**다. 어느 호출에도 그 조건이 없을 때만 센다 —
+      한 번 제대로 찾은 뒤 조건을 풀어 다시 찾는 것은 설계 결정 B7 이 허용한
+      정상 동작이라, 호출 단위로 세면 그걸 실패로 잡는다.
+    - `다른값` 은 **호출 단위**다. 호출 하나라도 엉뚱한 지역·종류를 넣었으면
+      남는다. 맞게 부른 호출이 있어도 **가려지지 않는다** — 사용자는 그 엉뚱한
+      검색에서 나온 장소까지 답변에서 함께 보게 되기 때문이다.
+    """
+    checkable = {
+        dimension: rule
+        for dimension, rule in (expected_search or {}).items()
+        if isinstance(rule, dict)
+    }
+    calls = [step for step in trace if step["tool"] == "search_places"]
+    detail = [{"args": json.loads(step["args"] or "{}")} for step in calls]
+
+    if not checkable:
+        return {
+            "verdict": SEARCH_SKIP,
+            "reason": "기대 조건이 전부 보류인 문항이다.",
+            "calls": detail,
+        }
+    if not calls:
+        return {
+            "verdict": SEARCH_NONE,
+            "reason": "search_places 를 한 번도 부르지 않았다.",
+            "calls": [],
+        }
+
+    wrong: list[str] = []
+    for index, call in enumerate(detail, start=1):
+        for dimension, rule in checkable.items():
+            off = [v for v in _as_values(call["args"].get(dimension)) if v not in rule["allowed"]]
+            if off:
+                wrong.append(
+                    f"{index}번째 호출 {dimension}={'·'.join(map(str, off))} "
+                    f"(기대: {'/'.join(rule['allowed'])})"
+                )
+
+    missing = [
+        f"{dimension} 없음 (기대: {'/'.join(rule['allowed'])})"
+        for dimension, rule in checkable.items()
+        if rule.get("required")
+        and not any(
+            v in rule["allowed"] for call in detail for v in _as_values(call["args"].get(dimension))
+        )
+    ]
+
+    if wrong:
+        return {
+            "verdict": SEARCH_WRONG,
+            "reason": "; ".join(wrong) + (f" / {'; '.join(missing)}" if missing else ""),
+            "calls": detail,
+        }
+    if missing:
+        return {
+            "verdict": SEARCH_MISSING,
+            "reason": "; ".join(missing),
+            "calls": detail,
+        }
+    return {
+        "verdict": SEARCH_OK,
+        "reason": f"호출 {len(detail)}개가 모두 기대 조건 안에 있다.",
+        "calls": detail,
+    }
+
+
 @dataclass
 class Measurement:
     question_id: int
+    #: 질문 원문. JSON 만 보고도 무엇을 물었는지 알 수 있어야 한다.
+    question: str
     model: str
     run: int
     #: 첫 글자가 화면에 뜨기까지. 스트리밍이라 **사용자가 체감하는 속도는 이쪽**이다.
@@ -255,9 +347,15 @@ class Measurement:
     #: 이름이 답변에 안 보인 운송사. **누락 의심**이지 오답 확정이 아니다.
     suspected_missing_items: list[str] = field(default_factory=list)
     #: 모델이 실제로 보낸 도구 인자. 의심 신호를 원문으로 확인하려면 이게 있어야 한다 —
-    #: 없으면 확인하러 갈 때마다 다시 호출해서 또 요금을 낸다. 장소 질문의 지역·카테고리
-    #: 인자가 맞는지도 지금은 여기를 사람이 읽어서 본다.
+    #: 없으면 확인하러 갈 때마다 다시 호출해서 또 요금을 낸다.
     tool_args: list[dict] = field(default_factory=list)
+    #: 도구가 돌려준 것. 답이 틀렸을 때 모델이 지어낸 것인지 도구가 잘못 건넨 것인지
+    #: 가르려면 모델이 실제로 받은 값을 봐야 한다.
+    tool_results: list[dict] = field(default_factory=list)
+    #: 이 문항에 적어 둔 기대 검색 조건(`chat_quality_check.PLACE_QUESTIONS`).
+    expected_search: dict | None = None
+    #: `check_place_search()` 의 판정과 이유.
+    search_check: dict | None = None
     #: 답변 원문. 같은 이유로 남긴다.
     answer: str | None = None
     error: str | None = None
@@ -328,6 +426,7 @@ def _measure(spec: dict, model: str, run: int, db) -> Measurement:
     is_error = isinstance(got.result, Exception)
     measurement = Measurement(
         question_id=spec["id"],
+        question=spec["question"],
         model=model,
         run=run,
         first_token_seconds=(
@@ -344,6 +443,12 @@ def _measure(spec: dict, model: str, run: int, db) -> Measurement:
         cost_usd=_cost_usd(model, usage),
         tool_calls=len(got.trace),
         tool_args=[{"tool": step["tool"], "args": step["args"]} for step in got.trace],
+        tool_results=[
+            {"tool": step["tool"], "hits": step["hits"], "result": step["result"]}
+            for step in got.trace
+        ],
+        expected_search=spec.get("expected_search"),
+        search_check=check_place_search(spec.get("expected_search"), got.trace),
         error=f"{type(got.result).__name__}: {got.result}" if is_error else None,
     )
     if not is_error:
@@ -420,6 +525,26 @@ def _print_report(question_set: str, measurements: list[Measurement]) -> None:
             f"{skipped:>10}{suspected:>14}"
         )
     print()
+
+    labels = (SEARCH_OK, SEARCH_WRONG, SEARCH_MISSING, SEARCH_NONE, SEARCH_SKIP)
+    if any(m.search_check and m.search_check["verdict"] != SEARCH_SKIP for m in measurements):
+        print("### 장소 검색 조건 (기대 조건과 실제 인자 대조)")
+        print()
+        print(f"{'모델':<14}" + "".join(f"{label:>9}" for label in labels))
+        for model, rows in by_model.items():
+            tally = {label: 0 for label in labels}
+            for row in rows:
+                if row.search_check:
+                    tally[row.search_check["verdict"]] += 1
+            print(f"{model:<14}" + "".join(f"{tally[label]:>9}" for label in labels))
+        print()
+        for m in measurements:
+            if m.search_check and m.search_check["verdict"] not in (SEARCH_OK, SEARCH_SKIP):
+                print(
+                    f"- {m.question_id}번 {m.model} {m.run}회차 "
+                    f"**{m.search_check['verdict']}** — {m.search_check['reason']}"
+                )
+        print()
     print(f"전체 예상 비용: ${sum(m.cost_usd for m in measurements):.4f}")
 
 
