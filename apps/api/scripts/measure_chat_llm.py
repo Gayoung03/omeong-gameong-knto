@@ -186,7 +186,12 @@ def _weight_arg_status(question: str, trace: list[dict]) -> str | None:
     if not calls:
         return None
     for step in calls:
-        arguments = json.loads(step["args"] or "{}")
+        # 읽을 수 없는 호출에서 멈추지 않는다 — `chat.py` 는 이걸 받아도 모델에게
+        # 다시 고르게 하므로, 뒤에 제대로 부른 호출이 있을 수 있다.
+        try:
+            arguments = json.loads(step["args"] or "{}")
+        except (json.JSONDecodeError, TypeError):
+            continue
         if "pet_weight_kg" not in arguments:
             continue
         try:
@@ -241,14 +246,44 @@ SEARCH_OK = "정확"
 SEARCH_NONE = "검색안함"
 SEARCH_MISSING = "조건빠짐"
 SEARCH_WRONG = "다른값"
+SEARCH_MALFORMED = "인자오류"
 SEARCH_SKIP = "보류"
+
+#: 도구 스키마가 선언한 인자 타입. **여기서 읽어 온다** — 검사기에 따로 적어 두면
+#: 스키마가 바뀔 때 같이 안 바뀌어서, 실제로는 거부되는 인자를 통과시키게 된다.
+SEARCH_PARAM_TYPES = {
+    name: spec.get("type")
+    for name, spec in chat_module.SEARCH_TOOL["function"]["parameters"]["properties"].items()
+}
 
 
 def _as_values(raw) -> list:
-    """인자 하나를 값 목록으로. `tags` 는 배열이고 `region`·`category` 는 스칼라다."""
     if raw is None:
         return []
     return list(raw) if isinstance(raw, list) else [raw]
+
+
+def _dimension_state(dimension: str, rule: dict, raw) -> tuple[str, str | None]:
+    """한 호출의 조건 하나가 어떤 상태인지. (`맞음`/`없음`/`형식`/`다른값`, 설명)
+
+    **형식까지 본다.** `region` 은 문자열로 보내야 하는데 배열로 보내면
+    `place_search._check` 의 `value not in allowed` 가 항상 참이 되어
+    `UnknownVocabularyError` 로 튕긴다 — 값이 옳아도 **검색은 0건이다.**
+    이름만 보고 통과시키면 그 실패를 '정확'으로 세게 된다.
+    """
+    if raw is None:
+        return "없음", None
+    declared = SEARCH_PARAM_TYPES.get(dimension)
+    if declared == "string" and isinstance(raw, list):
+        return "형식", f"{dimension} 은 문자열이어야 하는데 배열({raw})을 보냈다"
+    if declared == "array" and not isinstance(raw, list):
+        return "형식", f"{dimension} 은 배열이어야 하는데 {raw!r} 을 보냈다"
+    off = [value for value in _as_values(raw) if value not in rule["allowed"]]
+    if off:
+        return "다른값", (
+            f"{dimension}={'·'.join(map(str, off))} (기대: {'/'.join(rule['allowed'])})"
+        )
+    return "맞음", None
 
 
 def check_place_search(expected_search: dict | None, trace: list[dict]) -> dict:
@@ -259,20 +294,29 @@ def check_place_search(expected_search: dict | None, trace: list[dict]) -> dict:
 
     ## 빠진 것과 어긋난 것을 다르게 센다
 
-    - `조건빠짐` 은 **질문 단위**다. 어느 호출에도 그 조건이 없을 때만 센다 —
-      한 번 제대로 찾은 뒤 조건을 풀어 다시 찾는 것은 설계 결정 B7 이 허용한
-      정상 동작이라, 호출 단위로 세면 그걸 실패로 잡는다.
+    - `조건빠짐` 은 **질문 단위**다. 어느 호출에도 없을 때 센다 — 한 번 제대로
+      찾은 뒤 조건을 풀어 다시 찾는 것은 설계 결정 B7 이 허용한 정상 동작이라,
+      호출 단위로 세면 그걸 실패로 잡는다. 다만 **한 호출 안에서 함께** 썼는지를
+      본다. 조건마다 따로 세면 "애월의 모든 종류" + "제주 전체의 카페" 로 나눠
+      부른 것이 통과하는데, 그중 어느 쪽도 애월의 카페를 찾은 적이 없다.
     - `다른값` 은 **호출 단위**다. 호출 하나라도 엉뚱한 지역·종류를 넣었으면
       남는다. 맞게 부른 호출이 있어도 **가려지지 않는다** — 사용자는 그 엉뚱한
       검색에서 나온 장소까지 답변에서 함께 보게 되기 때문이다.
+    - `인자오류` 는 읽을 수 없거나(JSON 깨짐) 형식이 틀린 호출이다. **여기서
+      멈추지 않는다** — `chat.py` 는 이걸 받아도 모델에게 다시 고르게 하고 답을
+      만들어 내므로, 검사기가 죽으면 멀쩡히 끝난 실행의 결과까지 통째로 잃는다.
     """
     checkable = {
         dimension: rule
         for dimension, rule in (expected_search or {}).items()
         if isinstance(rule, dict)
     }
-    calls = [step for step in trace if step["tool"] == "search_places"]
-    detail = [{"args": json.loads(step["args"] or "{}")} for step in calls]
+    detail: list[dict] = []
+    for step in (s for s in trace if s["tool"] == "search_places"):
+        try:
+            detail.append({"args": json.loads(step["args"] or "{}")})
+        except (json.JSONDecodeError, TypeError) as error:
+            detail.append({"args": None, "raw_args": step["args"], "error": str(error)})
 
     if not checkable:
         return {
@@ -280,44 +324,50 @@ def check_place_search(expected_search: dict | None, trace: list[dict]) -> dict:
             "reason": "기대 조건이 전부 보류인 문항이다.",
             "calls": detail,
         }
-    if not calls:
+    if not detail:
         return {
             "verdict": SEARCH_NONE,
             "reason": "search_places 를 한 번도 부르지 않았다.",
             "calls": [],
         }
 
-    wrong: list[str] = []
+    problems: list[str] = []
+    malformed: list[str] = []
+    #: 조건마다 "이 호출이 제대로 썼는가". 필수 조건을 **함께** 썼는지 보는 데 쓴다.
+    satisfied: list[dict[str, bool]] = []
+
     for index, call in enumerate(detail, start=1):
+        if call["args"] is None:
+            malformed.append(f"{index}번째 호출 인자를 읽을 수 없다({call['error']})")
+            satisfied.append({dimension: False for dimension in checkable})
+            continue
+        states = {}
         for dimension, rule in checkable.items():
-            off = [v for v in _as_values(call["args"].get(dimension)) if v not in rule["allowed"]]
-            if off:
-                wrong.append(
-                    f"{index}번째 호출 {dimension}={'·'.join(map(str, off))} "
-                    f"(기대: {'/'.join(rule['allowed'])})"
-                )
+            state, note = _dimension_state(dimension, rule, call["args"].get(dimension))
+            states[dimension] = state == "맞음"
+            if state == "다른값":
+                problems.append(f"{index}번째 호출 {note}")
+            elif state == "형식":
+                malformed.append(f"{index}번째 호출 {note}")
+        satisfied.append(states)
 
-    missing = [
-        f"{dimension} 없음 (기대: {'/'.join(rule['allowed'])})"
-        for dimension, rule in checkable.items()
-        if rule.get("required")
-        and not any(
-            v in rule["allowed"] for call in detail for v in _as_values(call["args"].get(dimension))
+    required = [dimension for dimension, rule in checkable.items() if rule.get("required")]
+    missing = ""
+    if required and not any(all(states[d] for d in required) for states in satisfied):
+        never = [d for d in required if not any(states[d] for states in satisfied)]
+        missing = (
+            f"{'·'.join(never)} 을(를) 어느 호출에서도 제대로 쓰지 않았다"
+            if never
+            else f"{'·'.join(required)} 을(를) **한 호출에서 함께** 쓴 적이 없다 — 따로따로만 썼다"
         )
-    ]
 
-    if wrong:
-        return {
-            "verdict": SEARCH_WRONG,
-            "reason": "; ".join(wrong) + (f" / {'; '.join(missing)}" if missing else ""),
-            "calls": detail,
-        }
+    reasons = [*problems, *malformed] + ([missing] if missing else [])
+    if problems:
+        return {"verdict": SEARCH_WRONG, "reason": "; ".join(reasons), "calls": detail}
+    if malformed:
+        return {"verdict": SEARCH_MALFORMED, "reason": "; ".join(reasons), "calls": detail}
     if missing:
-        return {
-            "verdict": SEARCH_MISSING,
-            "reason": "; ".join(missing),
-            "calls": detail,
-        }
+        return {"verdict": SEARCH_MISSING, "reason": missing, "calls": detail}
     return {
         "verdict": SEARCH_OK,
         "reason": f"호출 {len(detail)}개가 모두 기대 조건 안에 있다.",
@@ -526,7 +576,14 @@ def _print_report(question_set: str, measurements: list[Measurement]) -> None:
         )
     print()
 
-    labels = (SEARCH_OK, SEARCH_WRONG, SEARCH_MISSING, SEARCH_NONE, SEARCH_SKIP)
+    labels = (
+        SEARCH_OK,
+        SEARCH_WRONG,
+        SEARCH_MISSING,
+        SEARCH_MALFORMED,
+        SEARCH_NONE,
+        SEARCH_SKIP,
+    )
     if any(m.search_check and m.search_check["verdict"] != SEARCH_SKIP for m in measurements):
         print("### 장소 검색 조건 (기대 조건과 실제 인자 대조)")
         print()

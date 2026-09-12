@@ -11,6 +11,7 @@ import pytest
 
 from scripts.chat_quality_check import PLACE_QUESTIONS
 from scripts.measure_chat_llm import (
+    SEARCH_MALFORMED,
     SEARCH_MISSING,
     SEARCH_NONE,
     SEARCH_OK,
@@ -153,6 +154,70 @@ def test_region_omitted_everywhere_is_missing() -> None:
     got = check_place_search(_expected(1), [_place_call(category="cafe")])
     assert got["verdict"] == SEARCH_MISSING
     assert "region" in got["reason"]
+
+
+def test_conditions_split_across_calls_do_not_pass() -> None:
+    """'애월의 모든 종류' + '제주 전체의 카페' 는 애월 카페를 찾은 적이 없다."""
+    got = check_place_search(
+        _expected(4),
+        [
+            _place_call(region="애월/한림/협재"),
+            _place_call(category="cafe"),
+        ],
+    )
+    assert got["verdict"] == SEARCH_MISSING
+    assert "함께" in got["reason"]
+
+
+def test_missing_reason_says_which_case_it_is() -> None:
+    """'아예 안 썼다' 와 '따로따로만 썼다' 는 다른 문제라 이유도 달라야 한다."""
+    never_used = check_place_search(_expected(4), [_place_call(region="애월/한림/협재")])
+    assert "category" in never_used["reason"]
+    assert "함께" not in never_used["reason"]
+
+
+# --- 읽을 수 없거나 형식이 틀린 호출 ---------------------------------------------
+
+
+def test_malformed_json_does_not_crash_the_run() -> None:
+    """여기서 예외가 나가면 실행 전체가 죽어 JSON 결과까지 잃는다."""
+    broken = {"tool": "search_places", "args": '{"region": "애월', "hits": 0, "result": "[]"}
+    got = check_place_search(_expected(4), [broken])
+    assert got["verdict"] == SEARCH_MALFORMED
+    assert got["calls"][0]["raw_args"] == '{"region": "애월'
+
+
+def test_a_good_retry_after_a_broken_call_is_still_recorded() -> None:
+    """`chat.py` 는 깨진 호출을 받아도 다시 고르게 한다 — 그 실행을 통째로 버리지 않는다."""
+    broken = {"tool": "search_places", "args": "not json", "hits": 0, "result": "[]"}
+    got = check_place_search(
+        _expected(4),
+        [broken, _place_call(region="애월/한림/협재", category="cafe")],
+    )
+    assert got["verdict"] == SEARCH_MALFORMED  # 깨진 호출을 조용히 넘기지 않는다
+    assert len(got["calls"]) == 2
+    assert got["calls"][1]["args"]["region"] == "애월/한림/협재"
+
+
+def test_list_for_a_string_argument_is_rejected() -> None:
+    """`region` 을 배열로 보내면 place_search._check 가 튕겨 검색이 0건이 된다."""
+    call = _place_call(region=["애월/한림/협재"], category="cafe")
+    got = check_place_search(_expected(4), [call])
+    assert got["verdict"] == SEARCH_MALFORMED
+    assert "문자열" in got["reason"]
+
+
+def test_wrongly_shaped_call_does_not_satisfy_a_required_condition() -> None:
+    """형식이 틀린 호출은 검색이 안 되므로 '그 조건은 썼다'로 쳐주면 안 된다."""
+    got = check_place_search(_expected(4), [_place_call(region=["애월/한림/협재"])])
+    assert got["verdict"] == SEARCH_MALFORMED
+    assert "category" in got["reason"]
+
+
+def test_weight_check_survives_malformed_arguments() -> None:
+    broken = {"tool": "search_transport_rules", "args": "{oops", "hits": 0, "result": "[]"}
+    question = "강아지가 12kg인데 비행기로 제주도 데려갈 수 있을까요?"
+    assert _weight_arg_status(question, [broken, _rule_call(pet_weight_kg=12)]) == "정확"
 
 
 # --- 보류 -----------------------------------------------------------------------
