@@ -6,8 +6,8 @@
 2026-09-07 변경분은 루트 추천 재설계 문서 [`route-redesign.md`](../planning/route-redesign.md)의 추인에 따릅니다.
 **[재설계 2026-09-07]**·**[개정 2026-09-07]** 표시가 그 변경분입니다.
 
-관련 DB 테이블: `route_requests`, `route_request_pets`, `route_request_stays`,
-`routes`, `route_pets`, `route_days`, `route_items`, `route_moves`,
+관련 DB 테이블: `route_requests`, `route_request_pets`, `route_request_stays`, `routes`, `route_stays`,
+`route_pets`, `route_days`, `route_items`, `route_moves`,
 `route_checklist_items`, `route_memos`, `route_calculation_cache`
 
 ---
@@ -52,10 +52,11 @@ API 응답에서는 `creationType`으로 내려갑니다.
 | `manual` | 사용자가 직접 작성 | `null` | `route_pets` |
 
 DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합니다.
-`recommended`인데 `routeRequestId`가 없거나, `manual`인데 있으면 저장되지 않습니다.
+`recommended`인데 `routeRequestId`가 없거나, `manual`인데 값이 있으면 저장되지 않습니다.
 
-수동 여행은 추천 요청 없이 만들어지므로 `route_requests`에 행이 생기지 않습니다.
-그래서 동반 반려동물을 `route_pets`(여행 ↔ 펫)에 직접 연결합니다.
+추천 방식과 무관한 최종 여행의 출발지는 `routes`, 숙소는 `route_stays`에 저장합니다.
+`route_requests`와 `route_request_stays`는 추천 당시 입력 조건만 보관합니다.
+수동 여행의 동반 반려동물은 `route_pets`(여행 ↔ 펫)에 직접 연결합니다.
 `pets`로의 외래키가 `ON DELETE RESTRICT`라, 여행에 묶인 반려동물은 물리 삭제되지 않습니다.
 
 프론트 타입과의 대응은 아래와 같습니다.
@@ -63,6 +64,7 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 | 프론트 (`features/trips/types/trip.ts`) | DB |
 | --- | --- |
 | `Trip` | `routes` |
+| `Trip.accommodationSummary` | `route_stays` |
 | `Schedule` | `route_days` |
 | `ScheduleItem` | `route_items` |
 | `ScheduleItem.moveToNext` | `route_moves` + 계산 캐시 |
@@ -81,20 +83,23 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 | GET | `/routes/{routeId}/status` | 생성 진행 상태 확인 | 필요 |
 | POST | `/routes/{routeId}/regenerate` | 같은 조건으로 재생성 | 필요 |
 
-### 수동 생성 **[보류 — 화면 기획 대기]** (2026-08-18 갱신)
+### 수동 생성 (2026-09-13 갱신)
 
 | Method | Path | 설명 | 인증 |
 | --- | --- | --- | --- |
-| POST | `/routes` (미정) | 사용자가 직접 여행 작성 | 필요 |
+| POST | `/routes` | 사용자가 직접 여행 작성 | 필요 |
 
-**DB는 준비가 끝났습니다.** 마이그레이션 `8c71f4a2d9e0`이 아래를 추가했습니다.
+마이그레이션 `8c71f4a2d9e0`이 수동 여행 구분과 반려동물 연결을 추가했고,
+`c4e8a2b6d0f3`가 최종 여행의 출발지·숙소 저장소를 추가합니다.
 
 | 추가된 것 | 역할 |
 | --- | --- |
 | `routes.creation_type` | `recommended` / `manual` 구분 |
-| `routes.route_request_id` nullable | 수동 여행은 추천 요청서가 없음 |
-| CHECK `creation_type_request_consistency` | 추천이면 요청서 필수, 수동이면 요청서 금지 |
+| `routes.route_request_id` nullable | 수동 여행은 추천 요청을 연결하지 않음 |
+| CHECK `creation_type_request_consistency` | 추천 여행은 요청서 필수, 수동 여행은 요청서 연결 금지 |
 | `route_pets` 테이블 | 수동 여행에 데려갈 반려동물을 직접 연결 |
+| `routes.departure_location`, `departure_place_id` | 최종 여행의 출발지 |
+| `route_stays` 테이블 | 추천 방식과 무관한 최종 여행의 숙소 |
 
 ```python
 # routes.py:110-113 — 잘못된 조합은 DB가 거부합니다
@@ -102,17 +107,11 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 "OR (creation_type = 'manual' AND route_request_id IS NULL)"
 ```
 
-**막고 있는 것은 "직접 만들기" 화면 기획 하나뿐입니다.** 저장할 곳도, 잘못된 데이터를
-막을 규칙도 이미 있고 API 통로만 없습니다.
+수동 생성은 제목·기간·이동수단·반려동물과 선택한 숙소·출발지를 저장합니다. 여행 속도는
+화면에서 받지 않고 `normal`을 사용합니다. 출발지는 `routes`, 숙소는 `route_stays`에
+저장하며 실제 `route_items`에는 넣지 않으므로, 사용자가 장소를 담기 전 일정은 비어 있습니다.
 
-화면이 나오면 아래를 정합니다. 지금 시점의 유력안을 함께 적어 둡니다.
-
-| 정할 것 | 유력안 |
-| --- | --- |
-| 경로 | `POST /routes` |
-| 요청 범위 | **여행 껍데기(제목·기간·펫)만** 생성하고 일정은 기존 일정 편집 API로 채움 |
-| 초기 `status` | `saved` (추천 흐름의 `generating`은 맞지 않음) |
-| `version` | 재생성이 없으므로 항상 `1` |
+초기 상태는 `saved`, 버전은 `1`입니다.
 
 요청 범위를 껍데기로 미는 이유는 두 가지입니다. 작성 도중 앱이 꺼져도 만든 여행이 남고,
 일정 추가·수정 API가 어차피 필요해 재사용됩니다.
@@ -1024,3 +1023,4 @@ AI 추천 후보 또는 사용자가 직접 고른 DB 장소로 일정 항목을
 | 2026-09-08 | Phase 3 구현 반영 (#269) — `slotSummary`는 출발지·숙소 앵커를 빼고 방문 슬롯만 집계, 후보 객체에 `phone` 추가(근거 문장에서 전화번호 분리). 식사 슬롯을 못 채우면 빈 슬롯을 남기고 남은 시간에 관광을 계속 배치 |
 | 2026-09-07 | Phase 1 검수 반영 (#263) — `weather` 가중치는 Phase 5 전까지 **0.10 유지**(healing 프리셋 무효화 방지), `preferredTags`는 라벨·코드 모두 받아 **코드로 저장**함을 명시. TMAP 호출은 하루 12회 상한(실제 호출만 카운트, 캐시 적중 제외), 오류 시 여행 단위로 추정 폴백. 추정식을 실측 기반(7분 + 직선÷600m/min)으로 교체하고 상세 응답 `moveToNext`에 `isEstimated` 추가 — 캐시 만료 후 이동 정보가 사라지던 문제 해소 |
 | 2026-09-09 | Phase 7 구현 반영 (#281) — `regenerate` 엔드포인트 구현("미구현" 문단 제거). 새 `version = max+1`, UNIQUE 충돌 시 1회 재시도 후 `409`, 원본이 `generating`이어도 허용(열린 질문 기록). 추천 서비스(`route_recommendation`)를 형제 모듈로 분해(동작 불변) |
+| 2026-09-13 | 수동 여행 생성 구현 — 여행 속도 입력 없이 내부 기본값 `normal` 사용. 최종 여행 출발지는 `routes`, 숙소는 `route_stays`에 저장하며 수동 여행은 추천 요청 테이블을 사용하지 않음. 기존 추천 여행 데이터도 새 저장소로 이관 |
