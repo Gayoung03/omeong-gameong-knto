@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PetPolicyBadge } from '@/src/components/domain/PetPolicyBadge';
 import { EmptyState } from '@/src/components/feedback/EmptyState';
+import { ErrorState } from '@/src/components/feedback/ErrorState';
 import { RemoteImage } from '@/src/components/ui/RemoteImage';
 import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
 import { ReviewPreviewSection } from '@/src/features/reviews/components/ReviewPreviewSection';
@@ -21,6 +22,7 @@ import { colors, radius, spacing, typography } from '@/src/theme';
 
 import { usePlaceDetail } from '../hooks/usePlaceDetail';
 import type { PlaceDetail } from '../types/placeDetail';
+import type { PlaceIconName } from '../types/place';
 
 type PlaceDetailScreenProps = {
   placeId: string;
@@ -29,9 +31,9 @@ type PlaceDetailScreenProps = {
 };
 
 export function PlaceDetailScreen({ placeId, tripId, scheduleId }: PlaceDetailScreenProps) {
+  const { data: place, error, isError, isPending, refetch } = usePlaceDetail(placeId);
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { data: place, isPending } = usePlaceDetail(placeId);
   const tripQuery = useTrip(tripId);
   const [isScheduleSheetOpen, setIsScheduleSheetOpen] = useState(false);
   const [addErrorMessage, setAddErrorMessage] = useState('');
@@ -81,6 +83,8 @@ export function PlaceDetailScreen({ placeId, tripId, scheduleId }: PlaceDetailSc
         <View style={styles.centered}>
           <ActivityIndicator color={colors.primary} />
         </View>
+      ) : isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : !place ? (
         <EmptyState
           description="주소가 잘못되었거나 삭제된 장소일 수 있어요."
@@ -147,6 +151,12 @@ function PlaceDetailView({
   const chips = [place.region, place.environment].filter((value): value is string =>
     Boolean(value),
   );
+  const facilities = getFacilities(place);
+  const policyFacts = getPolicyFacts(place);
+  const cautionItems = getCautionItems(place);
+  const hasOperationInfo = Boolean(
+    place.businessHoursRaw || place.closedDaysRaw || place.phone || place.homepageUrl,
+  );
 
   return (
     <ScrollView
@@ -183,10 +193,98 @@ function PlaceDetailView({
         )}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>반려동물 동반</Text>
-        <PetPolicyBadge petPolicy={place.petPolicy} />
+      {place.description && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>장소 소개</Text>
+          <Text style={styles.description}>{place.description}</Text>
+        </View>
+      )}
+
+      {facilities.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>시설 안내</Text>
+          <View style={styles.facilityGrid}>
+            {facilities.map((facility) => (
+              <View key={facility.label} style={styles.facilityItem}>
+                <View style={styles.facilityIcon}>
+                  <Ionicons color={colors.primaryDeep} name={facility.icon} size={23} />
+                </View>
+                <Text style={styles.facilityLabel}>{facility.label}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>반려동물 안내</Text>
+        <View style={styles.guideCard}>
+          <View style={styles.guideHeading}>
+            <Text style={styles.guideTitle}>반려동물 동반 정책</Text>
+            <PetPolicyBadge petPolicy={place.petPolicy} />
+          </View>
+          {policyFacts.length > 0 && (
+            <View style={styles.policyFactGrid}>
+              {policyFacts.map((fact) => (
+                <View key={fact.label} style={styles.policyFact}>
+                  <Ionicons color={colors.primaryDeep} name={fact.icon} size={17} />
+                  <Text style={styles.policyFactText}>{fact.label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {place.petPolicyInfo.notes && (
+          <View style={styles.guideCard}>
+            <View style={styles.guideTitleRow}>
+              <Ionicons color={colors.primary} name="information-circle-outline" size={19} />
+              <Text style={styles.guideTitle}>추가 안내</Text>
+            </View>
+            <View style={styles.guideList}>
+              {place.petPolicyInfo.notes.split('\n').map((note) => (
+                <View key={note} style={styles.guideListRow}>
+                  <Ionicons color={colors.primary} name="checkmark-circle-outline" size={17} />
+                  <Text style={styles.guideListText}>{note}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {cautionItems.length > 0 && (
+          <View style={styles.cautionCard}>
+            <Ionicons color={colors.warning} name="warning-outline" size={20} />
+            <View style={styles.cautionContent}>
+              <Text style={styles.guideTitle}>주의사항</Text>
+              <View style={styles.guideList}>
+                {cautionItems.map((item) => (
+                  <View key={item} style={styles.guideListRow}>
+                    <Ionicons color={colors.warning} name="ellipse" size={7} />
+                    <Text style={styles.guideListText}>{item}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </View>
+        )}
       </View>
+
+      {hasOperationInfo && (
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>이용 정보</Text>
+          {place.businessHoursRaw && (
+            <InfoRow icon="time-outline" label="운영시간" value={place.businessHoursRaw} />
+          )}
+          {place.closedDaysRaw && (
+            <InfoRow icon="calendar-outline" label="휴무일" value={place.closedDaysRaw} />
+          )}
+          {place.phone && <InfoRow icon="call-outline" label="전화" value={place.phone} />}
+          {place.homepageUrl && (
+            <InfoRow icon="globe-outline" label="홈페이지" value={place.homepageUrl} />
+          )}
+        </View>
+      )}
 
       <View style={styles.card}>
         <Text style={styles.cardLabel}>주소</Text>
@@ -206,13 +304,6 @@ function PlaceDetailView({
         )}
       </View>
 
-      {place.description && (
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>소개</Text>
-          <Text style={styles.description}>{place.description}</Text>
-        </View>
-      )}
-
       {place.isReservable && (
         <View style={styles.notice}>
           <Ionicons color={colors.seaDeep} name="calendar-outline" size={16} />
@@ -223,6 +314,119 @@ function PlaceDetailView({
       <ReviewPreviewSection placeId={place.id} />
     </ScrollView>
   );
+}
+
+function InfoRow({ icon, label, value }: { icon: PlaceIconName; label: string; value: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <Ionicons color={colors.textSecondary} name={icon} size={17} />
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
+  );
+}
+
+function getFacilities(place: PlaceDetail): { icon: PlaceIconName; label: string }[] {
+  const result: { icon: PlaceIconName; label: string }[] = [];
+  const add = (label: string, icon: PlaceIconName) => {
+    if (!result.some((item) => item.label === label)) result.push({ icon, label });
+  };
+
+  for (const amenity of place.amenities) {
+    const compact = amenity.replace(/\s/g, '');
+    if (compact.includes('주차')) add('주차 가능', 'car-outline');
+    else if (compact.includes('야외') || compact.includes('정원')) add(amenity, 'leaf-outline');
+    else if (compact.includes('단체')) add(amenity, 'people-outline');
+    else if (compact.includes('대여')) add(amenity, 'bag-handle-outline');
+    else add(amenity, 'checkmark-circle-outline');
+  }
+
+  return result;
+}
+
+function getCautionItems(place: PlaceDetail): string[] {
+  const result: string[] = [];
+  const add = (item: string) => {
+    if (!result.includes(item)) result.push(item);
+  };
+
+  for (const item of place.petPolicyInfo.requiredItems.flatMap((value) => value.split(','))) {
+    const trimmed = item.trim();
+    const compact = trimmed.replace(/\s/g, '');
+    if (!trimmed) continue;
+    let recognized = false;
+    if (compact.includes('배변')) {
+      add('배변봉투를 준비해 주세요.');
+      recognized = true;
+    }
+    if (compact.includes('목줄') || compact.includes('리드줄')) {
+      add('목줄을 착용해 주세요.');
+      recognized = true;
+    }
+    if (
+      compact.includes('케이지') ||
+      compact.includes('이동장') ||
+      compact.includes('켄넬')
+    ) {
+      add('이동장이나 케이지를 사용해 주세요.');
+      recognized = true;
+    }
+    if (compact.includes('입마개')) {
+      add('입마개를 착용해 주세요.');
+      recognized = true;
+    }
+    if (!recognized) add(trimmed);
+  }
+
+  if (place.petPolicyInfo.leashRequired) add('목줄을 착용해 주세요.');
+  if (place.petPolicyInfo.carrierRequired) {
+    add('이동장이나 케이지를 사용해 주세요.');
+  }
+  if (place.petPolicyInfo.muzzleRequired) add('입마개를 착용해 주세요.');
+  if (place.petPolicyInfo.vaccinationRequired) {
+    add('예방접종 증빙을 준비해 주세요.');
+  }
+  if (place.petPolicyInfo.cautionNote) add(place.petPolicyInfo.cautionNote);
+  return result;
+}
+
+function getPolicyFacts(place: PlaceDetail): { icon: PlaceIconName; label: string }[] {
+  const { allowedSizes, extraFeeAmount, foodAreaAllowed, maxPetsPerPerson, maxWeightKg } =
+    place.petPolicyInfo;
+  const facts: { icon: PlaceIconName; label: string }[] = [];
+  const sizeLabels: Record<string, string> = {
+    large: '대형견',
+    medium: '중형견',
+    small: '소형견',
+  };
+
+  if (allowedSizes.length >= 3) {
+    facts.push({ icon: 'paw-outline', label: '모든 크기 가능' });
+  } else if (allowedSizes.length > 0) {
+    facts.push({
+      icon: 'paw-outline',
+      label: `${allowedSizes.map((size) => sizeLabels[size] ?? size).join(' · ')} 가능`,
+    });
+  }
+  if (maxWeightKg !== null) {
+    facts.push({ icon: 'scale-outline', label: `${maxWeightKg}kg 이하` });
+  }
+  if (maxPetsPerPerson !== null) {
+    facts.push({ icon: 'people-outline', label: `1인 ${maxPetsPerPerson}마리까지` });
+  }
+  if (foodAreaAllowed !== null) {
+    facts.push({
+      icon: 'restaurant-outline',
+      label: `식음료 공간 ${foodAreaAllowed ? '동반 가능' : '동반 불가'}`,
+    });
+  }
+  if (extraFeeAmount !== null) {
+    facts.push({
+      icon: 'wallet-outline',
+      label: extraFeeAmount === 0 ? '추가 요금 없음' : `추가 요금 ${extraFeeAmount.toLocaleString()}원`,
+    });
+  }
+  return facts;
 }
 
 const styles = StyleSheet.create({
@@ -248,6 +452,18 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: typography.label.fontSize,
     fontWeight: typography.label.fontWeight,
+  },
+  cautionCard: {
+    alignItems: 'flex-start',
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.lg,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  cautionContent: {
+    flex: 1,
+    gap: spacing.xs,
   },
   categoryBadge: {
     backgroundColor: colors.neutralGray,
@@ -325,9 +541,91 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize - 2,
     lineHeight: 22,
   },
+  facilityGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.lg,
+  },
+  facilityIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.full,
+    height: 54,
+    justifyContent: 'center',
+    width: 54,
+  },
+  facilityItem: {
+    alignItems: 'center',
+    gap: spacing.xs,
+    minWidth: 92,
+  },
+  facilityLabel: {
+    color: colors.textSecondary,
+    fontSize: typography.caption.fontSize,
+    textAlign: 'center',
+  },
+  guideCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  guideHeading: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    justifyContent: 'space-between',
+  },
+  guideList: {
+    gap: spacing.sm,
+  },
+  guideListRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  guideListText: {
+    color: colors.textSecondary,
+    flex: 1,
+    fontSize: typography.body.fontSize - 2,
+    lineHeight: 22,
+  },
+  guideText: {
+    color: colors.textSecondary,
+    fontSize: typography.body.fontSize - 2,
+    lineHeight: 22,
+  },
+  guideTitle: {
+    color: colors.textStrong,
+    fontSize: typography.body.fontSize - 1,
+    fontWeight: '700',
+  },
+  guideTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
   hero: {
     height: 200,
     width: '100%',
+  },
+  infoLabel: {
+    color: colors.textSecondary,
+    fontSize: typography.caption.fontSize,
+    width: 58,
+  },
+  infoRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  infoValue: {
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: typography.caption.fontSize,
   },
   name: {
     color: colors.basalt,
@@ -348,9 +646,36 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     fontWeight: '600',
   },
+  policyFact: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  policyFactGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  policyFactText: {
+    color: colors.primaryInk,
+    fontSize: typography.caption.fontSize,
+    fontWeight: '600',
+  },
   safeArea: {
     backgroundColor: colors.background,
     flex: 1,
+  },
+  section: {
+    gap: spacing.md,
+  },
+  sectionTitle: {
+    color: colors.basalt,
+    fontSize: typography.subtitle.fontSize,
+    fontWeight: '700',
   },
   stat: {
     alignItems: 'center',
