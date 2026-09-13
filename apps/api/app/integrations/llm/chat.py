@@ -62,6 +62,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.models.enums import (
+    BreedRestrictionScope,
+    BreedRestrictionType,
     CarrierType,
     GuideCategory,
     MessageRole,
@@ -71,6 +73,7 @@ from app.rag.prompts.system import build_system_prompt
 from app.rag.retrieval.guide_search import (
     DEFAULT_GUIDE_LIMIT,
     MAX_GUIDE_LIMIT,
+    BreedCheck,
     GuideHit,
     TransportRuleHit,
     Verdict,
@@ -196,9 +199,11 @@ TRANSPORT_TOOL = {
         "name": "search_transport_rules",
         "description": (
             "항공사·여객선의 반려동물 운송 규정을 조회한다. "
-            "기내 탑승 가능 여부, 무게 상한, 요금, 신청 기한을 물으면 반드시 이 도구를 쓴다. "
-            "사용자가 무게를 말했을 때만 pet_weight_kg 에 넣는다 — 가능/불가 판정이 함께 나온다. "
-            "무게를 모르면 비워 두고 그대로 조회한다. 무게 없이도 제도 유무"
+            "기내 탑승 가능 여부, 무게 상한, 요금, 신청 기한, 제한 견종을 물으면 "
+            "반드시 이 도구를 쓴다. "
+            "사용자가 무게를 말했을 때만 pet_weight_kg 에, 견종을 말했을 때만 breed_name 에 "
+            "넣는다 — 회사별 결론이 함께 나온다. "
+            "모르면 비워 두고 그대로 조회한다. 무게·견종 없이도 제도 유무"
             "(기내 가능 여부, 위탁 제도)는 답할 수 있으므로 되묻지 말고 먼저 찾는다."
         ),
         "parameters": {
@@ -218,11 +223,23 @@ TRANSPORT_TOOL = {
                 },
                 "pet_weight_kg": {
                     "type": "number",
-                    "minimum": 0,
+                    # `minimum: 0` 이었더니 `gpt-4o-mini` 가 무게를 모르는 질문에
+                    # **0 을 지어내 넣었다**(2026-09-13 측정, 복서 질문 4회 중 1회).
+                    # 0kg 은 모든 상한을 통과해 전 회사가 "가능"으로 뒤집힌다.
+                    # 스키마로 한 번, `_run_transport_search` 에서 한 번 더 막는다.
+                    "exclusiveMinimum": 0,
                     "description": (
                         "반려동물 무게(kg). 케이지를 포함한 무게가 기준이다. "
                         "사용자가 말한 무게만 넣는다 — 견종이나 '대형견' 같은 표현에서 "
-                        "추정하지 않는다. 모르면 생략한다."
+                        "추정하지 않는다. 모르면 생략한다. 0 을 넣지 않는다."
+                    ),
+                },
+                "breed_name": {
+                    "type": "string",
+                    "description": (
+                        "사용자가 말한 견종·묘종 이름을 그대로 넣는다('복서', '퍼그'). "
+                        "회사별 제한 목록과 대조한 결론이 함께 나온다. "
+                        "추측해서 넣지 않는다 — 사용자가 말하지 않았으면 생략한다."
                     ),
                 },
             },
@@ -447,9 +464,7 @@ def _run_guide_search(db: Session, raw_arguments: str) -> str:
     try:
         hits = search_guides(
             db,
-            category=(
-                GuideCategory(arguments["category"]) if arguments.get("category") else None
-            ),
+            category=(GuideCategory(arguments["category"]) if arguments.get("category") else None),
             keywords=arguments.get("keywords"),
             limit=int(arguments.get("limit") or DEFAULT_GUIDE_LIMIT),
         )
@@ -463,6 +478,7 @@ def _run_guide_search(db: Session, raw_arguments: str) -> str:
 
 def _leg_phrase(
     kind: str,
+    allowed: bool | None,
     verdict: Verdict | None,
     max_weight: float | None,
     weight_unlimited: bool | None = None,
@@ -472,7 +488,23 @@ def _leg_phrase(
     **왜 안 되는지를 반드시 담는다.** `이용 불가` 라고만 보냈더니 GPT 가
     "기내 탑승이 불가하다"로 옮겨 적었다 — 실제로는 기내는 되고 위탁이 없는
     항공사였다. 이유가 빠지면 모델이 채워 넣는다.
+
+    무게를 넣지 않고 부르면 `verdict` 가 `None` 이다. 그때도 **제도 유무는 결론을
+    낸다** — 2026-09-13 측정에서 `"항공사들 화물칸에 실을 수 있나요"`(무게 없음)에
+    `gpt-4o-mini` 가 위탁 가능한 에어부산을 "실을 수 없다"로 묶었고, 4회 중 3회는
+    위탁 제도가 없는 3곳을 아예 말하지 않았다. 규정 원본만 건네고 분류를 모델에게
+    맡긴 자리였다.
     """
+    if verdict is None:
+        if allowed is False:
+            return "위탁 제도 없음" if kind == "위탁" else f"{kind} 불가(규정상 불가)"
+        if allowed is None:
+            return f"{kind} 가능 여부 미확인"
+        if weight_unlimited is True:
+            return f"{kind} 가능(무게 제한 없음)"
+        if max_weight is None:
+            return f"{kind} 가능(상한 미확인)"
+        return f"{kind} 가능(상한 {max_weight:g}kg)"
     if verdict is Verdict.ALLOWED:
         # 상한 없이 가능한 경우는 "무게 제한 없음"을 명시해 "미확인"으로 오해되지 않게 한다.
         return f"{kind} 가능(무게 제한 없음)" if weight_unlimited is True else f"{kind} 가능"
@@ -487,8 +519,12 @@ def _leg_phrase(
     return f"{kind} 가능 여부 미확인"
 
 
-def _weight_conclusions(hits: list[TransportRuleHit]) -> list[dict]:
-    """무게를 넣어 부른 경우, **회사마다 결론 문장을 통째로 만들어** 보낸다.
+def _carrier_label(hit: TransportRuleHit) -> str:
+    return f"{hit.carrier_name}({hit.route})" if hit.route else hit.carrier_name
+
+
+def _carrier_conclusions(hits: list[TransportRuleHit]) -> list[dict]:
+    """**회사마다 결론 문장을 통째로 만들어** 보낸다. 무게를 안 넣어도 만든다.
 
     모델에게 요약을 맡기지 않는다. 규정 7건을 그대로 주면
     "모두 화물칸에 실을 수 있다" 로 묶어버리고, 분류만 주면
@@ -499,12 +535,14 @@ def _weight_conclusions(hits: list[TransportRuleHit]) -> list[dict]:
     for hit in hits:
         cabin = _leg_phrase(
             "기내",
+            hit.cabin_allowed,
             hit.cabin_verdict,
             float(hit.cabin_max_weight_kg) if hit.cabin_max_weight_kg is not None else None,
             hit.cabin_weight_unlimited,
         )
         cargo = _leg_phrase(
             "위탁",
+            hit.cargo_allowed,
             hit.cargo_verdict,
             float(hit.cargo_max_weight_kg) if hit.cargo_max_weight_kg is not None else None,
             hit.cargo_weight_unlimited,
@@ -513,12 +551,66 @@ def _weight_conclusions(hits: list[TransportRuleHit]) -> list[dict]:
         blocked = {Verdict.OVER_WEIGHT, Verdict.NOT_ALLOWED}
         if hit.cabin_verdict in blocked and hit.cargo_verdict in blocked:
             text += " → 이 회사로는 이 무게로 갈 수 없음"
-        conclusions.append(
-            {
-                "carrier": f"{hit.carrier_name}({hit.route})" if hit.route else hit.carrier_name,
-                "결론": text,
-            }
-        )
+        elif (
+            hit.cabin_verdict is None and hit.cabin_allowed is False and hit.cargo_allowed is False
+        ):
+            # 무게를 묻지 않은 질문에서도 "아예 안 되는 곳"은 따로 떼어 말해야 한다.
+            # 아리온제주(녹동)가 여기다 — 2026-09-13 측정에서 `gpt-4o-mini` 가
+            # 배편 질문 4회 전부 이 항로를 빼고 "가능한 곳"만 나열했다.
+            text += " → 이 회사로는 반려동물 동승이 안 됨"
+        conclusions.append({"carrier": _carrier_label(hit), "결론": text})
+    return conclusions
+
+
+#: 견종 결론에 쓰는 말. 코드값(`dangerous`)을 그대로 내보내면 모델이 제 나름대로
+#: 옮겨 적는다 — 문장으로 완성해 건네는 이 파일의 방식과 어긋난다.
+_BREED_TYPE_LABEL = {
+    BreedRestrictionType.DANGEROUS: "맹견",
+    BreedRestrictionType.BRACHYCEPHALIC: "단두종",
+}
+_BREED_SCOPE_LABEL = {
+    BreedRestrictionScope.CABIN: "기내",
+    BreedRestrictionScope.CARGO: "위탁",
+    BreedRestrictionScope.BOTH: "기내·위탁 모두",
+}
+
+
+def _breed_phrase(check: BreedCheck) -> str:
+    """한 회사에서 이 견종이 어디에 걸리는지, 제한 유형마다 한 마디씩.
+
+    **"목록에 없음"과 "확인 안 됨"을 절대 같은 말로 쓰지 않는다.** 앞은 그 회사가
+    목록을 공개했고 거기 없다는 뜻이고, 뒤는 목록 자체가 없다는 뜻이다(에어부산의
+    단두종, 티웨이·이스타의 예시 목록). 뒤를 "가능"으로 옮기면 없는 규정을 만든다.
+    """
+    parts = []
+    for restriction_type in (
+        BreedRestrictionType.DANGEROUS,
+        BreedRestrictionType.BRACHYCEPHALIC,
+    ):
+        label = _BREED_TYPE_LABEL[restriction_type]
+        status = check.status(restriction_type)
+        if status == "제한":
+            matched = [m for m in check.matches if m.restriction_type is restriction_type]
+            scopes = "·".join(dict.fromkeys(_BREED_SCOPE_LABEL[m.applies_to] for m in matched))
+            note = " (원문이 예시로만 든 목록)" if all(m.is_example_only for m in matched) else ""
+            parts.append(f"{label} 목록에 있음 → {scopes} 불가{note}")
+        elif status == "목록에없음":
+            parts.append(f"{label} 목록에는 없음")
+        else:
+            parts.append(f"{label} 목록이 공개되지 않아 확인 안 됨")
+    return " · ".join(parts)
+
+
+def _breed_conclusions(hits: list[TransportRuleHit]) -> list[dict]:
+    """견종을 넣어 부른 경우의 회사별 결론."""
+    conclusions = []
+    for hit in hits:
+        if hit.breed_check is None:
+            continue
+        text = _breed_phrase(hit.breed_check)
+        if hit.cargo_allowed is False:
+            text = f"위탁 제도 자체가 없어 견종과 무관하게 위탁 불가 · {text}"
+        conclusions.append({"carrier": _carrier_label(hit), "결론": text})
     return conclusions
 
 
@@ -530,6 +622,11 @@ def _run_transport_search(db: Session, raw_arguments: str) -> str:
 
     try:
         weight = arguments.get("pet_weight_kg")
+        # 0 이하는 **무게를 말하지 않은 것으로 친다.** 모델이 0 을 지어내 넣은 실행이
+        # 있었고(2026-09-13), 0kg 은 모든 상한을 통과해 전 회사가 "가능"으로 뒤집힌다.
+        if weight is not None and float(weight) <= 0:
+            weight = None
+        breed = (arguments.get("breed_name") or "").strip() or None
         hits = search_transport_rules(
             db,
             carrier_type=(
@@ -537,6 +634,7 @@ def _run_transport_search(db: Session, raw_arguments: str) -> str:
             ),
             carrier_name=arguments.get("carrier_name"),
             pet_weight_kg=Decimal(str(weight)) if weight is not None else None,
+            breed_name=breed,
         )
     except (ValueError, TypeError, InvalidOperation) as error:
         return f"검색 조건이 잘못됐습니다: {error}"
@@ -544,12 +642,11 @@ def _run_transport_search(db: Session, raw_arguments: str) -> str:
     if not hits:
         return "해당하는 운송사 규정이 없습니다."
 
-    rules = [_describe_rule(hit) for hit in hits]
-    if weight is None:
-        return json.dumps(rules, ensure_ascii=False)
-    return json.dumps(
-        {"이 무게 기준 결론": _weight_conclusions(hits), "규정": rules}, ensure_ascii=False
-    )
+    payload: dict = {"회사별 결론": _carrier_conclusions(hits)}
+    if breed:
+        payload["이 견종 기준 결론"] = _breed_conclusions(hits)
+    payload["규정"] = [_describe_rule(hit) for hit in hits]
+    return json.dumps(payload, ensure_ascii=False)
 
 
 def _dispatch(db: Session, name: str, raw_arguments: str) -> tuple[str, list[PlaceHit]]:
@@ -704,9 +801,7 @@ def stream_answer(
                     seen.update({hit.place_id: hit for hit in hits})
                     if call["name"] == ANSWER_DIRECTLY_NAME:
                         declined_search = True
-                    messages.append(
-                        {"role": "tool", "tool_call_id": call["id"], "content": result}
-                    )
+                    messages.append({"role": "tool", "tool_call_id": call["id"], "content": result})
                 continue
 
             content = "".join(content_parts).strip()

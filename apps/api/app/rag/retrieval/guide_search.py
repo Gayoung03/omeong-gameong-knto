@@ -30,8 +30,25 @@ GPT 는 그 결론을 문장으로 옮기기만 한다.
 
 셋을 둘로 줄이면 "확인 안 된 것"이 "불가"가 되어 없는 규정을 만들어 답하게 된다.
 판정에도 `UNKNOWN` 을 그대로 남긴다(설계 결정 A7).
+
+## 견종도 같은 이유로 파이썬에서 대조한다
+
+`transport_restricted_breeds` 에 회사별 제한 견종이 있는데(팀 dev RDS 152건)
+**챗봇 도구가 그걸 읽지 않고 있었다.** 앱의 `/guides` 는 읽는다. 그래서 챗봇은
+아는 것을 모른다고 답하거나 지레짐작했다 — 2026-09-13 측정에서 `"복서"` 질문
+8회 전부 근거 없이 분류했다.
+
+무게와 똑같이 **대조를 여기서 하고 회사별 결론만 건넨다.** 그리고 세 가지를
+절대 섞지 않는다.
+
+1. **목록에 있음** — 그 회사가 명시한 제한 대상이다
+2. **목록에는 없음** — 그 회사가 목록을 공개했고 거기 없다
+3. **목록이 없어 확인 안 됨** — 목록 자체가 없거나(에어부산 단두종) 예시만
+   공개된 경우(티웨이·이스타)다. **이것을 "가능"으로 바꾸면 안 된다.**
 """
 
+import re
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -41,8 +58,18 @@ from enum import StrEnum
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.db.models.enums import CarrierType, GuideCategory
-from app.db.models.guides import GuideDocument, GuideDocumentSource, TransportPetRule
+from app.db.models.enums import (
+    BreedRestrictionScope,
+    BreedRestrictionType,
+    CarrierType,
+    GuideCategory,
+)
+from app.db.models.guides import (
+    GuideDocument,
+    GuideDocumentSource,
+    TransportPetRule,
+    TransportRestrictedBreed,
+)
 
 #: 가이드 글은 한 편이 400~1100자로 짧다. 두 편이면 답변 근거로 충분하다.
 DEFAULT_GUIDE_LIMIT = 2
@@ -82,6 +109,89 @@ class GuideHit:
     verified_at: datetime | None
 
 
+_BREED_PAREN = re.compile(r"[（(][^）)]*[）)]")
+_BREED_NOISE = re.compile(r"등\s*유사\s*견종")
+
+#: 같은 견종의 **표기 차이**. 운송사 원문이 제각각이라(대한항공 `불독` /
+#: 아시아나 `불도그`) 글자만 맞대면 제한 대상인 아이를 "목록에 없음"으로 흘려보낸다.
+#: 그 방향의 오답이 제일 위험하다 — 안 되는 것을 된다고 읽히게 한다.
+#: **우리 씨앗 데이터(`scripts/seed_restricted_breeds.py`)에 실제로 있는 차이만** 담는다.
+BREED_ALIASES = {
+    "불도그": "불독",
+    "시츄": "시추",
+    "재퍼니스친": "재패니스친",
+    "브뤼셀그리펀": "브뤼셀그리폰",
+    "도고아리젠티노": "도고아르헨티노",
+    "스코티시폴드": "스코티쉬폴드",
+    "브리티쉬쇼트헤어": "브리티쉬숏헤어",
+    "오브차가": "오브차카",
+}
+
+
+def _normalize_breed(name: str) -> str:
+    """견종 이름을 비교할 수 있는 형태로.
+
+    괄호 주석(`불독(전 품종)`)·공백·`등 유사 견종` 을 떼고 표기 차이를 대표 이름으로
+    모은다. `~류`(`도사견류`)는 여기서 떼지 않고 매칭 쪽에서 따로 본다.
+    """
+    text = _BREED_NOISE.sub("", _BREED_PAREN.sub("", name))
+    text = re.sub(r"\s+", "", text).casefold()
+    return BREED_ALIASES.get(text, text)
+
+
+def breed_matches(query: str, entry: str) -> bool:
+    """사용자가 말한 견종이 목록 항목과 같은 것인가.
+
+    **부분 일치를 쓰지 않는다.** `불독` 이 `불테리어` 에 걸리거나 `테리어` 가 모든
+    테리어를 쓸어담으면 제한이 없는 아이를 제한 대상으로 만든다 — 반대 방향이지만
+    이것도 오답이다. 원문에 실제로 있는 형태만 맞춘다.
+    """
+    normalized = _normalize_breed(query)
+    if not normalized:
+        return False
+    for part in _normalize_breed(entry).split("/"):
+        if part == normalized:
+            return True
+        # `도사견류` 처럼 원문이 `~류` 로 묶어 적은 경우.
+        if part.endswith("류") and part[:-1] == normalized:
+            return True
+    return False
+
+
+@dataclass(frozen=True)
+class BreedMatch:
+    """이 견종이 걸린 목록 항목 하나."""
+
+    breed_name_ko: str
+    restriction_type: BreedRestrictionType
+    applies_to: BreedRestrictionScope
+    is_example_only: bool
+
+
+@dataclass(frozen=True)
+class BreedCheck:
+    """한 운송사에서 이 견종이 어디에 걸리는지.
+
+    **걸린 것과 "걸린 게 없다"를 구분해서 담는다.** 목록에 없다는 것과 목록 자체가
+    없다는 것은 전혀 다른 말인데, 하나로 뭉치면 후자가 "가능"으로 읽힌다.
+    """
+
+    query: str
+    matches: tuple[BreedMatch, ...]
+    #: 그 회사가 **확정 목록**을 공개한 제한 유형.
+    listed_types: frozenset[BreedRestrictionType]
+    #: 원문이 예시만 든 제한 유형(`is_example_only`). 없는 것을 없다고 말할 수 없다.
+    example_only_types: frozenset[BreedRestrictionType]
+
+    def status(self, restriction_type: BreedRestrictionType) -> str:
+        """`제한` / `목록에없음` / `확인불가` 중 하나."""
+        if any(match.restriction_type is restriction_type for match in self.matches):
+            return "제한"
+        if restriction_type in self.example_only_types:
+            return "확인불가"
+        return "목록에없음" if restriction_type in self.listed_types else "확인불가"
+
+
 @dataclass(frozen=True)
 class TransportRuleHit:
     """운송사 한 곳의 반려동물 규정.
@@ -111,6 +221,8 @@ class TransportRuleHit:
     verified_at: datetime | None
     cabin_verdict: Verdict | None = None
     cargo_verdict: Verdict | None = None
+    #: 견종을 넣어 부른 경우에만 채워진다. 넣지 않으면 `None` 이고 견종 이야기는 안 나간다.
+    breed_check: BreedCheck | None = None
 
 
 def _verdict(
@@ -214,12 +326,59 @@ def search_guides(
     ]
 
 
+def _breed_checks(
+    db: Session, rules: Sequence[TransportPetRule], breed_name: str
+) -> dict[uuid.UUID, BreedCheck]:
+    """회사마다 이 견종이 어디에 걸리는지 한 번에 대조한다.
+
+    **걸린 항목이 없는 회사도 빠뜨리지 않는다.** 목록을 공개했는데 거기 없는 것과
+    목록 자체가 없는 것을 구분해 돌려줘야 하고, 그러려면 회사마다 어떤 유형의
+    목록을 갖고 있는지를 먼저 알아야 한다.
+    """
+    rule_ids = [rule.id for rule in rules]
+    if not rule_ids:
+        return {}
+
+    rows = db.scalars(
+        select(TransportRestrictedBreed).where(
+            TransportRestrictedBreed.transport_pet_rule_id.in_(rule_ids)
+        )
+    ).all()
+
+    matches: dict[uuid.UUID, list[BreedMatch]] = {}
+    listed: dict[uuid.UUID, set[BreedRestrictionType]] = {}
+    example_only: dict[uuid.UUID, set[BreedRestrictionType]] = {}
+    for row in rows:
+        bucket = example_only if row.is_example_only else listed
+        bucket.setdefault(row.transport_pet_rule_id, set()).add(row.restriction_type)
+        if breed_matches(breed_name, row.breed_name_ko):
+            matches.setdefault(row.transport_pet_rule_id, []).append(
+                BreedMatch(
+                    breed_name_ko=row.breed_name_ko,
+                    restriction_type=row.restriction_type,
+                    applies_to=row.applies_to,
+                    is_example_only=row.is_example_only,
+                )
+            )
+
+    return {
+        rule_id: BreedCheck(
+            query=breed_name,
+            matches=tuple(matches.get(rule_id, ())),
+            listed_types=frozenset(listed.get(rule_id, ())),
+            example_only_types=frozenset(example_only.get(rule_id, ())),
+        )
+        for rule_id in rule_ids
+    }
+
+
 def search_transport_rules(
     db: Session,
     *,
     carrier_type: CarrierType | None = None,
     carrier_name: str | None = None,
     pet_weight_kg: Decimal | None = None,
+    breed_name: str | None = None,
 ) -> list[TransportRuleHit]:
     """운송사의 반려동물 규정을 찾는다.
 
@@ -228,6 +387,9 @@ def search_transport_rules(
 
     `pet_weight_kg` 를 주면 회사마다 판정이 붙는다. 판정은 여기서 계산한다 —
     숫자 비교를 모델에게 맡기지 않는다.
+
+    `breed_name` 을 주면 회사별 제한 견종 목록과 대조한 결과(`breed_check`)가 붙는다.
+    같은 이유다 — 견종 분류를 모델에게 맡기면 지어낸다.
     """
     conditions = []
     if carrier_type is not None:
@@ -241,6 +403,8 @@ def search_transport_rules(
         .order_by(TransportPetRule.carrier_type, TransportPetRule.carrier_name)
         .limit(MAX_RULE_LIMIT)
     ).all()
+
+    checks = _breed_checks(db, rules, breed_name) if breed_name and breed_name.strip() else {}
 
     return [
         TransportRuleHit(
@@ -275,6 +439,7 @@ def search_transport_rules(
                 pet_weight_kg,
                 rule.cargo_weight_unlimited,
             ),
+            breed_check=checks.get(rule.id),
         )
         for rule in rules
     ]
@@ -283,9 +448,12 @@ def search_transport_rules(
 __all__ = [
     "DEFAULT_GUIDE_LIMIT",
     "MAX_GUIDE_LIMIT",
+    "BreedCheck",
+    "BreedMatch",
     "GuideHit",
     "TransportRuleHit",
     "Verdict",
+    "breed_matches",
     "search_guides",
     "search_transport_rules",
 ]

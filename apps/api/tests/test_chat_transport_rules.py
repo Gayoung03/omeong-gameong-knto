@@ -154,9 +154,9 @@ class TestWeightConclusions:
     """
 
     def test_기내_초과는_상한을_함께_말한다(self):
-        from app.integrations.llm.chat import _weight_conclusions
+        from app.integrations.llm.chat import _carrier_conclusions
 
-        [result] = _weight_conclusions(
+        [result] = _carrier_conclusions(
             [_hit(cabin_verdict=Verdict.OVER_WEIGHT, cargo_verdict=Verdict.ALLOWED)]
         )
         assert result["결론"] == "기내 불가(상한 7kg 초과), 위탁 가능"
@@ -164,9 +164,9 @@ class TestWeightConclusions:
     def test_위탁이_없는_것과_기내가_안_되는_것을_구분한다(self):
         # 제주항공은 기내는 되고(9kg) 위탁 제도가 없다. 이 둘을 뭉치면
         # "기내 탑승 불가" 라는 오답이 나온다.
-        from app.integrations.llm.chat import _weight_conclusions
+        from app.integrations.llm.chat import _carrier_conclusions
 
-        [result] = _weight_conclusions(
+        [result] = _carrier_conclusions(
             [
                 _hit(
                     carrier_name="제주항공",
@@ -181,18 +181,18 @@ class TestWeightConclusions:
         )
 
     def test_한쪽이라도_되면_갈_수_없다고_적지_않는다(self):
-        from app.integrations.llm.chat import _weight_conclusions
+        from app.integrations.llm.chat import _carrier_conclusions
 
-        [result] = _weight_conclusions(
+        [result] = _carrier_conclusions(
             [_hit(cabin_verdict=Verdict.OVER_WEIGHT, cargo_verdict=Verdict.ALLOWED)]
         )
         assert "갈 수 없음" not in result["결론"]
 
     def test_미확인은_갈_수_없다고_적지_않는다(self):
         # 확인 안 된 것을 불가로 뭉개면 없는 규정을 만들어 답하게 된다.
-        from app.integrations.llm.chat import _weight_conclusions
+        from app.integrations.llm.chat import _carrier_conclusions
 
-        [result] = _weight_conclusions(
+        [result] = _carrier_conclusions(
             [
                 _hit(
                     carrier_name="한일고속페리",
@@ -207,16 +207,87 @@ class TestWeightConclusions:
         assert "갈 수 없음" not in result["결론"]
 
     def test_항로가_있으면_이름에_붙인다(self):
-        from app.integrations.llm.chat import _weight_conclusions
+        from app.integrations.llm.chat import _carrier_conclusions
 
-        [result] = _weight_conclusions([_hit(carrier_name="씨월드고속훼리", route="목포-제주")])
+        [result] = _carrier_conclusions([_hit(carrier_name="씨월드고속훼리", route="목포-제주")])
         assert result["carrier"] == "씨월드고속훼리(목포-제주)"
+
+
+class TestConclusionsWithoutWeight:
+    """**무게를 묻지 않은 질문에서도** 회사마다 결론을 낸다.
+
+    2026-09-13 측정에서 `"항공사들 화물칸에 실을 수 있나요"`(무게 없음)에
+    `gpt-4o-mini` 가 위탁 가능한 에어부산을 "실을 수 없다"로 묶었고, 4회 중 3회는
+    위탁 제도가 없는 3곳을 아예 말하지 않았다. 그때 도구는 규정 원본만 건네고
+    분류를 모델에게 맡기고 있었다 — 무게가 있을 때는 안 그랬던 자리다.
+    """
+
+    def test_무게가_없어도_제도_유무는_결론을_낸다(self):
+        from app.integrations.llm.chat import _carrier_conclusions
+
+        [result] = _carrier_conclusions([_hit()])
+        assert result["결론"] == "기내 가능(상한 7kg), 위탁 가능(상한 45kg)"
+
+    def test_위탁_제도_없음은_무게가_없어도_그대로_말한다(self):
+        # 에어부산 오분류의 반대편 — 제주항공은 기내는 되고 위탁 제도가 없다.
+        from app.integrations.llm.chat import _carrier_conclusions
+
+        [result] = _carrier_conclusions(
+            [_hit(carrier_name="제주항공", cabin_max_weight_kg=D("9.00"), cargo_allowed=False)]
+        )
+        assert result["결론"] == "기내 가능(상한 9kg), 위탁 제도 없음"
+
+    def test_확인_안_된_것은_가능이라고_적지_않는다(self):
+        from app.integrations.llm.chat import _carrier_conclusions
+
+        [result] = _carrier_conclusions([_hit(cabin_allowed=None, cargo_allowed=None)])
+        assert result["결론"] == "기내 가능 여부 미확인, 위탁 가능 여부 미확인"
+
+    def test_무게_제한_없음은_상한_미확인과_구분한다(self):
+        from app.integrations.llm.chat import _carrier_conclusions
+
+        [result] = _carrier_conclusions(
+            [
+                _hit(
+                    carrier_name="한일고속페리",
+                    cabin_max_weight_kg=None,
+                    cabin_weight_unlimited=True,
+                    cargo_allowed=None,
+                )
+            ]
+        )
+        assert "기내 가능(무게 제한 없음)" in result["결론"]
+
+    def test_상한이_없으면_미확인이라고_적는다(self):
+        from app.integrations.llm.chat import _carrier_conclusions
+
+        [result] = _carrier_conclusions([_hit(cabin_max_weight_kg=None, cargo_allowed=None)])
+        assert result["결론"].startswith("기내 가능(상한 미확인)")
+
+    def test_양쪽_다_불가면_동승이_안_된다고_따로_적는다(self):
+        # 아리온제주(녹동). 2026-09-13 측정에서 `gpt-4o-mini` 가 배편 질문 4회 전부
+        # 이 항로를 빼고 "가능한 곳"만 나열했다 — 빠진 항로는 없는 것으로 읽힌다.
+        from app.integrations.llm.chat import _carrier_conclusions
+
+        [result] = _carrier_conclusions(
+            [_hit(carrier_name="아리온제주", cabin_allowed=False, cargo_allowed=False)]
+        )
+        assert result["결론"].endswith("→ 이 회사로는 반려동물 동승이 안 됨")
+
+    def test_무게가_있으면_기존_문구를_그대로_쓴다(self):
+        # 무게 판정이 붙은 경우는 문구가 바뀌지 않아야 한다(회귀).
+        from app.integrations.llm.chat import _carrier_conclusions
+
+        [result] = _carrier_conclusions(
+            [_hit(cabin_verdict=Verdict.OVER_WEIGHT, cargo_verdict=Verdict.ALLOWED)]
+        )
+        assert result["결론"] == "기내 불가(상한 7kg 초과), 위탁 가능"
 
     def test_무게_무제한은_제한없음을_문장에_담는다(self):
         # 상한 NULL + unlimited=True → "가능(무게 제한 없음)". "미확인" 으로 새지 않게.
-        from app.integrations.llm.chat import _weight_conclusions
+        from app.integrations.llm.chat import _carrier_conclusions
 
-        [result] = _weight_conclusions(
+        [result] = _carrier_conclusions(
             [
                 _hit(
                     carrier_name="한일고속페리",
