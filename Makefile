@@ -151,10 +151,10 @@ chat-check-places:
 chat-measure:
 	@mkdir -p tmp
 	@set=$(if $(SET),$(SET),rules); out=tmp/chat-measure-$$set-$$(date +%Y%m%d-%H%M%S); \
-	cd apps/api && uv run python -m scripts.measure_chat_llm \
+	(cd apps/api && uv run python -m scripts.measure_chat_llm \
 		--set $$set $(if $(MODELS),--models $(MODELS)) $(if $(REPEAT),--repeat $(REPEAT)) \
-		--json ../../$$out.json > ../../$$out.md; \
-	echo "→ $$out.md (+ .json)"
+		--json ../../$$out.json > ../../$$out.md) \
+	&& echo "→ $$out.md (+ .json)"
 
 lint:
 	cd apps/mobile && npm run lint
