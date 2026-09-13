@@ -21,7 +21,7 @@ import sys
 import time
 from pathlib import Path
 
-from app.integrations.llm.travel_card import config
+from app.integrations.llm.travel_card import card_render, config
 from app.integrations.llm.travel_card.agent import build_card
 from app.integrations.llm.travel_card.types import CardOutcome, WritingStyle
 
@@ -35,12 +35,18 @@ STYLE_LABEL = {
 #: 대략적인 단가(USD). **정확한 청구액이 아니다** — 콘솔에서 규모를 가늠하는 용도다.
 #: 실제 금액은 OpenAI 대시보드에서 확인해야 한다.
 _TEXT_COST_PER_CALL = 0.0004  # vision + caption 합쳐 대략
-_IMAGE_COST = {"low": 0.011, "medium": 0.042, "high": 0.17}
+#: 모델마다 단가가 다르다. 품질만 보고 계산하면 mini 와 gpt-image-2 가 같은 값으로 나온다.
+_IMAGE_COST = {
+    "gpt-image-2": {"low": 0.012, "medium": 0.047, "high": 0.19},
+    "gpt-image-1.5": {"low": 0.011, "medium": 0.042, "high": 0.17},
+    "gpt-image-1-mini": {"low": 0.005, "medium": 0.016, "high": 0.052},
+}
 _KRW = 1400
 
 
 def _estimate_cost() -> tuple[float, int]:
-    usd = _TEXT_COST_PER_CALL + _IMAGE_COST.get(config.IMAGE_QUALITY, 0.042)
+    table = _IMAGE_COST.get(config.IMAGE_MODEL, _IMAGE_COST["gpt-image-2"])
+    usd = _TEXT_COST_PER_CALL + table.get(config.IMAGE_QUALITY, 0.047)
     return usd, round(usd * _KRW)
 
 
@@ -62,7 +68,9 @@ def _print_memos(result) -> None:
         return
     print(f"   메모 {len(result.memos)}개")
     for i, memo in enumerate(result.memos, 1):
-        print(f"     {i:2}. {memo}  ({len(memo)}자)")
+        arrow = result.memo_targets[i - 1] if i <= len(result.memo_targets) else None
+        mark = f"  → {arrow}" if arrow else "  (화살표 없음)"
+        print(f"     {i:2}. {memo}  ({len(memo)}자){mark}")
 
 
 def run_one(path: Path, style: WritingStyle, args) -> bool:
@@ -85,6 +93,7 @@ def run_one(path: Path, style: WritingStyle, args) -> bool:
         place_name=args.place,
         place_description=args.place_desc,
         date_text=args.date,
+        ink_plate=args.ink_plate,
     )
     total = time.perf_counter() - started
 
@@ -97,6 +106,15 @@ def run_one(path: Path, style: WritingStyle, args) -> bool:
     for name, seconds in result.timings.items():
         print(f"   {name:<12} {seconds:>6.2f}초")
     print(f"   {'합계':<11} {total:>6.2f}초")
+
+    if result.source_size:
+        print("\n[크기]")
+        mark = "" if result.requested_size == result.generated_size else "   <- 요청과 다름!"
+        print(f"   원본       {result.source_size}")
+        print(f"   업로드     {result.upload_size}   (표준화 후)")
+        print(f"   생성 요청  {result.requested_size}")
+        print(f"   생성 결과  {result.generated_size}{mark}")
+        print(f"   최종 카드  {result.result_size}   (원본 비율, 긴 변 {card_render.LONG_EDGE})")
 
     print(f"\n[결과] {result.outcome.value}")
     if result.message:
@@ -112,6 +130,14 @@ def run_one(path: Path, style: WritingStyle, args) -> bool:
     prompt_path.write_text(result.prompt, encoding="utf-8")
     print(f"   저장: {out}  ({len(result.png) // 1024}KB)")
     print(f"   프롬프트: {prompt_path}")
+
+    # 합성 전 원판도 남긴다. 마스크를 손볼 때 travel_card_recompose 로 **공짜로** 다시
+    # 합성할 수 있다 — 이게 없으면 눈금 하나 바꿀 때마다 카드값이 다시 나간다.
+    if result.generated_png:
+        suffix = "레이어" if args.ink_plate else "생성원판"
+        raw = OUT_DIR / f"{path.stem}-{style.value}-{suffix}.png"
+        raw.write_bytes(result.generated_png)
+        print(f"   생성 원판: {raw}  (합성 전)")
     return True
 
 
@@ -122,6 +148,11 @@ def main() -> int:
     parser.add_argument("--place", help="장소명")
     parser.add_argument("--place-desc", help="장소 설명 (선택)")
     parser.add_argument("--date", help="날짜 표기 (예: 2026.09.08)")
+    parser.add_argument(
+        "--ink-plate",
+        action="store_true",
+        help="사진 대신 '검은 바탕 + 흰 손글씨' 레이어를 받아 원본에 얹는다.",
+    )
     parser.add_argument(
         "--style",
         choices=[s.value for s in WritingStyle],
@@ -140,6 +171,10 @@ def main() -> int:
     usd, krw = _estimate_cost()
     print(f"모델  vision={config.VISION_MODEL}  caption={config.CAPTION_MODEL}")
     print(f"      image={config.IMAGE_MODEL}  quality={config.IMAGE_QUALITY}")
+    if args.ink_plate:
+        print("      손글씨 레이어 모드 — 검은 바탕에 흰 글씨만 받아 원본에 얹습니다.")
+    if "mini" in config.IMAGE_MODEL:
+        print("      ⚠️  mini 는 작은 글씨의 한글이 깨집니다(2026-09-10 실측). 확인용으로만.")
     print(f"예상 비용  카드 1장당 약 ${usd:.4f} (~{krw}원) · 총 {len(args.photos) * len(styles)}장")
     print("           ※ 어림값입니다. 실제 청구액은 OpenAI 대시보드에서 확인하세요.")
 
@@ -158,7 +193,8 @@ def main() -> int:
         print(f"\n결과를 눈으로 확인하세요 — {OUT_DIR}/")
         print("특히 볼 것:")
         print("  · 한글이 온전한 음절인가 (자음·모음이 홀로 떨어진 글자가 없는지)")
-        print("  · 원본 사진이 그대로인가 (얼굴·색감이 바뀌지 않았는지)")
+        print("  · 원본 사진이 그대로인가 (얼굴이 원본과 한 픽셀도 다르지 않아야 한다)")
+        print("  · 몸을 벗어난 흰 테두리(유령 외곽선)가 남아 있지 않은가")
         print("  · 사진에 없는 것이 그려지지 않았는가 (특히 풍경 사진에 강아지)")
         print("  · 두 말투가 실제로 달라 보이는가")
     return 0 if made == total_cards else 1

@@ -15,6 +15,9 @@ dependencies = [
     "pyjwt>=2.13.0",
     "argon2-cffi>=25.1.0",
     "pywebpush>=2.0,<3",
+    # 여행기록 카드 합성. 생성 이미지에서 손글씨 획만 뽑아 원본 사진에 다시
+    # 얹는 데 쓴다 — 이 단계가 없으면 얼굴이 바뀐 사진이 기록으로 남는다.
+    "pillow>=11,<13",
 ]
 
 [dependency-groups]

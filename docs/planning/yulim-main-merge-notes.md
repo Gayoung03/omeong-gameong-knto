@@ -21,6 +21,7 @@
 | `react-native-view-shot`                 | 5.1.0   | 일정 카드를 이미지로 캡처(목업 07)            | #9      |
 | `expo-media-library`                     | ~57.0.3 | 캡처한 이미지를 사진첩에 저장                 | #9      |
 | `react-native-webview`                   | 13.16.1 | 지도 탭(목업 03)에서 카카오 지도 JS API 사용  | #10     |
+| `pillow` (백엔드)                        | >=11,<13 | 여행기록 카드 합성 — 생성 이미지에서 손글씨 획만 뽑아 원본 사진에 다시 얹는다 | 예정    |
 
 > `datetimepicker`는 웹을 지원하지 않아 `DateRangeField.web.tsx`로 대체 구현을 분리했다.
 > Metro가 플랫폼별로 자동 선택하므로 웹에서도 화면이 깨지지 않는다.
@@ -138,6 +139,7 @@
 | `apps/mobile/.gitignore`                                              | `.vercel` 추가 (Vercel 연결 정보 커밋 방지)                                                                                                                             | #177   |
 | `src/features/notifications/services/pushNotifications.ts`            | `openNotification()` 의 `chat_answer_ready` 가 챗봇 탭이 아니라 **그 대화**로 간다(`/chatbot?conversationId=…`). 이 함수는 **알림 목록 화면과 푸시 진입이 함께 쓴다** — 한 줄로 두 경로가 같이 바뀌고 다른 알림 타입에는 영향이 없다. 서버는 이미 대화 id 를 싣고 있어 백엔드 변경은 없다 | #252   |
 | `src/utils/relativeTime.ts` (신규)                                    | "3시간 전" 표기를 공용으로. 알림(`notificationApi.ts`)이 들고 있던 사본을 걷어내고 챗봇 대화 목록과 함께 쓴다. 두 곳이 같은 규칙을 따라야 "3시간 전"이 화면마다 다른 뜻이 되지 않는다 | #251   |
+| `apps/api/pyproject.toml`                                             | `pillow>=11,<13` 추가. 여행기록 카드의 **마지막 단계**가 쓴다 — `images.edit` 는 원본 위에 덧그리는 것이 아니라 **모든 픽셀을 새로 그려서** 얼굴이 바뀐다(2026-09-12 실측: 사람·반려동물 모두 눈이 커지고 얼굴이 갸름해졌다). 그래서 생성물에서 손글씨 획만 뽑아 원본 사진에 다시 얹는다. 순수 파이썬으로는 1536px 한 장에 수 초가 걸린다. **팀원은 `apps/api` 에서 `uv sync` 를 한 번 돌려야 한다** | 예정 |
 | `apps/api/Dockerfile`                                                 | `COPY assets ./assets` 한 줄 추가. 여행기록 카드 합성용 손글씨 폰트를 이미지에 넣는다 — 없으면 프로덕션에서 글자가 두부(□)로 그려진다. `.dockerignore` 는 손대지 않았다(assets 를 막지 않음) | 예정 |
 | `apps/api/assets/fonts/` (신규)                                       | **손글씨 폰트 2종 신규 커밋(약 9.8MB).** `jeju-hallasan.ttf`(제주한라산체, 공공누리 제1유형 — **출처 표시 의무**), `gaegu-regular.ttf`(개구, SIL OFL 1.1). 라이선스 원문 2개와 `README.md` 동봉. 둘 다 상업적 이용·재배포 허용이라 저장소·이미지에 포함해도 된다 | 예정 |
 
@@ -335,6 +337,7 @@ app/routes/result.tsx          →  app/(tabs)/routes/index.tsx     (입력)
 ```bash
 git pull
 cd apps/mobile && npm ci
+cd ../api && uv sync          # 백엔드에 pillow 가 추가됐다
 ```
 
 `npm install`이 아니라 **`npm ci`** 를 쓴다. `package-lock.json` 기준으로 정확히 같은 버전이 설치된다.

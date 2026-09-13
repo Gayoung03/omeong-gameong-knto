@@ -1,4 +1,4 @@
-"""네 단계를 순서대로 부르는 진입점.
+"""다섯 단계를 순서대로 부르는 진입점.
 
 부르는 쪽은 `build_card()` 하나만 알면 된다. 예외를 던지지 않고 `CardResult` 를
 돌려준다 — 프론트가 `outcome` 하나로 갈라 처리할 수 있게 하려는 것이다.
@@ -14,8 +14,8 @@
 import time
 from collections.abc import Callable
 
-from . import caption, image_edit, prompts, vision
-from .image_io import UnreadableImage, load_image
+from . import caption, card_render, image_edit, prompts, vision
+from .image_io import UnreadableImage, load_image, normalize, read_png_size
 from .types import CardOutcome, CardResult, WritingStyle
 
 _MESSAGES = {
@@ -48,13 +48,20 @@ def build_card(
     place_name: str | None = None,
     place_description: str | None = None,
     date_text: str | None = None,
+    ink_plate: bool = False,
 ) -> CardResult:
-    """사진 바이트 하나로 카드 PNG 를 만든다."""
+    """사진 바이트 하나로 카드 PNG 를 만든다.
+
+    `ink_plate` 는 이미지 모델에게 **검은 바탕의 손글씨 레이어**를 요구한다. 마지막
+    단계에서 손글씨를 추측으로 꺼내지 않아도 되므로 오탐이 구조적으로 사라진다.
+    """
     timings: dict[str, float] = {}
 
     # --- 0. 파일 읽기 -----------------------------------------------------
     try:
-        image = load_image(data)
+        source = load_image(data)
+        # 겉만 JPEG 인 휴대폰 사진(MPO 등)이 여기서 걸러진다. image_io.normalize 참고.
+        image = normalize(source)
     except UnreadableImage as error:
         return CardResult(
             outcome=CardOutcome.UNREADABLE_IMAGE,
@@ -104,19 +111,24 @@ def build_card(
 
     # --- 3. 프롬프트 조립 (호출 없음) -------------------------------------
     prompt = prompts.build(
-        analysis.kind, style, text, place_name=place_name, date_text=date_text
+        analysis.kind,
+        style,
+        text,
+        place_name=place_name,
+        date_text=date_text,
+        ink_plate=ink_plate,
     )
 
     # --- 4. 이미지 편집 ---------------------------------------------------
     try:
-        png = _timed(timings, "image_edit", lambda: image_edit.edit(image, prompt))
+        generated = _timed(timings, "image_edit", lambda: image_edit.edit(image, prompt))
     except image_edit.ImageRefused:
         return CardResult(
             outcome=CardOutcome.BLOCKED_OUTPUT,
             message=_MESSAGES[CardOutcome.BLOCKED_OUTPUT],
             analysis=analysis,
             title=text.title,
-            memos=text.memos,
+            memos=[m.text for m in text.memos],
             prompt=prompt,
             timings=timings,
         )
@@ -126,7 +138,23 @@ def build_card(
             message=f"{_MESSAGES[CardOutcome.FAILED]} ({error})",
             analysis=analysis,
             title=text.title,
-            memos=text.memos,
+            memos=[m.text for m in text.memos],
+            prompt=prompt,
+            timings=timings,
+        )
+
+    # --- 5. 손글씨만 원본에 다시 얹기 -------------------------------------
+    # 생성물을 그대로 내보내면 얼굴이 바뀐다. card_render 의 설명을 볼 것.
+    try:
+        merge = card_render.compose_from_plate if ink_plate else card_render.compose
+        png = _timed(timings, "compose", lambda: merge(image, generated))
+    except card_render.RenderError as error:
+        return CardResult(
+            outcome=CardOutcome.FAILED,
+            message=f"{_MESSAGES[CardOutcome.FAILED]} ({error})",
+            analysis=analysis,
+            title=text.title,
+            memos=[m.text for m in text.memos],
             prompt=prompt,
             timings=timings,
         )
@@ -134,9 +162,16 @@ def build_card(
     return CardResult(
         outcome=CardOutcome.OK,
         png=png,
+        generated_png=generated,
+        source_size=f"{source.width}x{source.height}",
+        upload_size=f"{image.width}x{image.height}",
+        requested_size=image_edit.pick_size(image),
+        generated_size=read_png_size(generated),
+        result_size=read_png_size(png),
         analysis=analysis,
         title=text.title,
-        memos=text.memos,
+        memos=[m.text for m in text.memos],
+        memo_targets=[m.target for m in text.memos],
         prompt=prompt,
         timings=timings,
     )

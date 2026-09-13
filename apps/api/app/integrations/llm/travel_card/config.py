@@ -28,9 +28,15 @@ class TravelCardSettings(BaseSettings):
     travel_card_vision_model: str = "gpt-4o-mini"
     #: 메모 생성. 이미지를 안 보고 분석 결과만 읽으므로 텍스트 모델로 충분하다.
     travel_card_caption_model: str = "gpt-4o-mini"
-    #: 이미지 편집. 후보: gpt-image-1-mini(저렴) · gpt-image-2(품질).
+    #: 이미지 편집.
+    #:
+    #: **gpt-image-1-mini 를 쓰면 안 된다(2026-09-10 실측).** 큰 제목은 멀쩡한데
+    #: 작은 메모가 전부 깨졌다 — 자모가 분리되는 게 아니라 비슷하게 생긴 다른 글자로
+    #: 바뀐다("햇빛이 따뜻해서" -> "햇빛아 미믓헤서"). 작은 글씨의 획을 그릴 해상도가
+    #: 안 되는 것이라 프롬프트로 고칠 수 없다.
+    #:
     #: gpt-image-1 은 2026-10-23 폐기 예정이라 신규로 쓰지 않는다.
-    travel_card_image_model: str = "gpt-image-1-mini"
+    travel_card_image_model: str = "gpt-image-2"
     #: low / medium / high. 비용이 여기서 몇 배로 갈린다.
     travel_card_image_quality: str = "medium"
 

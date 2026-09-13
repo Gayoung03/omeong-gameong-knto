@@ -7,14 +7,18 @@
 로컬 파일 하나를 넣으면 PNG 가 나오는 것까지다. 확인용 진입점은
 `scripts/travel_card_smoke.py` 다. 붙이는 것은 프롬프트를 눈으로 조정한 뒤다.
 
-## 네 단계
+## 다섯 단계
 
-    vision      사진 분석 + 안전 판정      (LLM)
-    caption     메모 8~10개 생성           (LLM)
-    prompts     이미지 프롬프트 조립       (문자열 합치기, 호출 없음)
-    image_edit  이미지 편집 호출           (LLM, 전체 지연의 대부분)
+    vision       사진 분석 + 안전 판정      (LLM)
+    caption      메모 4~6개 생성            (LLM)
+    prompts      이미지 프롬프트 조립       (문자열 합치기, 호출 없음)
+    image_edit   이미지 편집 호출           (LLM, 전체 지연의 대부분)
+    card_render  손글씨만 뽑아 원본에 합성  (Pillow, 호출 없음)
 
-`agent.build_card()` 가 넷을 순서대로 부른다. 부르는 쪽은 이 함수 하나만 알면 된다.
+`agent.build_card()` 가 다섯을 순서대로 부른다. 부르는 쪽은 이 함수 하나만 알면 된다.
+
+마지막 단계가 있는 이유는 `images.edit` 가 **모든 픽셀을 새로 그리기 때문이다.**
+생성물을 그대로 내보내면 얼굴이 바뀐 사진이 기록으로 남는다. `card_render` 를 볼 것.
 
 ## 예외를 던지지 않는다
 

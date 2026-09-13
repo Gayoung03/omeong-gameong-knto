@@ -67,6 +67,19 @@ class PhotoAnalysis:
 
 
 @dataclass(frozen=True)
+class Memo:
+    """메모 한 줄과, 그 메모가 가리키는 사진 속 대상.
+
+    `target` 이 None 이면 **화살표를 그리지 않는다.** 날씨·기분·그날의 소감처럼
+    사진에서 한 지점을 집을 수 없는 말이 그렇다. 여기를 비워 두면 모델이 메모마다
+    화살표를 하나씩 달아 허공을 가리킨다(2026-09-12 실측).
+    """
+
+    text: str
+    target: str | None = None
+
+
+@dataclass(frozen=True)
 class CardText:
     """카드에 얹을 글. 제목과 메모를 나눠 받는다.
 
@@ -76,7 +89,7 @@ class CardText:
     """
 
     title: str
-    memos: list[str]
+    memos: list[Memo]
 
 
 @dataclass(frozen=True)
@@ -105,10 +118,22 @@ class CardResult:
     outcome: CardOutcome
     message: str = ""
     png: bytes | None = None
+    #: 합성 전, 이미지 모델이 준 원판. 마스크를 손볼 때 **재생성 없이** 다시 합성하려고
+    #: 들고 있는다 — 한 번 돌릴 때마다 돈이 나가므로 반복 확인은 이것으로 한다.
+    generated_png: bytes | None = None
     analysis: PhotoAnalysis | None = None
     title: str = ""
     memos: list[str] = field(default_factory=list)
+    #: 메모와 같은 순서로, 그 메모가 가리키는 대상(없으면 None). 확인용이다.
+    memo_targets: list[str | None] = field(default_factory=list)
     prompt: str = ""
+    #: 원본 · 편집에 요청한 캔버스 · 편집이 실제로 준 캔버스 · 합성까지 끝낸 최종 카드.
+    #: 요청과 생성이 어긋나면 모델이 캔버스를 무시한 것이고, 최종은 원본 비율을 따른다.
+    source_size: str = ""
+    upload_size: str = ""
+    requested_size: str = ""
+    generated_size: str = ""
+    result_size: str = ""
     #: 단계 이름 → 소요 시간(초).
     timings: dict[str, float] = field(default_factory=dict)
 
