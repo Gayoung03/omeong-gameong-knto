@@ -372,6 +372,29 @@ def _breed_checks(
     }
 
 
+def find_known_breed(db: Session, text: str) -> str | None:
+    """글 안에서 **우리 목록에 있는 견종 이름**을 찾는다. 없으면 `None`.
+
+    지어내는 것이 아니라 `transport_restricted_breeds` 에 실제로 있는 이름과
+    글자를 맞춰 보는 것이다 — `place_search` 가 지역 값을 어휘와 대조하는 것과 같다.
+
+    쓰는 자리는 **이어지는 대화**다. 2026-09-13 측정에서 `gpt-4o-mini` 가
+    `"복서 갈 수 있나요"` → `"12kg이에요"` 의 두 번째 턴에서 `breed_name` 을 빼고
+    다시 조회했고, 그래서 단두종 위탁 제한이 빠진 답이 나왔다. 목록을 우리가
+    붙이게 된 뒤로는 **그 목록이 "위탁 가능"이라고 말해** 더 위험해졌다.
+
+    긴 이름을 먼저 본다 — `불테리어` 가 있는 글에서 `불독` 을 먼저 집으면 안 된다.
+    """
+    if not text:
+        return None
+    names = db.scalars(select(TransportRestrictedBreed.breed_name_ko).distinct()).all()
+    for name in sorted(names, key=len, reverse=True):
+        bare = _BREED_PAREN.sub("", name).strip()
+        if bare and bare in text:
+            return bare
+    return None
+
+
 def search_transport_rules(
     db: Session,
     *,

@@ -133,9 +133,7 @@ def create_travel_log(
     # 먼저 저장돼 있어야 한다.
     background_tasks.add_task(run_image_generation, log.id, open_session)
 
-    return TravelLogGenerationStatus(
-        id=log.id, generation_status=GenerationStatus.GENERATING
-    )
+    return TravelLogGenerationStatus(id=log.id, generation_status=GenerationStatus.GENERATING)
 
 
 @router.get("", response_model=TravelLogListResponse, summary="여행기록 목록")
@@ -317,9 +315,7 @@ def regenerate_travel_log(
 
     background_tasks.add_task(run_image_generation, log.id, open_session)
 
-    return TravelLogGenerationStatus(
-        id=log.id, generation_status=GenerationStatus.GENERATING
-    )
+    return TravelLogGenerationStatus(id=log.id, generation_status=GenerationStatus.GENERATING)
 
 
 @router.get("/{log_id}", response_model=TravelLogItem, summary="여행기록 상세")
@@ -393,9 +389,7 @@ def delete_travel_log(log_id: uuid.UUID, current_user: CurrentUser, db: DbSessio
 # ---------------------------------------------------------------------------
 
 
-def run_image_generation(
-    log_id: uuid.UUID, open_session: BackgroundSessionFactory
-) -> None:
+def run_image_generation(log_id: uuid.UUID, open_session: BackgroundSessionFactory) -> None:
     """요청이 끝난 뒤 이미지를 만들고 결과를 기록한다.
 
     **연결을 직접 만들지 않고 넘겨받는다.** 요청용 연결은 응답과 함께 닫혀서

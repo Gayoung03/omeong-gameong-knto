@@ -143,9 +143,7 @@ def get_settings() -> Settings:
         return Settings()
     except ValidationError as error:
         # 누락(missing)이든 빈 문자열(too_short)이든 SECRET_KEY 문제면 같은 안내로.
-        secret_key_problem = any(
-            entry["loc"] == ("secret_key",) for entry in error.errors()
-        )
+        secret_key_problem = any(entry["loc"] == ("secret_key",) for entry in error.errors())
         if secret_key_problem:
             raise RuntimeError(_MISSING_SECRET_KEY_MESSAGE) from error
         raise

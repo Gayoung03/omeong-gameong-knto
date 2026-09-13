@@ -214,9 +214,7 @@ def update_review(
     return _to_item(review, current_user)
 
 
-@router.delete(
-    "/reviews/{review_id}", status_code=status.HTTP_204_NO_CONTENT, summary="리뷰 삭제"
-)
+@router.delete("/reviews/{review_id}", status_code=status.HTTP_204_NO_CONTENT, summary="리뷰 삭제")
 def delete_review(review_id: uuid.UUID, current_user: CurrentUser, db: DbSession) -> Response:
     """물리 삭제다. review_images 도 ON DELETE CASCADE 로 함께 지워진다.
 

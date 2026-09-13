@@ -123,11 +123,14 @@ def count_active(db: Session, place_ids: list[uuid.UUID]) -> int:
     """그중 검색에 노출 중인 것. 사용자가 실제로 체감하는 숫자다."""
     if not place_ids:
         return 0
-    return db.scalar(
-        select(func.count())
-        .select_from(Place)
-        .where(Place.id.in_(place_ids), Place.is_active.is_(True))
-    ) or 0
+    return (
+        db.scalar(
+            select(func.count())
+            .select_from(Place)
+            .where(Place.id.in_(place_ids), Place.is_active.is_(True))
+        )
+        or 0
+    )
 
 
 def set_regions(db: Session, moves: list[tuple[uuid.UUID, str, str]]) -> int:
@@ -138,9 +141,7 @@ def set_regions(db: Session, moves: list[tuple[uuid.UUID, str, str]]) -> int:
 
     changed = 0
     for region, place_ids in by_region.items():
-        result = db.execute(
-            update(Place).where(Place.id.in_(place_ids)).values(region=region)
-        )
+        result = db.execute(update(Place).where(Place.id.in_(place_ids)).values(region=region))
         changed += result.rowcount
     return changed
 
@@ -213,9 +214,7 @@ def conflicts(places: list[Place], moves: list[tuple[uuid.UUID, str, str]]) -> l
     """
     moving = {place_id for place_id, _, _ in moves}
     return [
-        place
-        for place in places
-        if place.id in moving and CONFLICT_KEYWORD in _address_of(place)
+        place for place in places if place.id in moving and CONFLICT_KEYWORD in _address_of(place)
     ]
 
 
@@ -290,9 +289,7 @@ def run_revert(db: Session, path: Path) -> int:
 
     changed = 0
     for region, place_ids in by_region.items():
-        result = db.execute(
-            update(Place).where(Place.id.in_(place_ids)).values(region=region)
-        )
+        result = db.execute(update(Place).where(Place.id.in_(place_ids)).values(region=region))
         changed += result.rowcount
     db.commit()
 

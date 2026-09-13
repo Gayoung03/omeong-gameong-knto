@@ -94,14 +94,34 @@ def best_candidate_with_diversity(
     if not enforce_diversity:
         # 환경 선호 준수 → 환경 해제 → 이동 상한 해제 → 확인 필요 허용 순으로 완화한다.
         rungs = (
-            Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
-                 allowed_tiers=VERIFIED_ONLY, travel_limit=ctx.max_travel_min, apply_env=True),
-            Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
-                 allowed_tiers=VERIFIED_ONLY, travel_limit=ctx.max_travel_min, apply_env=False),
-            Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
-                 allowed_tiers=VERIFIED_ONLY, travel_limit=None, apply_env=False),
-            Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
-                 allowed_tiers=ANY_TIER, travel_limit=None, apply_env=False),
+            Rung(
+                blocked_groups=frozenset(),
+                enforce_daily_limits=False,
+                allowed_tiers=VERIFIED_ONLY,
+                travel_limit=ctx.max_travel_min,
+                apply_env=True,
+            ),
+            Rung(
+                blocked_groups=frozenset(),
+                enforce_daily_limits=False,
+                allowed_tiers=VERIFIED_ONLY,
+                travel_limit=ctx.max_travel_min,
+                apply_env=False,
+            ),
+            Rung(
+                blocked_groups=frozenset(),
+                enforce_daily_limits=False,
+                allowed_tiers=VERIFIED_ONLY,
+                travel_limit=None,
+                apply_env=False,
+            ),
+            Rung(
+                blocked_groups=frozenset(),
+                enforce_daily_limits=False,
+                allowed_tiers=ANY_TIER,
+                travel_limit=None,
+                apply_env=False,
+            ),
         )
         return _first_match(candidates, rejected, ctx, rungs)
 
@@ -110,18 +130,48 @@ def best_candidate_with_diversity(
     ctx = replace(ctx, diversity_group_counts=group_counts)
     # 다양성 완화 → 환경 선호 해제 → 이동시간 상한 해제 → 확인 필요 허용 순으로 내려간다.
     rungs = (
-        Rung(blocked_groups=blocked, enforce_daily_limits=True,
-             allowed_tiers=VERIFIED_ONLY, travel_limit=ctx.max_travel_min, apply_env=True),
-        Rung(blocked_groups=frozenset(), enforce_daily_limits=True,
-             allowed_tiers=VERIFIED_ONLY, travel_limit=ctx.max_travel_min, apply_env=True),
-        Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
-             allowed_tiers=VERIFIED_ONLY, travel_limit=ctx.max_travel_min, apply_env=True),
-        Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
-             allowed_tiers=VERIFIED_ONLY, travel_limit=ctx.max_travel_min, apply_env=False),
-        Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
-             allowed_tiers=VERIFIED_ONLY, travel_limit=None, apply_env=False),
-        Rung(blocked_groups=frozenset(), enforce_daily_limits=False,
-             allowed_tiers=ANY_TIER, travel_limit=None, apply_env=False),
+        Rung(
+            blocked_groups=blocked,
+            enforce_daily_limits=True,
+            allowed_tiers=VERIFIED_ONLY,
+            travel_limit=ctx.max_travel_min,
+            apply_env=True,
+        ),
+        Rung(
+            blocked_groups=frozenset(),
+            enforce_daily_limits=True,
+            allowed_tiers=VERIFIED_ONLY,
+            travel_limit=ctx.max_travel_min,
+            apply_env=True,
+        ),
+        Rung(
+            blocked_groups=frozenset(),
+            enforce_daily_limits=False,
+            allowed_tiers=VERIFIED_ONLY,
+            travel_limit=ctx.max_travel_min,
+            apply_env=True,
+        ),
+        Rung(
+            blocked_groups=frozenset(),
+            enforce_daily_limits=False,
+            allowed_tiers=VERIFIED_ONLY,
+            travel_limit=ctx.max_travel_min,
+            apply_env=False,
+        ),
+        Rung(
+            blocked_groups=frozenset(),
+            enforce_daily_limits=False,
+            allowed_tiers=VERIFIED_ONLY,
+            travel_limit=None,
+            apply_env=False,
+        ),
+        Rung(
+            blocked_groups=frozenset(),
+            enforce_daily_limits=False,
+            allowed_tiers=ANY_TIER,
+            travel_limit=None,
+            apply_env=False,
+        ),
     )
     return _first_match(candidates, rejected, ctx, rungs)
 
@@ -185,9 +235,13 @@ def _best_candidate(
             continue
         if ctx.start_by is not None and visit[0] > ctx.start_by:
             continue
-        if rung.apply_env and candidate.environment == PlaceEnvironment.OUTDOOR and (
-            ctx.env_preference == PlaceEnvironment.INDOOR
-            or (ctx.avoid_outdoor_midday and _overlaps_midday(visit[0], visit[1]))
+        if (
+            rung.apply_env
+            and candidate.environment == PlaceEnvironment.OUTDOOR
+            and (
+                ctx.env_preference == PlaceEnvironment.INDOOR
+                or (ctx.avoid_outdoor_midday and _overlaps_midday(visit[0], visit[1]))
+            )
         ):
             continue
         cost = ctx.rest_min + travel_min + candidate.average_stay_minutes

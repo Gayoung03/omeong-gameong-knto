@@ -219,9 +219,7 @@ def run_revert(db: Session, path: Path) -> int:
         by_category.setdefault(before, []).append(place_id)
     changed = 0
     for category, place_ids in by_category.items():
-        result = db.execute(
-            update(Place).where(Place.id.in_(place_ids)).values(category=category)
-        )
+        result = db.execute(update(Place).where(Place.id.in_(place_ids)).values(category=category))
         changed += result.rowcount
     db.commit()
     print(f"\n{changed}건을 원래 카테고리로 되돌렸습니다.")

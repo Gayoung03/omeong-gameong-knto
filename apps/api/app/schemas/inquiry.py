@@ -62,6 +62,4 @@ class InquiryCreate(APISchema):
     title: str = Field(min_length=1, max_length=200)
     content: str = Field(min_length=1)
     #: `POST /uploads` 로 먼저 받은 우리 저장소 주소만 허용한다.
-    image_urls: list[ImageUrl] = Field(
-        default_factory=list, max_length=MAX_INQUIRY_IMAGES
-    )
+    image_urls: list[ImageUrl] = Field(default_factory=list, max_length=MAX_INQUIRY_IMAGES)

@@ -74,9 +74,7 @@ def record_ai_draft(db: Session, inquiry: Inquiry, actor_id: uuid.UUID) -> None:
     )
 
 
-def answer_inquiry(
-    db: Session, inquiry: Inquiry, *, answer: str, actor_id: uuid.UUID
-) -> Inquiry:
+def answer_inquiry(db: Session, inquiry: Inquiry, *, answer: str, actor_id: uuid.UUID) -> Inquiry:
     """관리자가 작성한 답변 **전체**를 그대로 저장하고 문의자에게 알림을 보낸다.
 
     머릿말·꼬릿말은 편집기 초기값으로만 제공하고, 저장은 보낸 그대로 한다.

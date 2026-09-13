@@ -369,9 +369,7 @@ def replace_route_item(
         changed_item.longitude = Decimal(str(replacement.lng))
         changed_item.item_type = replacement.item_type
         changed_item.slot_status = (
-            RouteItemSlotStatus.FILLED
-            if replacing_stay
-            else _slot_status_of(replacement.tier)
+            RouteItemSlotStatus.FILLED if replacing_stay else _slot_status_of(replacement.tier)
         )
         # 숙소 앵커는 stay_minutes 0 을 유지(집계·시각에서 앵커로 취급). 그 외에는 후보의
         # 평균 체류시간으로 채운다 — 빈 슬롯(None)뿐 아니라 일반 교체의 기존 결함도 고친다.
@@ -582,9 +580,7 @@ def _fit_edited_item_visit(
                 )
             duration = timedelta(minutes=item.stay_minutes or 0)
             if hours.break_start_at is not None and hours.break_end_at is not None:
-                break_start = datetime.combine(
-                    arrival.date(), hours.break_start_at, arrival.tzinfo
-                )
+                break_start = datetime.combine(arrival.date(), hours.break_start_at, arrival.tzinfo)
                 break_end = datetime.combine(arrival.date(), hours.break_end_at, arrival.tzinfo)
                 if starts_at < break_end and starts_at + duration > break_start:
                     starts_at = break_end

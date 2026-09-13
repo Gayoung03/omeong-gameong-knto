@@ -63,9 +63,7 @@ def get_route(
     leg = _request_route(from_coord, to_coord, transport, client=client)
     # 새 캐시를 넣기 직전에 만료된 행을 한 번 정리한다 — 삭제 로직이 없어 무한 누적하던 구조.
     db.execute(
-        delete(RouteCalculationCache).where(
-            RouteCalculationCache.expires_at <= calculated_at
-        )
+        delete(RouteCalculationCache).where(RouteCalculationCache.expires_at <= calculated_at)
     )
     db.add(
         RouteCalculationCache(

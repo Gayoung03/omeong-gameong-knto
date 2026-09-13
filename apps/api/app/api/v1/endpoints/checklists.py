@@ -115,9 +115,7 @@ def update_checklist_item(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="체크리스트 항목 삭제",
 )
-def delete_checklist_item(
-    item_id: uuid.UUID, current_user: CurrentUser, db: DbSession
-) -> Response:
+def delete_checklist_item(item_id: uuid.UUID, current_user: CurrentUser, db: DbSession) -> Response:
     """기본 제공 항목(isRecommended=true)도 지울 수 있다.
 
     지운 뒤 되돌리는 기능은 없다 — 명세가 그렇게 정해뒀다.

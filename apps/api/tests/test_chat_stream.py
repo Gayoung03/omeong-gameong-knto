@@ -80,7 +80,7 @@ def fake_openai(monkeypatch: pytest.MonkeyPatch):
 
 def test_답변_조각이_오는_대로_나온다(fake_openai, monkeypatch: pytest.MonkeyPatch) -> None:
     """검색 라운드를 앞에 둔다 — 0라운드는 도구를 강제하므로 말이 나올 수 없다."""
-    monkeypatch.setattr(chat, "_dispatch", lambda db, name, raw: ("[]", []))
+    monkeypatch.setattr(chat, "_dispatch", lambda db, name, raw, *_: ("[]", []))
     fake_openai(
         [
             [_search_call()],
@@ -99,7 +99,7 @@ def test_쪼개진_도구_인자를_이어_붙인다(fake_openai, monkeypatch: p
     """`arguments` 는 완성된 JSON 으로 오지 않는다. 조각을 그대로 넘기면 파싱이 깨진다."""
     dispatched: list[tuple[str, str]] = []
 
-    def fake_dispatch(db, name, raw_arguments):
+    def fake_dispatch(db, name, raw_arguments, *_):
         dispatched.append((name, raw_arguments))
         return "[]", []
 
@@ -127,7 +127,7 @@ def test_한_라운드에_도구_두_개도_각각_모은다(fake_openai, monkey
     """`index` 로 갈라 담지 않으면 두 호출의 인자가 한 덩어리로 섞인다."""
     dispatched: list[tuple[str, str]] = []
 
-    def fake_dispatch(db, name, raw_arguments):
+    def fake_dispatch(db, name, raw_arguments, *_):
         dispatched.append((name, raw_arguments))
         return "[]", []
 
@@ -162,7 +162,7 @@ def test_한_라운드에_도구_두_개도_각각_모은다(fake_openai, monkey
 
 def test_빈_답변은_실패로_본다(fake_openai, monkeypatch: pytest.MonkeyPatch) -> None:
     """조각이 하나도 없으면 말풍선이 빈 채로 남는다. 재시도를 띄우는 편이 낫다."""
-    monkeypatch.setattr(chat, "_dispatch", lambda db, name, raw: ("[]", []))
+    monkeypatch.setattr(chat, "_dispatch", lambda db, name, raw, *_: ("[]", []))
     fake_openai(
         [
             [_search_call()],
@@ -176,7 +176,7 @@ def test_빈_답변은_실패로_본다(fake_openai, monkeypatch: pytest.MonkeyP
 
 def test_도구만_반복하면_포기한다(fake_openai, monkeypatch: pytest.MonkeyPatch) -> None:
     """막지 않으면 검색만 반복하며 요금을 쓴다."""
-    monkeypatch.setattr(chat, "_dispatch", lambda db, name, raw: ("[]", []))
+    monkeypatch.setattr(chat, "_dispatch", lambda db, name, raw, *_: ("[]", []))
     fake_openai([[_search_call()] for _ in range(chat.MAX_TOOL_ROUNDS)])
 
     with pytest.raises(ChatGenerationError):
@@ -206,7 +206,7 @@ def test_첫_라운드는_말로_때울_수_없어야_한다(fake_openai, monkey
     강제를 무시하고 말이 나오는 경우까지 여기서 함께 본다. 그때는 그 말을 **버리고**
     다시 묻는다 — 화면에 한 번 나가면 앱이 타이핑으로 찍어서 되돌릴 수 없다.
     """
-    monkeypatch.setattr(chat, "_dispatch", lambda db, name, raw: ("[]", []))
+    monkeypatch.setattr(chat, "_dispatch", lambda db, name, raw, *_: ("[]", []))
     calls = fake_openai(
         [
             # 규약 위반: 도구를 강제했는데 말로 답했다.
@@ -294,7 +294,7 @@ def test_라운드를_다_쓰면_가진_것으로_답한다(fake_openai, monkeyp
     `tool_choice="none"` 을 보내면 **가진 것으로 문장을 쓸 수밖에 없어** 그 경로가
     없어진다.
     """
-    monkeypatch.setattr(chat, "_dispatch", lambda db, name, raw: ("[]", []))
+    monkeypatch.setattr(chat, "_dispatch", lambda db, name, raw, *_: ("[]", []))
     rounds = [[_search_call()] for _ in range(chat.MAX_TOOL_ROUNDS - 1)]
     rounds.append([_chunk(content="세 곳 찾았어요.")])
     calls = fake_openai(rounds)
@@ -306,7 +306,7 @@ def test_라운드를_다_쓰면_가진_것으로_답한다(fake_openai, monkeyp
 
 def test_중지하면_다음_라운드로_가지_않는다(fake_openai, monkeypatch: pytest.MonkeyPatch) -> None:
     """제너레이터를 닫는 것이 앱의 중지 버튼이다. 남은 청크를 더 받지 않아야 한다."""
-    monkeypatch.setattr(chat, "_dispatch", lambda db, name, raw: ("[]", []))
+    monkeypatch.setattr(chat, "_dispatch", lambda db, name, raw, *_: ("[]", []))
     fake_openai(
         [
             [_search_call()],

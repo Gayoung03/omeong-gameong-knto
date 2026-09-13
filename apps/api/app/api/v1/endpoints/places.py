@@ -199,9 +199,7 @@ def list_place_tags(
 
 # /places/{place_id} 보다 먼저 등록한다. 순서가 뒤바뀌면 "me" 를 placeId(UUID)로
 # 읽으려다 422 가 난다.
-@router.get(
-    "/users/me/places", response_model=PlaceListResponse, summary="내가 등록한 장소"
-)
+@router.get("/users/me/places", response_model=PlaceListResponse, summary="내가 등록한 장소")
 def list_my_places(
     current_user: CurrentUser,
     db: DbSession,
@@ -335,9 +333,7 @@ def get_place(place_id: uuid.UUID, current_user: OptionalUser, db: DbSession) ->
     status_code=status.HTTP_201_CREATED,
     summary="나만의 장소 등록",
 )
-def create_place(
-    payload: PlaceCreate, current_user: CurrentUser, db: DbSession
-) -> PlaceDetail:
+def create_place(payload: PlaceCreate, current_user: CurrentUser, db: DbSession) -> PlaceDetail:
     place = Place(
         name=payload.name,
         category=payload.category,

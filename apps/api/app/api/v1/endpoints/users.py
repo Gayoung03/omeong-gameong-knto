@@ -126,9 +126,7 @@ def _reauthenticate_social(
     except SocialAuthError:
         raise HTTPException(status_code=401, detail="재인증이 필요합니다") from None
     except SocialProviderUnavailable:
-        raise HTTPException(
-            status_code=502, detail="소셜 제공처가 응답하지 않습니다"
-        ) from None
+        raise HTTPException(status_code=502, detail="소셜 제공처가 응답하지 않습니다") from None
 
     account = find_social_account(db, profile.provider, profile.provider_user_id)
     # 유효한 토큰이라도 다른 회원의 계정이면 거부한다(남의 토큰으로 탈퇴 방지).
@@ -141,9 +139,7 @@ def _reauthenticate_social(
     response_model=TravelPreferenceResponse,
     summary="기본 여행 취향 조회",
 )
-def get_travel_preference(
-    current_user: CurrentUser, db: DbSession
-) -> TravelPreferenceResponse:
+def get_travel_preference(current_user: CurrentUser, db: DbSession) -> TravelPreferenceResponse:
     preference = db.get(UserTravelPreference, current_user.id)
     if preference is None:
         # 취향을 한 번도 저장하지 않은 사용자. 명세는 행 존재를 전제하지만 빈 상태를

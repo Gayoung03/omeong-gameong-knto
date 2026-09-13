@@ -115,8 +115,7 @@ def main() -> None:
                 continue
             pending = db.execute(
                 text(
-                    "SELECT 1 FROM place_pet_policies "
-                    "WHERE id = :pk AND reliability_score IS NULL"
+                    "SELECT 1 FROM place_pet_policies WHERE id = :pk AND reliability_score IS NULL"
                 ),
                 {"pk": pk},
             ).first()

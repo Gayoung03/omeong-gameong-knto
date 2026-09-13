@@ -81,9 +81,7 @@ def plan_day(
         for index in range(activity_count)
     ]
     if dinner_required:
-        slots.append(
-            DaySlot("dinner", ScheduleItemType.RESTAURANT, DINNER_START, DINNER_START_BY)
-        )
+        slots.append(DaySlot("dinner", ScheduleItemType.RESTAURANT, DINNER_START, DINNER_START_BY))
     elif lunch_required:
         slots.append(DaySlot("lunch", ScheduleItemType.RESTAURANT, LUNCH_START, LUNCH_START_BY))
     return slots

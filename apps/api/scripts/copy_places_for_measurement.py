@@ -78,15 +78,12 @@ def main() -> None:
         with source_engine.connect() as source_conn:
             source_conn.execute(text("SET default_transaction_read_only = on"))
             for model in COPY_ORDER:
-                source_table = Table(
-                    model.__table__.name, source_meta, autoload_with=source_conn
-                )
+                source_table = Table(model.__table__.name, source_meta, autoload_with=source_conn)
                 rows = [dict(row._mapping) for row in source_conn.execute(select(source_table))]
                 if rows:
                     target.execute(insert(model.__table__), rows)
                 print(
-                    f"{model.__table__.name}: {len(rows)}행 복사 "
-                    f"(컬럼 {len(source_table.columns)})"
+                    f"{model.__table__.name}: {len(rows)}행 복사 (컬럼 {len(source_table.columns)})"
                 )
         source_engine.dispose()
         target.commit()

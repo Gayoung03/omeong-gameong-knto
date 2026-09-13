@@ -120,9 +120,7 @@ def _detail(db: Session, story: EditorialStory) -> AdminEditorialStoryDetail:
     )
 
 
-def _validate_schedule(
-    *, published_at: datetime | None, expires_at: datetime | None
-) -> None:
+def _validate_schedule(*, published_at: datetime | None, expires_at: datetime | None) -> None:
     if published_at is not None and expires_at is not None and expires_at <= published_at:
         raise HTTPException(
             status_code=422,

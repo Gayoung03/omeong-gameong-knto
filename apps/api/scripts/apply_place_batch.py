@@ -26,12 +26,20 @@ IN_DEFAULT = "infra/batch/place_batch_staging.json"
 # 화이트리스트: 이 테이블·컬럼만 UPDATE 허용(임의 컬럼 주입 차단).
 ALLOWED = {
     "place_pet_policies": {
-        "allowed_sizes", "max_weight_kg", "max_pets_per_person",
-        "muzzle_required", "food_area_allowed", "caution_note",
+        "allowed_sizes",
+        "max_weight_kg",
+        "max_pets_per_person",
+        "muzzle_required",
+        "food_area_allowed",
+        "caution_note",
     },
     "place_business_hours": {"opens_at", "closes_at"},
     "places": {
-        "check_in_time", "check_out_time", "category_detail", "business_hours_raw", "cuisine",
+        "check_in_time",
+        "check_out_time",
+        "category_detail",
+        "business_hours_raw",
+        "cuisine",
     },
 }
 

@@ -315,3 +315,52 @@ class TestLeadIn:
         from app.integrations.llm.chat import _lead_in
 
         assert _lead_in("- 대한항공 기내 가능") == ""
+
+
+class TestContextBreedCarryForward:
+    """이어지는 대화에서 모델이 견종을 빠뜨리면 **우리가 이어받는다.**
+
+    2026-09-13 측정에서 `gpt-4o-mini` 가 `"복서 갈 수 있나요"` → `"12kg이에요"` 의
+    두 번째 턴에서 `breed_name` 을 빼고 다시 조회했다. 회사별 목록을 우리가 붙이게
+    된 뒤로는 그 목록이 **"위탁 가능"이라고 말해** 더 위험해졌다 — 복서는 세 항공사에서
+    단두종으로 위탁 불가다.
+    """
+
+    def _fake_db(self, names):
+        """`find_known_breed` 가 보는 것만 흉내 낸다 — 견종 이름 목록 하나."""
+
+        class _Result:
+            def all(self_inner):
+                return names
+
+        class _DB:
+            def scalars(self_inner, _statement):
+                return _Result()
+
+        return _DB()
+
+    def test_대화에_나온_견종을_찾는다(self):
+        from app.rag.retrieval.guide_search import find_known_breed
+
+        db = self._fake_db(["복서", "퍼그", "불독"])
+        assert find_known_breed(db, "복서 데리고 갈 수 있나요?") == "복서"
+
+    def test_없으면_아무것도_돌려주지_않는다(self):
+        from app.rag.retrieval.guide_search import find_known_breed
+
+        db = self._fake_db(["복서", "퍼그"])
+        assert find_known_breed(db, "강아지랑 카페 갈래요") is None
+        assert find_known_breed(db, "") is None
+
+    def test_긴_이름을_먼저_맞춘다(self):
+        # `불테리어` 가 있는 글에서 `불독` 이나 짧은 이름을 먼저 집으면 안 된다.
+        from app.rag.retrieval.guide_search import find_known_breed
+
+        db = self._fake_db(["불독", "미니어쳐 불테리어"])
+        assert find_known_breed(db, "미니어쳐 불테리어 데려가요") == "미니어쳐 불테리어"
+
+    def test_괄호_주석은_떼고_돌려준다(self):
+        from app.rag.retrieval.guide_search import find_known_breed
+
+        db = self._fake_db(["퍼그(전 품종)"])
+        assert find_known_breed(db, "퍼그 괜찮나요") == "퍼그"

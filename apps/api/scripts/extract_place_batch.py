@@ -41,9 +41,7 @@ def _evidence(text: str, limit: int = 80) -> str:
 
 
 def _extract_policies(db, proposals, review):
-    rows = db.scalars(
-        select(PlacePetPolicy).where(PlacePetPolicy.notes.isnot(None))
-    ).all()
+    rows = db.scalars(select(PlacePetPolicy).where(PlacePetPolicy.notes.isnot(None))).all()
     for r in rows:
         kcisa, legacy = np.split_blocks(r.notes)
         primary = kcisa if kcisa is not None else (r.notes if legacy is None else None)
@@ -58,11 +56,16 @@ def _extract_policies(db, proposals, review):
             if kcisa is not None and legacy is not None:
                 vk, vl = fn(kcisa), fn(legacy)
                 if vk is not None and vl is not None and vk != vl:
-                    review.append({
-                        "table": "place_pet_policies", "pk": str(r.id), "column": col,
-                        "reason": "이중 시점 모순(KCISA vs 기존)",
-                        "kcisa": ser(vk), "legacy": ser(vl),
-                    })
+                    review.append(
+                        {
+                            "table": "place_pet_policies",
+                            "pk": str(r.id),
+                            "column": col,
+                            "reason": "이중 시점 모순(KCISA vs 기존)",
+                            "kcisa": ser(vk),
+                            "legacy": ser(vl),
+                        }
+                    )
                     continue
 
             chosen, method, block = None, None, None
@@ -72,43 +75,68 @@ def _extract_policies(db, proposals, review):
                 chosen, method, block = val_l, "regex:legacy_fallback", "legacy"
 
             if chosen is not None:
-                proposals.append({
-                    "table": "place_pet_policies", "pk": str(r.id), "column": col,
-                    "current": None, "proposed": ser(chosen),
-                    "reliability": 100, "method": method, "source_block": block,
-                    "evidence": _evidence(kcisa or legacy or r.notes),
-                })
+                proposals.append(
+                    {
+                        "table": "place_pet_policies",
+                        "pk": str(r.id),
+                        "column": col,
+                        "current": None,
+                        "proposed": ser(chosen),
+                        "reliability": 100,
+                        "method": method,
+                        "source_block": block,
+                        "evidence": _evidence(kcisa or legacy or r.notes),
+                    }
+                )
 
 
 def _extract_hours(db, proposals, review):
-    rows = db.scalars(
-        select(PlaceBusinessHour).where(PlaceBusinessHour.raw_text.isnot(None))
-    ).all()
+    rows = db.scalars(select(PlaceBusinessHour).where(PlaceBusinessHour.raw_text.isnot(None))).all()
     for r in rows:
         # 영업시간 opens/closes (place_business_hours)
         opens, closes = np.parse_hours(r.raw_text)
         if r.opens_at is None and opens is not None:
-            proposals.append({
-                "table": "place_business_hours", "pk": str(r.id), "column": "opens_at",
-                "current": None, "proposed": opens.isoformat(),
-                "reliability": 100, "method": "regex:hours", "evidence": _evidence(r.raw_text),
-            })
+            proposals.append(
+                {
+                    "table": "place_business_hours",
+                    "pk": str(r.id),
+                    "column": "opens_at",
+                    "current": None,
+                    "proposed": opens.isoformat(),
+                    "reliability": 100,
+                    "method": "regex:hours",
+                    "evidence": _evidence(r.raw_text),
+                }
+            )
         if r.closes_at is None and closes is not None:
-            proposals.append({
-                "table": "place_business_hours", "pk": str(r.id), "column": "closes_at",
-                "current": None, "proposed": closes.isoformat(),
-                "reliability": 100, "method": "regex:hours", "evidence": _evidence(r.raw_text),
-            })
+            proposals.append(
+                {
+                    "table": "place_business_hours",
+                    "pk": str(r.id),
+                    "column": "closes_at",
+                    "current": None,
+                    "proposed": closes.isoformat(),
+                    "reliability": 100,
+                    "method": "regex:hours",
+                    "evidence": _evidence(r.raw_text),
+                }
+            )
         # 숙박 체크인/아웃 (places) — raw_text 에 입실/퇴실이 있으면 그 장소로 제안
         cin, cout = np.parse_check_in_out(r.raw_text)
         for col, val in (("check_in_time", cin), ("check_out_time", cout)):
             if val is not None:
-                proposals.append({
-                    "table": "places", "pk": str(r.place_id), "column": col,
-                    "current": "?", "proposed": val.isoformat(),
-                    "reliability": 100, "method": "regex:checkinout",
-                    "evidence": _evidence(r.raw_text),
-                })
+                proposals.append(
+                    {
+                        "table": "places",
+                        "pk": str(r.place_id),
+                        "column": col,
+                        "current": "?",
+                        "proposed": val.isoformat(),
+                        "reliability": 100,
+                        "method": "regex:checkinout",
+                        "evidence": _evidence(r.raw_text),
+                    }
+                )
 
 
 def main() -> None:

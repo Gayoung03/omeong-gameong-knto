@@ -33,9 +33,7 @@ def _visible_now(now: datetime):
 
 def _reading_minutes(story: EditorialStory) -> int:
     characters = len(story.summary) + sum(
-        len(paragraph)
-        for section in story.sections
-        for paragraph in section.get("paragraphs", [])
+        len(paragraph) for section in story.sections for paragraph in section.get("paragraphs", [])
     )
     return max(1, round(characters / 500))
 

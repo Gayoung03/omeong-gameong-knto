@@ -40,16 +40,14 @@ DEFAULT_SLEEP_SECONDS = 0.11  # ≈9건/초 (카카오 초당 10건 제한 아�
 
 
 def parse_cuisine(category_name: str) -> str | None:
-    """"음식점 > 한식 > 해물,생선" → "한식". 음식점 분류가 아니면 None."""
+    """ "음식점 > 한식 > 해물,생선" → "한식". 음식점 분류가 아니면 None."""
     parts = [part.strip() for part in category_name.split(">")]
     if len(parts) < 2 or parts[0] != FOOD_TOP_LEVEL or not parts[1]:
         return None
     return parts[1][:CUISINE_MAX_LENGTH]
 
 
-def within_match_radius(
-    place_coord: tuple[float, float], doc_coord: tuple[float, float]
-) -> bool:
+def within_match_radius(place_coord: tuple[float, float], doc_coord: tuple[float, float]) -> bool:
     return haversine_m(place_coord, doc_coord) <= MATCH_RADIUS_M
 
 

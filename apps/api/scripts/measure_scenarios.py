@@ -219,9 +219,9 @@ def _travel_minutes(db: Session, route_id: uuid.UUID) -> int:
     items = {
         item.id: item
         for item in db.scalars(
-            select(RouteItem).join(RouteDay, RouteDay.id == RouteItem.route_day_id).where(
-                RouteDay.route_id == route_id
-            )
+            select(RouteItem)
+            .join(RouteDay, RouteDay.id == RouteItem.route_day_id)
+            .where(RouteDay.route_id == route_id)
         )
     }
     total = 0.0

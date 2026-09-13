@@ -99,9 +99,7 @@ def main() -> None:
                     print(f"    보존 재지정 {tbl}.{col}: {n}건")
                     any_action = True
                     if apply:
-                        db.execute(
-                            text(f"UPDATE {tbl} SET {col}=:tgt WHERE {col}=:src"), p
-                        )
+                        db.execute(text(f"UPDATE {tbl} SET {col}=:tgt WHERE {col}=:src"), p)
 
             # favorites 복합 UNIQUE(user_id, place_id)
             fav = _count(db, "SELECT count(*) FROM favorites WHERE place_id=:src", p)
@@ -133,9 +131,7 @@ def main() -> None:
             print("    시드본 is_active=false")
             any_action = True
             if apply:
-                db.execute(
-                    text("UPDATE places SET is_active=false WHERE id=:src"), p
-                )
+                db.execute(text("UPDATE places SET is_active=false WHERE id=:src"), p)
 
         if apply and any_action:
             db.commit()

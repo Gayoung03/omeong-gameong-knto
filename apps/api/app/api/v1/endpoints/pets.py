@@ -123,12 +123,8 @@ def update_pet(
     return _to_response(pet)
 
 
-@router.delete(
-    "/pets/{pet_id}", status_code=status.HTTP_204_NO_CONTENT, summary="반려동물 삭제"
-)
-def delete_pet(
-    pet_id: uuid.UUID, current_user: CurrentUser, db: DbSession
-) -> Response:
+@router.delete("/pets/{pet_id}", status_code=status.HTTP_204_NO_CONTENT, summary="반려동물 삭제")
+def delete_pet(pet_id: uuid.UUID, current_user: CurrentUser, db: DbSession) -> Response:
     pet = _load_active_pet(db, pet_id, current_user)
     was_primary = pet.is_primary
     pet.is_primary = False

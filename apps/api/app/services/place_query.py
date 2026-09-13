@@ -121,12 +121,9 @@ def distance_expr(latitude: float, longitude: float) -> ColumnElement[float]:
     `least(1, ...)` 로 감싼 이유 — 부동소수점 오차로 코사인 값이 1을 아주 살짝
     넘으면 acos 가 정의역을 벗어나 에러가 난다. 같은 좌표를 조회할 때 실제로 난다.
     """
-    cosine = (
-        func.cos(func.radians(latitude))
-        * func.cos(func.radians(Place.latitude))
-        * func.cos(func.radians(Place.longitude) - func.radians(longitude))
-        + func.sin(func.radians(latitude)) * func.sin(func.radians(Place.latitude))
-    )
+    cosine = func.cos(func.radians(latitude)) * func.cos(func.radians(Place.latitude)) * func.cos(
+        func.radians(Place.longitude) - func.radians(longitude)
+    ) + func.sin(func.radians(latitude)) * func.sin(func.radians(Place.latitude))
     return EARTH_RADIUS_METERS * func.acos(func.least(1, cosine))
 
 

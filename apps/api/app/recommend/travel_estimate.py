@@ -26,9 +26,7 @@ from app.recommend.tmap import RouteLeg
 
 Coordinate = tuple[float, float]
 
-CAR_TRANSPORTS = frozenset(
-    {TransportType.RENTAL_CAR, TransportType.OWN_CAR, TransportType.TAXI}
-)
+CAR_TRANSPORTS = frozenset({TransportType.RENTAL_CAR, TransportType.OWN_CAR, TransportType.TAXI})
 SUPPORTED_TRANSPORTS = CAR_TRANSPORTS | {TransportType.WALK}
 
 # 차량 추정 상수 (근거: 모듈 docstring).

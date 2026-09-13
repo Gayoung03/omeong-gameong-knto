@@ -101,9 +101,7 @@ class AdminEditorialAuditLog(Base):
     """관리자의 여행 이야기 수정·상태 변경 이력."""
 
     __tablename__ = "admin_editorial_audit_logs"
-    __table_args__ = (
-        Index("ix_admin_editorial_audit_story_created", "story_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_admin_editorial_audit_story_created", "story_id", "created_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     story_id: Mapped[uuid.UUID] = mapped_column(

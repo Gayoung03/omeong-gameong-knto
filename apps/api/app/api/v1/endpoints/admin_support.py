@@ -89,9 +89,7 @@ def _inquiry_detail(db: Session, inquiry: Inquiry) -> AdminInquiryDetail:
     )
 
 
-@router.get(
-    "/inquiries", response_model=AdminInquiryListResponse, summary="관리자 문의 목록"
-)
+@router.get("/inquiries", response_model=AdminInquiryListResponse, summary="관리자 문의 목록")
 def list_admin_inquiries(
     db: DbSession,
     _current_admin: CurrentAdmin,
@@ -170,9 +168,7 @@ def answer_admin_inquiry(
             status_code=status.HTTP_409_CONFLICT,
             detail="이미 답변이 등록된 문의입니다",
         )
-    inquiry_service.answer_inquiry(
-        db, inquiry, answer=payload.answer, actor_id=current_admin.id
-    )
+    inquiry_service.answer_inquiry(db, inquiry, answer=payload.answer, actor_id=current_admin.id)
     return _inquiry_detail(db, inquiry)
 
 
@@ -317,9 +313,7 @@ def list_admin_notices(
     )
 
 
-@router.get(
-    "/notices/{notice_id}", response_model=AdminNoticeDetail, summary="관리자 공지 상세"
-)
+@router.get("/notices/{notice_id}", response_model=AdminNoticeDetail, summary="관리자 공지 상세")
 def get_admin_notice(
     notice_id: uuid.UUID, db: DbSession, _current_admin: CurrentAdmin
 ) -> AdminNoticeDetail:
@@ -356,9 +350,7 @@ def create_admin_notice(
     return _notice_detail(db, notice)
 
 
-@router.patch(
-    "/notices/{notice_id}", response_model=AdminNoticeDetail, summary="공지 수정"
-)
+@router.patch("/notices/{notice_id}", response_model=AdminNoticeDetail, summary="공지 수정")
 def update_admin_notice(
     notice_id: uuid.UUID,
     payload: AdminNoticeUpdate,

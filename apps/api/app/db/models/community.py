@@ -239,9 +239,7 @@ class AdminInquiryAuditLog(Base):
     """관리자의 1:1 문의 답변 이력. AdminEditorialAuditLog 와 같은 모양이다."""
 
     __tablename__ = "admin_inquiry_audit_logs"
-    __table_args__ = (
-        Index("ix_admin_inquiry_audit_inquiry_created", "inquiry_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_admin_inquiry_audit_inquiry_created", "inquiry_id", "created_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     inquiry_id: Mapped[uuid.UUID] = mapped_column(
@@ -265,9 +263,7 @@ class AdminNoticeAuditLog(Base):
     """관리자의 공지 작성·수정·발행 이력."""
 
     __tablename__ = "admin_notice_audit_logs"
-    __table_args__ = (
-        Index("ix_admin_notice_audit_notice_created", "notice_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_admin_notice_audit_notice_created", "notice_id", "created_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     notice_id: Mapped[uuid.UUID] = mapped_column(

@@ -98,9 +98,7 @@ def validate(items: list[dict], valid_tag_codes: frozenset[str]) -> list[Validat
     return errors
 
 
-def resolve_coord(
-    item: dict, geocoder=geocode_address
-) -> tuple[Coordinate, bool]:
+def resolve_coord(item: dict, geocoder=geocode_address) -> tuple[Coordinate, bool]:
     """(좌표, 지오코딩했는지). 좌표가 있으면 그대로, 없으면 주소·장소명으로 찾는다."""
 
     latitude, longitude = item.get("latitude"), item.get("longitude")
@@ -143,9 +141,7 @@ def load_items(path: Path) -> list[dict]:
 
 
 def existing_places(db: Session) -> list[ExistingPlace]:
-    rows = db.execute(
-        select(Place.name, Place.latitude, Place.longitude, Place.is_active)
-    ).all()
+    rows = db.execute(select(Place.name, Place.latitude, Place.longitude, Place.is_active)).all()
     return [
         ExistingPlace(name, (float(latitude), float(longitude)), is_active)
         for name, latitude, longitude, is_active in rows

@@ -96,9 +96,7 @@ def pending_category_corrections(db: Session) -> list[CategoryCorrection]:
     return pending
 
 
-def apply_category_corrections(
-    db: Session, corrections: list[CategoryCorrection]
-) -> int:
+def apply_category_corrections(db: Session, corrections: list[CategoryCorrection]) -> int:
     changed = 0
     for correction in corrections:
         result = db.execute(

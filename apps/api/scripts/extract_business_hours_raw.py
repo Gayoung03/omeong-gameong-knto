@@ -61,9 +61,7 @@ def main() -> None:
         ]
         already = {
             str(pid)
-            for pid in db.scalars(
-                select(Place.id).where(Place.business_hours_raw.isnot(None))
-            )
+            for pid in db.scalars(select(Place.id).where(Place.business_hours_raw.isnot(None)))
         }
 
     single, multi = group_raw_texts(rows)

@@ -33,6 +33,7 @@ def _log_rejection(step: str, response: httpx.Response) -> None:
         detail = {"raw": response.text[:200]}
     logger.warning("카카오 %s 거부: status=%s %s", step, response.status_code, detail)
 
+
 KAKAO_AUTHORIZE_URL = "https://kauth.kakao.com/oauth/authorize"
 KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
 KAKAO_TOKEN_INFO_URL = "https://kapi.kakao.com/v1/user/access_token_info"

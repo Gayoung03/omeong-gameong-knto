@@ -262,9 +262,7 @@ def recent_history(db: Session, conversation_id: uuid.UUID, limit: int) -> list[
     return list(reversed(newest))
 
 
-def places_of(
-    db: Session, messages: Sequence[ChatMessage]
-) -> dict[uuid.UUID, ChatPlaceSummary]:
+def places_of(db: Session, messages: Sequence[ChatMessage]) -> dict[uuid.UUID, ChatPlaceSummary]:
     """이 페이지에 실린 메시지들이 언급한 장소를 **한 번에** 가져온다.
 
     `referenced_place_ids` 는 외래키가 아니라 단순 UUID 배열이라 참조 무결성이
@@ -272,9 +270,7 @@ def places_of(
     배열에서 사라진다고 명세에 적혀 있다(docs/api/chatbot.md).
     """
     place_ids = {
-        place_id
-        for message in messages
-        for place_id in (message.referenced_place_ids or [])
+        place_id for message in messages for place_id in (message.referenced_place_ids or [])
     }
     if not place_ids:
         return {}

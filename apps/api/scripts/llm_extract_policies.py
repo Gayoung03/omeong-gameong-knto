@@ -37,8 +37,14 @@ FREE_TEXT_HINTS = ("체고", "체중", "생후", "개월", "이내", "이하", "
 PII_RE = re.compile(r"(01[016-9][-\s]?\d{3,4}[-\s]?\d{4})|(\d{6}[-\s]?[1-4]\d{6})")
 
 # 추출 대상 컬럼(어휘 enum 제한은 LLM 스키마에서).
-LLM_FIELDS = ["allowed_sizes", "max_weight_kg", "max_pets_per_person",
-              "muzzle_required", "food_area_allowed", "caution_note"]
+LLM_FIELDS = [
+    "allowed_sizes",
+    "max_weight_kg",
+    "max_pets_per_person",
+    "muzzle_required",
+    "food_area_allowed",
+    "caution_note",
+]
 
 CAUTION_MAX = 150
 
@@ -58,11 +64,18 @@ def build_llm_proposals(pk: str, current: dict, llm_result: dict, evidence: str)
             continue
         if col == "caution_note":
             val = str(val)[:CAUTION_MAX]
-        proposals.append({
-            "table": "place_pet_policies", "pk": pk, "column": col,
-            "current": None, "proposed": val,
-            "reliability": 70, "method": "llm", "evidence": evidence[:80],
-        })
+        proposals.append(
+            {
+                "table": "place_pet_policies",
+                "pk": pk,
+                "column": col,
+                "current": None,
+                "proposed": val,
+                "reliability": 70,
+                "method": "llm",
+                "evidence": evidence[:80],
+            }
+        )
     return proposals
 
 
@@ -83,8 +96,10 @@ def _extraction_tool() -> dict:
                     "max_pets_per_person": {"type": ["integer", "null"]},
                     "muzzle_required": {"type": ["boolean", "null"]},
                     "food_area_allowed": {"type": ["boolean", "null"]},
-                    "caution_note": {"type": ["string", "null"],
-                                     "description": "핵심 주의사항 한 줄(≤150자), 없으면 null."},
+                    "caution_note": {
+                        "type": ["string", "null"],
+                        "description": "핵심 주의사항 한 줄(≤150자), 없으면 null.",
+                    },
                 },
                 "required": [],
             },
@@ -101,11 +116,14 @@ def _call_llm(text: str) -> dict:
         model="gpt-4o-mini",
         temperature=0,
         messages=[
-            {"role": "system", "content": (
-                "너는 반려동물 동반 정책 추출기다. 주어진 자유문에서 크기·무게·마리수·"
-                "입마개·식음료 공간 가능 여부·주의사항을 뽑는다. 문서에 없거나 불확실하면 "
-                "반드시 null(추측 금지). 개인정보·연락처는 절대 넣지 않는다."
-            )},
+            {
+                "role": "system",
+                "content": (
+                    "너는 반려동물 동반 정책 추출기다. 주어진 자유문에서 크기·무게·마리수·"
+                    "입마개·식음료 공간 가능 여부·주의사항을 뽑는다. 문서에 없거나 불확실하면 "
+                    "반드시 null(추측 금지). 개인정보·연락처는 절대 넣지 않는다."
+                ),
+            },
             {"role": "user", "content": text},
         ],
         tools=[_extraction_tool()],
@@ -159,12 +177,19 @@ def main() -> None:
 
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:
-        json.dump({
-            "note": "LLM 추출(reliability=70). 검수 후 apply --min-reliability 70.",
-            "processed": processed, "proposal_count": len(proposals),
-            "pii_flagged_count": len(pii_flagged),
-            "proposals": proposals, "pii_flagged": pii_flagged,
-        }, f, ensure_ascii=False, indent=2)
+        json.dump(
+            {
+                "note": "LLM 추출(reliability=70). 검수 후 apply --min-reliability 70.",
+                "processed": processed,
+                "proposal_count": len(proposals),
+                "pii_flagged_count": len(pii_flagged),
+                "proposals": proposals,
+                "pii_flagged": pii_flagged,
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
     print(f"LLM 처리 {processed}건 / 제안 {len(proposals)}건 / PII 제외 {len(pii_flagged)}건")
 
 

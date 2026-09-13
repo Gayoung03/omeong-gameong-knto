@@ -173,9 +173,7 @@ def build(
         )
 
         while (
-            remaining
-            and state.slot_count < day.places_per_day
-            and state.current_time < day.day_end
+            remaining and state.slot_count < day.places_per_day and state.current_time < day.day_end
         ):
             meal = _meal_slot_for(day, state)
             ctx = _slot_context(day, state, meal)

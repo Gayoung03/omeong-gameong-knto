@@ -92,9 +92,7 @@ def geocode_address(
             with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as owned_client:
                 documents = _search_documents(owned_client, KAKAO_ADDRESS_URL, query, headers)
                 if not documents:
-                    documents = _search_documents(
-                        owned_client, KAKAO_KEYWORD_URL, query, headers
-                    )
+                    documents = _search_documents(owned_client, KAKAO_KEYWORD_URL, query, headers)
         else:
             documents = _search_documents(client, KAKAO_ADDRESS_URL, query, headers)
             if not documents:

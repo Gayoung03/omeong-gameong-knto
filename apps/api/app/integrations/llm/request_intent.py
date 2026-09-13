@@ -27,9 +27,7 @@ class RequestIntent:
     preferred_tags: tuple[str, ...]
 
 
-def merge_preferred_tags(
-    existing: list[str] | None, extracted: tuple[str, ...]
-) -> frozenset[str]:
+def merge_preferred_tags(existing: list[str] | None, extracted: tuple[str, ...]) -> frozenset[str]:
     """기존 선택 태그와 추출 태그의 합집합 — 기존 값은 절대 사라지지 않는다."""
     return frozenset([*(existing or []), *extracted])
 

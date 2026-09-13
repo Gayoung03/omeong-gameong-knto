@@ -387,8 +387,8 @@ def _trace_dispatch(trace):
     """
     original = chat_module._dispatch
 
-    def traced(db, name, raw_arguments):
-        result, hits = original(db, name, raw_arguments)
+    def traced(db, name, raw_arguments, *args, **kwargs):
+        result, hits = original(db, name, raw_arguments, *args, **kwargs)
         trace.append(
             {
                 "tool": name,

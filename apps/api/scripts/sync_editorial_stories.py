@@ -130,9 +130,7 @@ def main() -> None:
                     )
                     .values(status=EditorialStoryStatus.ARCHIVED)
                 )
-            story = _save_story(
-                db, candidate, draft, day=now.date(), publish=args.publish
-            )
+            story = _save_story(db, candidate, draft, day=now.date(), publish=args.publish)
             print(f"{story.status.value}: {story.title}")
         db.commit()
     print(f"완료: {len(candidates)}건 ({'게시' if args.publish else '검수 대기'})")

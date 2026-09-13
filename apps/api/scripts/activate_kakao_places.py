@@ -86,9 +86,7 @@ def set_active(db: Session, place_ids: list[uuid.UUID], *, active: bool) -> int:
     """지정한 장소의 노출 여부를 바꾼다."""
     if not place_ids:
         return 0
-    result = db.execute(
-        update(Place).where(Place.id.in_(place_ids)).values(is_active=active)
-    )
+    result = db.execute(update(Place).where(Place.id.in_(place_ids)).values(is_active=active))
     return result.rowcount
 
 

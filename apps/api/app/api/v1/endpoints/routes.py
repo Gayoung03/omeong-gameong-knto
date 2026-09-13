@@ -786,14 +786,10 @@ def _fill_computed(
     return detail
 
 
-def _fill_day_weather(
-    db: Session, route: Route, detail: RouteDetail | SharedRouteDetail
-) -> None:
+def _fill_day_weather(db: Session, route: Route, detail: RouteDetail | SharedRouteDetail) -> None:
     """route_days.weather_snapshot_id 조인으로 각 하루의 weather 를 채운다(없으면 null)."""
     snapshot_ids = {
-        day.weather_snapshot_id
-        for day in route.route_days
-        if day.weather_snapshot_id is not None
+        day.weather_snapshot_id for day in route.route_days if day.weather_snapshot_id is not None
     }
     if not snapshot_ids:
         return

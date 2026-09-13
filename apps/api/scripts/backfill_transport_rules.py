@@ -130,9 +130,7 @@ def main() -> None:
 
         for row, col, val in plans:
             db.execute(
-                update(TransportPetRule)
-                .where(TransportPetRule.id == row.id)
-                .values(**{col: val})
+                update(TransportPetRule).where(TransportPetRule.id == row.id).values(**{col: val})
             )
         db.commit()
         print(f"완료: {len(plans)}건 반영.")

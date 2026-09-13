@@ -202,9 +202,9 @@ def _fetch_forecast_items(
     except (httpx.HTTPError, KeyError, TypeError, ValueError) as error:
         raise WeatherForecastError("기상청 단기예보 조회에 실패했습니다") from error
 
-    source_updated_at = datetime.combine(
-        base_date, datetime.min.time(), tzinfo=KST
-    ) + timedelta(hours=base_time)
+    source_updated_at = datetime.combine(base_date, datetime.min.time(), tzinfo=KST) + timedelta(
+        hours=base_time
+    )
     return items, source_updated_at
 
 

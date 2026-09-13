@@ -89,8 +89,6 @@ def create_inquiry(
 
 
 @router.get("/{inquiry_id}", response_model=InquiryDetail, summary="문의 상세")
-def get_inquiry(
-    inquiry_id: uuid.UUID, current_user: CurrentUser, db: DbSession
-) -> InquiryDetail:
+def get_inquiry(inquiry_id: uuid.UUID, current_user: CurrentUser, db: DbSession) -> InquiryDetail:
     inquiry = _own_inquiry_or_error(db, inquiry_id, current_user.id)
     return InquiryDetail.model_validate(inquiry)

@@ -78,6 +78,7 @@ from app.rag.retrieval.guide_search import (
     GuideHit,
     TransportRuleHit,
     Verdict,
+    find_known_breed,
     search_guides,
     search_transport_rules,
 )
@@ -674,7 +675,7 @@ def _breed_conclusions(hits: list[TransportRuleHit]) -> list[dict]:
     return conclusions
 
 
-def _run_transport_search(db: Session, raw_arguments: str) -> str:
+def _run_transport_search(db: Session, raw_arguments: str, context_text: str | None = None) -> str:
     try:
         arguments = json.loads(raw_arguments or "{}")
     except json.JSONDecodeError:
@@ -687,6 +688,15 @@ def _run_transport_search(db: Session, raw_arguments: str) -> str:
         if weight is not None and float(weight) <= 0:
             weight = None
         breed = (arguments.get("breed_name") or "").strip() or None
+        # **대화에서 이미 나온 견종은 우리가 이어받는다.** `gpt-4o-mini` 는 두 번째
+        # 턴에서 견종을 빼고 다시 조회한다(2026-09-13 실측). 그러면 회사별 목록이
+        # "위탁 가능"으로 나가는데, 그 아이는 단두종이라 실제로는 불가다.
+        #
+        # **모델이 견종을 말했으면 그쪽이 우선이다** — 견종을 바꿔 묻는 경우다.
+        # 찾는 것은 이 자리에서만 한다(대화 글을 받아 여기서 조회) — 장소 질문까지
+        # 매번 DB 를 한 번 더 때리지 않으려고 미루어 둔다.
+        if breed is None and context_text:
+            breed = find_known_breed(db, context_text)
         hits = search_transport_rules(
             db,
             carrier_type=(
@@ -792,18 +802,23 @@ def _transport_block(results: list[str]) -> tuple[str, str] | None:
     return rendered, closing
 
 
-def _dispatch(db: Session, name: str, raw_arguments: str) -> tuple[str, list[PlaceHit]]:
+def _dispatch(
+    db: Session, name: str, raw_arguments: str, context_text: str | None = None
+) -> tuple[str, list[PlaceHit]]:
     """모델이 부른 도구를 실행한다.
 
     장소 검색만 `PlaceHit` 을 함께 돌려준다 — 지도 핀을 찍는 것은 장소뿐이라
     나머지는 빈 목록이다.
+
+    `context_text` 는 **이번 질문과 지난 대화**다. 모델이 이어지는 질문에서 견종을
+    빠뜨리고 다시 조회할 때, 여기서 견종을 찾아 이어받는 데 쓴다.
     """
     if name == "search_places":
         return _run_search(db, raw_arguments)
     if name == "search_guides":
         return _run_guide_search(db, raw_arguments), []
     if name == "search_transport_rules":
-        return _run_transport_search(db, raw_arguments), []
+        return _run_transport_search(db, raw_arguments, context_text), []
     if name == ANSWER_DIRECTLY_NAME:
         # DB 를 건드리지 않는다. 다음 라운드에 할 일만 적어 준다.
         return "검색하지 않고 답합니다. 시스템 안내의 규칙대로 답변을 쓰세요.", []
@@ -881,6 +896,10 @@ def stream_answer(
 
     #: `search_transport_rules` 가 돌려준 것들. 답변 끝에 붙일 목록을 여기서 만든다.
     transport_results: list[str] = []
+
+    #: 이번 질문과 최근 대화. 모델이 견종을 빠뜨리고 다시 조회할 때 여기서 찾아 쓴다.
+    #: 질문을 앞에 두는 이유는 견종을 바꿔 물으면 그쪽이 답이기 때문이다.
+    context_text = "\n".join([question, *(m.get("content") or "" for m in reversed(history[-4:]))])
 
     try:
         for round_index in range(MAX_TOOL_ROUNDS):
@@ -963,7 +982,7 @@ def stream_answer(
                     }
                 )
                 for call in tool_calls.values():
-                    result, hits = _dispatch(db, call["name"], call["arguments"])
+                    result, hits = _dispatch(db, call["name"], call["arguments"], context_text)
                     seen.update({hit.place_id: hit for hit in hits})
                     if call["name"] == ANSWER_DIRECTLY_NAME:
                         declined_search = True

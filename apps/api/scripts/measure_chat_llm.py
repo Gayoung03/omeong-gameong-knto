@@ -520,7 +520,7 @@ def _ask(db, model: str, question: str) -> _Run:
     trace: list[dict] = []
     traced, original_dispatch = _trace_dispatch(trace)
 
-    def timed(db_, name, raw_arguments):
+    def timed(db_, name, raw_arguments, *args, **kwargs):
         """도구 한 번에 걸린 시간을 기록에 얹는다.
 
         `_trace_dispatch` 를 고치지 않고 한 겹 더 감싼다 — 저쪽은
@@ -528,7 +528,7 @@ def _ask(db, model: str, question: str) -> _Run:
         """
         started = time.perf_counter()
         try:
-            return traced(db_, name, raw_arguments)
+            return traced(db_, name, raw_arguments, *args, **kwargs)
         finally:
             if trace:
                 trace[-1]["seconds"] = time.perf_counter() - started

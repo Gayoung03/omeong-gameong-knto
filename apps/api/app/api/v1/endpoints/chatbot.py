@@ -270,9 +270,7 @@ def restore_conversation(
     지운 사이에 대화를 100개까지 새로 만들었다면 되살릴 자리가 없다. 조용히 상한을
     넘기지 않고 409 로 알린다 — 생성 거부와 같은 규칙이다.
     """
-    conversation = load_owned_conversation(
-        db, conversation_id, current_user, include_deleted=True
-    )
+    conversation = load_owned_conversation(db, conversation_id, current_user, include_deleted=True)
     if conversation.deleted_at is None:
         raise HTTPException(status_code=404, detail="휴지통에 없는 대화입니다")
 

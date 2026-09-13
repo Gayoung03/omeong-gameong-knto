@@ -118,9 +118,9 @@ class _DetailPageParser(HTMLParser):
 
     def body(self) -> str:
         lines = [re.sub(r"\s+", " ", line).strip() for line in "".join(self.text).splitlines()]
-        return "\n".join(
-            line for line in lines if line and line not in {"상세정보", "펼치기 +"}
-        )[:12_000]
+        return "\n".join(line for line in lines if line and line not in {"상세정보", "펼치기 +"})[
+            :12_000
+        ]
 
 
 def parse_contents(payload: object) -> tuple[list[VisitJejuContent], int]:
