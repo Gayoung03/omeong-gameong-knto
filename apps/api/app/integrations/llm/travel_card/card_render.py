@@ -70,8 +70,17 @@ _PLATE_MIN, _PLATE_SPAN = 45, 90
 #: 아주 어둡다. 모델이 지시를 무시하고 사진을 그려 보내면 여기서 걸린다.
 _PLATE_MAX_MEAN = 60
 
-#: 그림자. 밝은 하늘 위에서도 흰 글씨가 읽히게 한다.
-_SHADOW_GROW, _SHADOW_BLUR, _SHADOW_STRENGTH = 9, 4, 0.55
+#: 획을 아주 살짝 부풀린다. 검은 판에 그은 획은 사진 위에 얹으면 가늘어 보인다.
+#:
+#: `MaxFilter` 는 홀수 크기만 받아서 제일 약한 값이 한 쪽당 1픽셀이고, 그것도 두껍다 —
+#: 글자 크기를 참고 카드에 맞춰 줄이고 나니 더 그렇다. 그래서 흐리게 만든 뒤 문턱을
+#: 낮춰 되살리는 방법을 쓴다. 흐림 반경과 문턱으로 **1픽셀보다 작게** 조절할 수 있다.
+#: 이 값으로 획 두께가 약 25% 늘어난다(합성 전 획 4px 기준 실측).
+_INK_BLUR, _INK_FLOOR, _INK_SPAN = 1.2, 40, 100
+
+#: 그림자. 밝은 하늘 위에서도 흰 글씨가 읽히게 한다. 진하면 글씨 둘레가 지저분해지고
+#: 획이 더 가늘어 보여서, 넓게 퍼뜨리되 옅게 깐다.
+_SHADOW_GROW, _SHADOW_BLUR, _SHADOW_STRENGTH = 5, 6, 0.38
 _SHADOW_COLOR = (30, 30, 35)
 
 
@@ -136,6 +145,12 @@ def _prepare(original: ImageInput, card_png: bytes) -> tuple[Image.Image, Image.
     return base.resize(target, Image.LANCZOS), card.resize(target, Image.LANCZOS)
 
 
+def _thicken(ink: Image.Image) -> Image.Image:
+    """획을 1픽셀보다 작은 폭으로 부풀린다."""
+    spread = ink.filter(ImageFilter.GaussianBlur(_INK_BLUR))
+    return ImageChops.lighter(ink, _ramp(spread, _INK_FLOOR, _INK_SPAN))
+
+
 def _paint(base: Image.Image, ink: Image.Image) -> bytes:
     """마스크대로 원본에 그림자를 깔고 흰 획을 얹어 PNG 로 굽는다."""
     target = base.size
@@ -176,7 +191,7 @@ def compose_from_plate(original: ImageInput, plate_png: bytes) -> bytes:
         )
 
     ink = _ramp(gray, _PLATE_MIN, _PLATE_SPAN).filter(ImageFilter.MedianFilter(3))
-    return _paint(base, ink)
+    return _paint(base, _thicken(ink))
 
 
 def save_mask(original: ImageInput, card_png: bytes, path) -> None:

@@ -220,3 +220,48 @@ def normalize(image: ImageInput) -> ImageInput:
     return ImageInput(
         data=buffer.getvalue(), mime_type="image/jpeg", width=width, height=height
     )
+
+
+def fit_canvas(image: ImageInput, canvas: str) -> ImageInput:
+    """사진을 **이미지 모델이 그릴 캔버스와 같은 비율**로 잘라낸다.
+
+    ## 왜 잘라야 하는가
+
+    모델이 그릴 수 있는 캔버스는 1:1, 3:2, 2:3 셋뿐인데 사진 비율은 제각각이다.
+    그래서 2:3 캔버스에 그린 손글씨를 3:4 사진에 얹으려면 가로로 늘여야 했고,
+    **글자가 12~16% 늘어나거나 눌렸다**(2026-09-13 실측). 획 두께가 세로만 그대로라
+    글씨가 묘하게 어색해지는데, 원인을 짚기는 어렵고 눈에는 계속 걸린다.
+
+    먼저 잘라 두면 레이어와 사진이 1:1 로 맞아 왜곡이 0 이 된다.
+
+    자르는 편이 나은 이유가 하나 더 있다. 모델은 잘린 사진을 보고 그 화면에 맞춰
+    메모 자리를 잡는다. 우리가 나중에 비율을 바꾸면 **모델이 의도한 자리와 실제 자리가
+    어긋난다.** 같은 화면을 보고 같은 화면에 그리게 하는 것이 맞다.
+    """
+    try:
+        width, height = (int(v) for v in canvas.split("x"))
+    except ValueError as error:
+        raise UnreadableImage(f"캔버스 크기를 읽지 못했습니다: {canvas}") from error
+
+    ratio = width / height
+    try:
+        with Image.open(io.BytesIO(image.data)) as opened:
+            picture = opened.convert("RGB")
+            if picture.width / picture.height > ratio:
+                keep = round(picture.height * ratio)
+                left = (picture.width - keep) // 2
+                picture = picture.crop((left, 0, left + keep, picture.height))
+            else:
+                keep = round(picture.width / ratio)
+                top = (picture.height - keep) // 2
+                picture = picture.crop((0, top, picture.width, top + keep))
+
+            buffer = io.BytesIO()
+            picture.save(buffer, "JPEG", quality=92, optimize=True)
+            size = picture.size
+    except Exception as error:  # noqa: BLE001
+        raise UnreadableImage(f"사진을 자르지 못했습니다: {error}") from error
+
+    return ImageInput(
+        data=buffer.getvalue(), mime_type="image/jpeg", width=size[0], height=size[1]
+    )

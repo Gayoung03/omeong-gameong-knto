@@ -15,7 +15,7 @@ import time
 from collections.abc import Callable
 
 from . import caption, card_render, image_edit, prompts, vision
-from .image_io import UnreadableImage, load_image, normalize, read_png_size
+from .image_io import UnreadableImage, fit_canvas, load_image, normalize, read_png_size
 from .types import CardOutcome, CardResult, WritingStyle
 
 _MESSAGES = {
@@ -49,6 +49,7 @@ def build_card(
     place_description: str | None = None,
     date_text: str | None = None,
     ink_plate: bool = False,
+    loose: bool = False,
 ) -> CardResult:
     """사진 바이트 하나로 카드 PNG 를 만든다.
 
@@ -62,6 +63,10 @@ def build_card(
         source = load_image(data)
         # 겉만 JPEG 인 휴대폰 사진(MPO 등)이 여기서 걸러진다. image_io.normalize 참고.
         image = normalize(source)
+        # **분석·생성·합성이 전부 같은 화면을 본다.** 모델이 그릴 캔버스 비율로 먼저
+        # 잘라 두지 않으면 나중에 손글씨를 가로로 늘이게 된다(image_io.fit_canvas 참고).
+        canvas = image_edit.pick_size(image)
+        image = fit_canvas(image, canvas)
     except UnreadableImage as error:
         return CardResult(
             outcome=CardOutcome.UNREADABLE_IMAGE,
@@ -117,6 +122,7 @@ def build_card(
         place_name=place_name,
         date_text=date_text,
         ink_plate=ink_plate,
+        loose=loose,
     )
 
     # --- 4. 이미지 편집 ---------------------------------------------------
@@ -165,7 +171,7 @@ def build_card(
         generated_png=generated,
         source_size=f"{source.width}x{source.height}",
         upload_size=f"{image.width}x{image.height}",
-        requested_size=image_edit.pick_size(image),
+        requested_size=canvas,
         generated_size=read_png_size(generated),
         result_size=read_png_size(png),
         analysis=analysis,

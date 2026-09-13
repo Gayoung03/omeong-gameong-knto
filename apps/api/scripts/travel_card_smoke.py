@@ -73,10 +73,16 @@ def _print_memos(result) -> None:
         print(f"     {i:2}. {memo}  ({len(memo)}자){mark}")
 
 
-def run_one(path: Path, style: WritingStyle, args) -> bool:
+def run_one(path: Path, style: WritingStyle, args, attempt: int = 1) -> bool:
+    # 같은 사진을 두 배치로 돌려 나란히 볼 수 있게 파일 이름을 갈라 둔다.
+    # 덮어쓰면 비교할 것이 남지 않는다.
+    stem = f"{path.stem}-{style.value}-{'loose' if args.loose else 'strict'}"
+    if args.repeat > 1:
+        stem += f"-{attempt}"
+
     print()
     print("=" * 72)
-    print(f"사진: {path.name}    말투: {STYLE_LABEL[style]}")
+    print(f"사진: {path.name}    말투: {STYLE_LABEL[style]}    배치: {stem.rsplit('-', 1)[-1]}")
     print("=" * 72)
 
     try:
@@ -94,6 +100,7 @@ def run_one(path: Path, style: WritingStyle, args) -> bool:
         place_description=args.place_desc,
         date_text=args.date,
         ink_plate=args.ink_plate,
+        loose=args.loose,
     )
     total = time.perf_counter() - started
 
@@ -124,9 +131,9 @@ def run_one(path: Path, style: WritingStyle, args) -> bool:
         return False
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out = OUT_DIR / f"{path.stem}-{style.value}.png"
+    out = OUT_DIR / f"{stem}.png"
     out.write_bytes(result.png)
-    prompt_path = OUT_DIR / f"{path.stem}-{style.value}.prompt.txt"
+    prompt_path = OUT_DIR / f"{stem}.prompt.txt"
     prompt_path.write_text(result.prompt, encoding="utf-8")
     print(f"   저장: {out}  ({len(result.png) // 1024}KB)")
     print(f"   프롬프트: {prompt_path}")
@@ -135,7 +142,7 @@ def run_one(path: Path, style: WritingStyle, args) -> bool:
     # 합성할 수 있다 — 이게 없으면 눈금 하나 바꿀 때마다 카드값이 다시 나간다.
     if result.generated_png:
         suffix = "레이어" if args.ink_plate else "생성원판"
-        raw = OUT_DIR / f"{path.stem}-{style.value}-{suffix}.png"
+        raw = OUT_DIR / f"{stem}-{suffix}.png"
         raw.write_bytes(result.generated_png)
         print(f"   생성 원판: {raw}  (합성 전)")
     return True
@@ -152,6 +159,17 @@ def main() -> int:
         "--ink-plate",
         action="store_true",
         help="사진 대신 '검은 바탕 + 흰 손글씨' 레이어를 받아 원본에 얹는다.",
+    )
+    parser.add_argument(
+        "--loose",
+        action="store_true",
+        help="배치·화살표 지시를 09-10 의 짧은 세 줄로 되돌린다(비교용).",
+    )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="같은 설정으로 몇 번 돌릴지. 모델이 확률적이라 한 장으로는 판단이 어렵다.",
     )
     parser.add_argument(
         "--style",
@@ -173,18 +191,21 @@ def main() -> int:
     print(f"      image={config.IMAGE_MODEL}  quality={config.IMAGE_QUALITY}")
     if args.ink_plate:
         print("      손글씨 레이어 모드 — 검은 바탕에 흰 글씨만 받아 원본에 얹습니다.")
+    print(f"      배치 지시  {'느슨(09-10)' if args.loose else '빡빡(현재)'}")
     if "mini" in config.IMAGE_MODEL:
         print("      ⚠️  mini 는 작은 글씨의 한글이 깨집니다(2026-09-10 실측). 확인용으로만.")
-    print(f"예상 비용  카드 1장당 약 ${usd:.4f} (~{krw}원) · 총 {len(args.photos) * len(styles)}장")
+    planned = len(args.photos) * len(styles) * max(1, args.repeat)
+    print(f"예상 비용  카드 1장당 약 ${usd:.4f} (~{krw}원) · 총 {planned}장 (~{krw * planned}원)")
     print("           ※ 어림값입니다. 실제 청구액은 OpenAI 대시보드에서 확인하세요.")
 
     made = 0
     for path in args.photos:
         for style in styles:
-            if run_one(path, style, args):
-                made += 1
+            for attempt in range(1, max(1, args.repeat) + 1):
+                if run_one(path, style, args, attempt):
+                    made += 1
 
-    total_cards = len(args.photos) * len(styles)
+    total_cards = len(args.photos) * len(styles) * max(1, args.repeat)
     print()
     print("=" * 72)
     print(f"완료: {made}/{total_cards}장 생성")

@@ -353,8 +353,10 @@ def test_stroke_gets_a_shadow_so_it_reads_on_bright_backgrounds():
     original = _photo((1200, 900), bright)
     out = _composed(card_render.compose(original, _card((1200, 900), (120, 120, 120), stroke=True)))
 
-    beside = out.getpixel((out.width // 2, out.height // 2 + 11))
-    assert max(beside) < 200, f"획 둘레에 그림자가 없다: {beside}"
+    beside = out.getpixel((out.width // 2, out.height // 2 + 9))
+    # 진하면 글씨 둘레가 지저분해지므로 세기가 아니라 **있고 없음**을 잠근다.
+    assert max(beside) < max(bright) - 25, f"획 둘레에 그림자가 없다: {beside}"
+    assert max(beside) > 90, f"그림자가 너무 진해 글씨 둘레가 지저분하다: {beside}"
 
 
 def test_bright_thin_things_already_in_the_photo_are_not_mistaken_for_handwriting():
@@ -499,36 +501,37 @@ def test_plain_string_memos_still_load():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "bad",
-    ["삼다수길에서 즐거운 시간", "아부오름에서의 여유", "협재의 푸른 풍경", "오늘의 산책"],
-)
-def test_noun_titles_are_replaced_by_a_memo_with_a_proper_ending(bad):
-    memos = [Memo("모자 쓴 사람과 서 있었수다"), Memo("자갈길 걸으니 기분이 좋수다")]
-    title, rest = caption._pick_title(bad, memos, WritingStyle.JEJU_DIALECT)
-
-    assert title == "모자 쓴 사람과 서 있었수다"
-    assert [m.text for m in rest] == ["자갈길 걸으니 기분이 좋수다"]
-
-
-def test_a_title_that_already_ends_properly_is_kept():
+def test_noun_titles_are_kept():
+    """좋다는 평을 받은 카드의 제목이 명사로 끝났다 — 요구받은 적 없는 기준으로
+    멀쩡한 제목을 걸러내고 있었다(2026-09-13).
+    """
     memos = [Memo("자갈길 걸으니 기분이 좋수다")]
-    for style, good in [
-        (WritingStyle.JEJU_DIALECT, "삼다수길에서 신났수다"),
-        (WritingStyle.DOG_DIARY, "털봉이 갑선이에서 놀았댕"),
-    ]:
-        title, rest = caption._pick_title(good, memos, style)
+    for good in ("삼다수길에서 즐긴 햇살", "신창해안도로에서 즐거운 오후"):
+        title, rest = caption._pick_title(good, memos)
         assert title == good
         assert rest == memos
 
 
-def test_title_survives_even_when_nothing_matches():
-    """제목 없는 카드보다는 어색한 제목이 낫다."""
-    memos = [Memo("좋은 하루")]
-    title, rest = caption._pick_title("오늘의 산책", memos, WritingStyle.JEJU_DIALECT)
+def test_missing_or_overlong_title_is_replaced_by_the_first_memo():
+    memos = [Memo("자갈길 걸으니 기분이 좋수다"), Memo("햇빛이 좋수다")]
 
-    assert title == "오늘의 산책"
-    assert rest == memos
+    title, rest = caption._pick_title("", memos)
+    assert title == "자갈길 걸으니 기분이 좋수다"
+    assert [m.text for m in rest] == ["햇빛이 좋수다"]
+
+    long_title, _ = caption._pick_title("스물한 글자가 넘어가는 아주아주 긴 제목이우다", memos)
+    assert long_title == "자갈길 걸으니 기분이 좋수다"
+
+
+def test_caption_rules_carry_the_examples_the_owner_liked():
+    """참고 카드의 좋은 줄을 그대로 목표로 박아 둔다."""
+    jeju = caption.build_system_prompt(WritingStyle.JEJU_DIALECT, None)
+    dog = caption.build_system_prompt(WritingStyle.DOG_DIARY, "털봉")
+
+    assert "숲속이 참 시원허우다" in jeju
+    assert "파도 소리 들으니까 졸렸개" in dog
+    # target 때문에 문장이 사물 나열로 흐르던 문제.
+    assert "좋은 문장을 먼저 쓰고" in jeju
 
 
 def test_caption_rules_ban_photo_describing_lines():
@@ -638,3 +641,75 @@ def test_normalize_leaves_small_photos_at_their_size():
     ready = image_io.normalize(image_io.load_image(buffer.getvalue()))
 
     assert (ready.width, ready.height) == (800, 600)
+
+
+# ---------------------------------------------------------------------------
+# 배치 지시 두 벌 — 어느 쪽이 나은지는 눈으로 봐야 안다
+# ---------------------------------------------------------------------------
+
+
+def test_loose_layout_restores_the_short_09_10_wording():
+    text = _text(memos=["자갈길 걸으니 좋수다"], targets=["자갈길"])
+    loose = prompts.build(PhotoKind.SCENERY, WritingStyle.JEJU_DIALECT, text, loose=True)
+
+    assert "사진의 여백을 찾아 메모를 배치해줘" in loose
+    assert "부드러운 곡선 점선으로 시선을 각 아이템으로 유도해줘" in loose
+    # 스무 줄짜리 계약은 통째로 빠진다 — 그게 이 모드의 요점이다.
+    assert "허공에서 시작하면 안 된다" not in loose
+    assert "하늘 이야기가 발밑에 놓이면" not in loose
+
+
+def test_loose_layout_drops_the_target_annotations_and_their_note():
+    """괄호 표기가 없는데 그 설명만 남으면 모델이 헷갈린다."""
+    text = _text(memos=["자갈길 걸으니 좋수다"], targets=["자갈길"])
+    loose = prompts.build(PhotoKind.SCENERY, WritingStyle.JEJU_DIALECT, text, loose=True)
+
+    assert "· 자갈길 걸으니 좋수다" in loose
+    assert "가리킬 것" not in loose
+    assert "화살표 없음" not in loose
+
+
+def test_both_layouts_keep_the_hangul_guard_and_the_plate_rules():
+    """배치만 갈라지고 나머지는 같아야 한다 — 아니면 비교가 성립하지 않는다."""
+    text = _text(memos=["자갈길 걸으니 좋수다"])
+    for loose in (True, False):
+        prompt = prompts.build(
+            PhotoKind.SCENERY, WritingStyle.JEJU_DIALECT, text, ink_plate=True, loose=loose
+        )
+        assert "온전한 음절" in prompt
+        assert "완전한 검정" in prompt
+        assert "번호나 불릿을 그리지 마" in prompt
+
+
+
+# ---------------------------------------------------------------------------
+# 캔버스 비율 맞추기 — 글자가 가로로 늘어나던 문제(2026-09-13)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("photo", "canvas"),
+    [((3024, 4032), "1024x1536"), ((4032, 3024), "1536x1024"), ((2000, 2000), "1024x1024")],
+)
+def test_photo_is_cropped_to_the_canvas_ratio_before_upload(photo, canvas):
+    """모델이 그릴 캔버스와 사진 비율이 다르면 손글씨를 가로로 늘여 얹게 된다."""
+    buffer = io.BytesIO()
+    Image.new("RGB", photo, (90, 140, 200)).save(buffer, "JPEG")
+    ready = image_io.normalize(image_io.load_image(buffer.getvalue()))
+
+    fitted = image_io.fit_canvas(ready, canvas)
+    width, height = (int(v) for v in canvas.split("x"))
+
+    assert fitted.width / fitted.height == pytest.approx(width / height, abs=0.005)
+
+
+def test_fitted_photo_and_plate_compose_without_stretching_the_letters():
+    buffer = io.BytesIO()
+    Image.new("RGB", (3024, 4032), (90, 140, 200)).save(buffer, "JPEG")
+    ready = image_io.fit_canvas(
+        image_io.normalize(image_io.load_image(buffer.getvalue())), "1024x1536"
+    )
+
+    out = _composed(card_render.compose_from_plate(ready, _plate((1024, 1536))))
+
+    assert out.width / out.height == pytest.approx(1024 / 1536, abs=0.005)

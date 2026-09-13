@@ -38,6 +38,18 @@ _COMMON_RULES = f"""[재료는 itemsInPhoto 뿐이다 — 가장 중요]
 - 표정이 items 에 없으면 표정을 쓰지 마라. "웃는" 을 임의로 붙이지 않는다.
 - 재료가 모자라면 **메모를 적게 쓴다.** 지어내는 것보다 여덟 줄 대신 다섯 줄이 낫다.
 
+[이런 줄을 목표로 한다 — 실제로 좋다는 평을 받은 카드에서 가져왔다]
+제주 방언:
+    "숲속이 참 시원허우다"        "흐린 날씨도 나쁘지 않수다"
+    "혼자서 편안히 쉬었수다"       "나무 다리 위에서 바람을 느껴봤수다"
+    "서로 팔 벌리고 신났수다"      "삼다수길 참 조용하구만"
+강아지 일기:
+    "파도 소리 들으니까 졸렸개"    "모래사장에서 신나게 뛰었댕"
+    "내 털이 바람에 날렸댕"        "푸른 바다 보니 더 신났댕"
+    "입 벌리고 바람을 만끽했멍"
+공통점을 보라. **몸으로 느낀 것**(시원하다·졸리다·바람)과 **그때 한 일**(쉬었다·
+뛰었다·팔 벌렸다)로 되어 있다. 사진에 무엇이 있는지 세지 않는다.
+
 [사진 설명이 아니라 그날의 기억을 쓴다 — 가장 중요]
 **보면 아는 것은 쓰지 마라.** 일행이 함께 서 있는 것, 잔디 위에 서 있는 것, 나무
 사이에 있는 것은 사진을 보면 안다. 그걸 글로 또 적으면 읽는 사람에게 남는 것이 없다.
@@ -52,7 +64,11 @@ _COMMON_RULES = f"""[재료는 itemsInPhoto 뿐이다 — 가장 중요]
 - 한 달 뒤에 이 카드를 다시 봤을 때 **그날이 떠오르는 말**인지 스스로 물어라.
   "사람과 함께 서 있었다" 로는 아무 날도 떠오르지 않는다.
 
-[메모마다 '가리킬 것(target)' 을 정한다]
+[메모마다 '가리킬 것(target)' 을 정한다 — **문장을 먼저 쓰고 나서**]
+- **순서가 중요하다. 좋은 문장을 먼저 쓰고, 그 다음에 가리킬 것이 있는지 본다.**
+  가리킬 것을 찾으려고 문장을 사물 이름 쪽으로 바꾸지 마라. 그렇게 하면
+  "높은 산이 배경에 있어 멋지우다" 같은 사물 나열이 된다. target 이 없어도 좋은
+  문장이 낫다 — 화살표는 없어도 카드가 성립한다.
 - 각 메모에 `target` 을 붙인다. **itemsInPhoto 에 적힌 문구 중 하나를 그대로 옮긴다.**
   카드에서 그 메모부터 그 대상까지 화살표가 그어진다.
 - **한 지점을 콕 집을 수 없으면 `target` 은 null 이다.**
@@ -76,20 +92,9 @@ _COMMON_RULES = f"""[재료는 itemsInPhoto 뿐이다 — 가장 중요]
 - 제목은 그날을 한마디로 요약한다. 메모와 다른 종류의 글이다. **6~12자로 짧게.**
   길수록 이미지에서 글자가 깨진다. 실제로 긴 제목에서 한 글자가 깨진 적이 있다.
 
-- **제목은 반드시 서술어로 끝난다. 명사로 끝내면 안 된다.**
-  아래 틀은 전부 금지다. 장소명을 앞에 두면 자꾸 이 틀로 흘러가니 조심해라.
-      "OO에서의 XX"      "OO에서 즐긴 XX"     "OO의 XX"
-      "OO에서 XX한 시간"  "OO에서 즐거운 XX"
-  실제로 이렇게 나왔던 나쁜 제목들이다:
-      "신창해안도로에서의 한가로움"  "삼다수길에서 즐긴 햇살"
-      "아부오름에서의 여유"         "협재의 푸른 풍경"   "오늘의 산책"
-  이렇게 써라:
-      "한라산에서 신났수다"   "아부오름 바람이 좋수다"
-      "털봉이 애월에서 놀았댕"  "오늘 진짜 신났댕"
-  **장소명을 다 넣지 않아도 된다.** 제목이 길어지면 장소명을 줄이거나 빼라 —
-  장소는 어차피 상단 여백에 따로 적힌다.
-- **모든 줄을 명사로 끝내지 마라.** "잔물결 소리 듣는 중" 처럼 명사형으로 쓰고
-  어미만 얹으면 반쪽짜리가 된다. 처음부터 서술어로 쓴다.
+- **메모는** "잔물결 소리 듣는 중" 처럼 명사형으로 쓰고 어미만 얹지 마라.
+  처음부터 서술어로 쓴다. (제목은 예외다 — "삼다수길에서 즐긴 햇살" 처럼 명사로
+  끝나도 좋다.)
 - 각 메모는 6~16자. 길면 이미지에서 글자가 깨진다.
 - 다정한 일기체·혼잣말 톤. 완결된 말로 쓴다.
 - 메모의 대부분은 사진 속 내용과 분위기로 채운다.
@@ -185,33 +190,20 @@ _DOG_RULES = """[말투 — 강아지 일기]
 """
 
 
-#: 말투별로 제목이 끝날 수 있는 어미.
-#:
-#: "명사로 끝내지 마라" 를 프롬프트에 아무리 세게 써도 "삼다수길에서 즐거운 시간",
-#: "아부오름에서의 여유" 같은 제목이 계속 샌다(2026-09-12). 프롬프트가 못 막는 것은
-#: 코드가 막는다 — 어미 하나만 보면 되는 판정이라 여기서 끝낼 수 있다.
-_TITLE_ENDINGS = {
-    WritingStyle.JEJU_DIALECT: ("수다", "우다", "마씸"),
-    WritingStyle.DOG_DIARY: ("댕", "개", "멍"),
-}
+def _pick_title(raw: Any, memos: list[Memo]) -> tuple[str, list[Memo]]:
+    """제목과 남은 메모를 고른다. 제목이 없거나 너무 길면 첫 메모를 올린다.
 
-
-def _pick_title(raw: Any, memos: list[Memo], style: WritingStyle) -> tuple[str, list[Memo]]:
-    """제목과 남은 메모를 고른다.
-
-    제목이 말투의 어미로 끝나지 않으면 버리고, 조건에 맞는 메모를 제목 자리로 올린다.
+    한때 "명사로 끝나는 제목은 버린다" 는 검사가 여기 있었는데 **뺐다.**
+    좋다는 평을 받은 카드의 제목이 "삼다수길에서 즐긴 햇살", "신창해안도로에서
+    즐거운 오후" 처럼 명사로 끝났다(2026-09-13). 요구받은 적 없는 기준으로
+    멀쩡한 제목을 걸러내고 있었다.
     """
-    endings = _TITLE_ENDINGS[style]
     title = " ".join(str(raw or "").split())
-    if title and len(title) <= 20 and title.endswith(endings):
+    if title and len(title) <= 20:
         return title, memos
-
-    for index, memo in enumerate(memos):
-        if memo.text.endswith(endings):
-            return memo.text, memos[:index] + memos[index + 1 :]
-
-    # 조건에 맞는 줄이 하나도 없으면 원래 제목이라도 쓴다. 제목 없는 카드보다 낫다.
-    return title or (memos[0].text if memos else ""), memos
+    if memos:
+        return memos[0].text, memos[1:]
+    return title, memos
 
 
 class CaptionError(Exception):
@@ -263,7 +255,8 @@ def _coerce_memos(payload: Any, items: list[str]) -> list[Memo]:
         else:
             text, target = " ".join(str(value).split()), None
         # 너무 긴 줄은 버린다. 자르면 말이 끊겨 더 이상해진다.
-        if not text or len(text) > 24:
+        # 길면 이미지에서 두 줄로 접히며 자리를 많이 먹는다. 참고 카드의 줄은 전부 짧다.
+        if not text or len(text) > 20:
             continue
         if target not in known or target in used:
             target = None
@@ -318,5 +311,5 @@ def generate(
     if len(memos) < 3:
         raise CaptionError(f"메모가 너무 적습니다 ({len(memos)}개)")
 
-    title, memos = _pick_title(payload.get("title"), memos, style)
+    title, memos = _pick_title(payload.get("title"), memos)
     return CardText(title=title, memos=memos)
