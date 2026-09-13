@@ -533,31 +533,45 @@ def _carrier_conclusions(hits: list[TransportRuleHit]) -> list[dict]:
     """
     conclusions = []
     for hit in hits:
-        cabin = _leg_phrase(
-            "기내",
-            hit.cabin_allowed,
-            hit.cabin_verdict,
-            float(hit.cabin_max_weight_kg) if hit.cabin_max_weight_kg is not None else None,
-            hit.cabin_weight_unlimited,
-        )
-        cargo = _leg_phrase(
-            "위탁",
-            hit.cargo_allowed,
-            hit.cargo_verdict,
-            float(hit.cargo_max_weight_kg) if hit.cargo_max_weight_kg is not None else None,
-            hit.cargo_weight_unlimited,
-        )
-        text = f"{cabin}, {cargo}"
+        is_ferry = hit.carrier_type is CarrierType.FERRY
+        legs = [
+            _leg_phrase(
+                "동승" if is_ferry else "기내",
+                hit.cabin_allowed,
+                hit.cabin_verdict,
+                float(hit.cabin_max_weight_kg) if hit.cabin_max_weight_kg is not None else None,
+                hit.cabin_weight_unlimited,
+            )
+        ]
+        # **여객선에는 위탁 칸을 붙이지 않는다.** 우리 여객선 5건은 `cargo_allowed` 가
+        # 전부 NULL 이라 "위탁 가능 여부 미확인" 이 붙는데, 배에 없는 제도를 있는 것처럼
+        # 읽히게 하면서 결론만 길어진다. 길어진 결론은 실제로 답변에서 항로가 빠지는
+        # 결과로 이어졌다(2026-09-13 재측정, `gpt-4o` 녹동 언급 4/4 → 2/4).
+        if not (is_ferry and hit.cargo_allowed is None):
+            legs.append(
+                _leg_phrase(
+                    "위탁",
+                    hit.cargo_allowed,
+                    hit.cargo_verdict,
+                    float(hit.cargo_max_weight_kg) if hit.cargo_max_weight_kg is not None else None,
+                    hit.cargo_weight_unlimited,
+                )
+            )
+        text = ", ".join(legs)
+
         blocked = {Verdict.OVER_WEIGHT, Verdict.NOT_ALLOWED}
         if hit.cabin_verdict in blocked and hit.cargo_verdict in blocked:
             text += " → 이 회사로는 이 무게로 갈 수 없음"
         elif (
-            hit.cabin_verdict is None and hit.cabin_allowed is False and hit.cargo_allowed is False
+            hit.cabin_verdict is None
+            and hit.cabin_allowed is False
+            and hit.cargo_allowed is not True
         ):
             # 무게를 묻지 않은 질문에서도 "아예 안 되는 곳"은 따로 떼어 말해야 한다.
-            # 아리온제주(녹동)가 여기다 — 2026-09-13 측정에서 `gpt-4o-mini` 가
-            # 배편 질문 4회 전부 이 항로를 빼고 "가능한 곳"만 나열했다.
-            text += " → 이 회사로는 반려동물 동승이 안 됨"
+            # 아리온제주(녹동)가 여기다 — 빠지면 "없는 항로"로 읽힌다.
+            # **지시문을 결론에 함께 담는다.** `answer_directly` 가 다음에 할 일을
+            # 적어 보내는 것과 같은 방식이다 — 프롬프트에만 적어 두었더니 샜다.
+            text += " → 반려동물 동반 불가. 가능한 곳과 섞지 말고 이 회사도 반드시 함께 밝힐 것"
         conclusions.append({"carrier": _carrier_label(hit), "결론": text})
     return conclusions
 

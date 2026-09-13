@@ -264,7 +264,7 @@ class TestConclusionsWithoutWeight:
         [result] = _carrier_conclusions([_hit(cabin_max_weight_kg=None, cargo_allowed=None)])
         assert result["결론"].startswith("기내 가능(상한 미확인)")
 
-    def test_양쪽_다_불가면_동승이_안_된다고_따로_적는다(self):
+    def test_동반_불가인_곳은_함께_밝히라고_적는다(self):
         # 아리온제주(녹동). 2026-09-13 측정에서 `gpt-4o-mini` 가 배편 질문 4회 전부
         # 이 항로를 빼고 "가능한 곳"만 나열했다 — 빠진 항로는 없는 것으로 읽힌다.
         from app.integrations.llm.chat import _carrier_conclusions
@@ -272,7 +272,45 @@ class TestConclusionsWithoutWeight:
         [result] = _carrier_conclusions(
             [_hit(carrier_name="아리온제주", cabin_allowed=False, cargo_allowed=False)]
         )
-        assert result["결론"].endswith("→ 이 회사로는 반려동물 동승이 안 됨")
+        assert result["결론"].endswith("반드시 함께 밝힐 것")
+
+    def test_여객선은_위탁_미확인을_붙이지_않는다(self):
+        # 여객선 5건은 cargo_allowed 가 전부 NULL 이다. "위탁 가능 여부 미확인" 을
+        # 붙이면 배에 없는 제도를 있는 것처럼 읽히게 하면서 결론만 길어진다.
+        from app.integrations.llm.chat import _carrier_conclusions
+
+        [result] = _carrier_conclusions(
+            [
+                _hit(
+                    carrier_name="한일고속페리",
+                    carrier_type=CarrierType.FERRY,
+                    route="완도↔제주",
+                    cabin_max_weight_kg=None,
+                    cabin_weight_unlimited=True,
+                    cargo_allowed=None,
+                )
+            ]
+        )
+        assert result["결론"] == "동승 가능(무게 제한 없음)"
+
+    def test_여객선의_동반_불가도_함께_밝히라고_적는다(self):
+        # 녹동은 cargo_allowed 가 NULL(False 가 아니다)이라 예전 조건으로는
+        # 안내 문구가 붙지 않았다 — 그 자리에서 항로가 빠졌다.
+        from app.integrations.llm.chat import _carrier_conclusions
+
+        [result] = _carrier_conclusions(
+            [
+                _hit(
+                    carrier_name="아리온제주",
+                    carrier_type=CarrierType.FERRY,
+                    route="고흥(녹동)↔제주",
+                    cabin_allowed=False,
+                    cargo_allowed=None,
+                )
+            ]
+        )
+        assert result["결론"].startswith("동승 불가(규정상 불가)")
+        assert result["결론"].endswith("반드시 함께 밝힐 것")
 
     def test_무게가_있으면_기존_문구를_그대로_쓴다(self):
         # 무게 판정이 붙은 경우는 문구가 바뀌지 않아야 한다(회귀).
