@@ -39,6 +39,7 @@ from urllib.parse import urlparse
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.integrations.llm import chat as chat_module
+from app.rag.vocabulary import REGIONS
 
 KST = timezone(timedelta(hours=9))
 
@@ -74,12 +75,25 @@ RULE_QUESTIONS = [
         "tag": "회귀 · 8/28 오답 ①(견종)",
         "question": "복서 데리고 제주도 갈 수 있나요?",
         "expected": [
-            "**어느 쪽으로도 단정하지 않을 것** — `transport_restricted_breeds` 가 비어 있다",
-            "'복서는 맹견'은 **오답** — 동물보호법 맹견 5종에도 우리 데이터에도 없다",
+            "**어느 쪽으로도 단정하지 않을 것** — 도구가 견종을 돌려주지 않으므로 "
+            "모델이 무슨 말을 하든 **지레짐작**이다",
+            "'복서는 맹견'은 **오답** — 동물보호법 맹견 5종이 아니다",
             "'문제없다'도 오답 — 단두종 위탁 제한이 걸릴 수 있다",
-            "항공사에 직접 확인하라고 안내하는 것이 정답",
+            "항공사에 직접 확인하라고 안내하는 것이 지금의 정답",
+            "⚠️ **이 기준은 도구를 고치면 바뀐다** — 아래 주석 참고",
         ],
         "trap": "보수적인 오답도 오답이다. 8/28 에 '복서는 허용되지 않는 맹견'이라고 지어냈다.",
+        #: **'데이터가 없다'는 전제는 2026-09-13 에 깨졌다.** 팀 dev RDS 의
+        #: `transport_restricted_breeds` 에 152건(맹견 72·단두종 80)이 있고, 복서도
+        #: 대한항공·아시아나·진에어 3건이 `applies_to=cargo` 로 들어 있다.
+        #:
+        #: 그런데 **챗봇은 그걸 못 본다** — `search_transport_rules` 가 견종을 싣지
+        #: 않는다(앱의 `/guides` 는 싣는다). 그래서 지금은 "단정하지 말 것"이 여전히
+        #: 맞는 기준이다. 모델이 맞는 말을 해도 근거가 없기 때문이다.
+        #:
+        #: 도구가 견종을 싣게 되면 정답이 **"회사를 집어 말할 것"** 으로 바뀐다.
+        #: 그때 이 기준과 A8 프롬프트 문구를 함께 고친다
+        #: (docs/planning/chatbot-design-decisions.md 의 "아직 안 고쳐진 답변 오류 둘").
     },
     {
         "id": 4,
@@ -121,6 +135,25 @@ RULE_QUESTIONS = [
 #: 2026-08-29 권역 보정(275곳) 뒤 재검증용. **팀 RDS 에서만 의미가 있다.**
 #: 보정으로 `서귀포시/모슬포` 가 42곳 → 150곳 안팎, `제주시/제주국제공항` 이
 #: 361곳 → 250곳 안팎이 됐다. 늘어난 쪽과 **줄어든 쪽을 함께** 본다.
+#:
+#: ## `expected_search` — 기계가 대조하는 기대 검색 조건
+#:
+#: 위의 `expected`(사람이 읽는 정답 기준)와 별개로, **"사용자가 말한 지역·종류로
+#: 실제로 검색했는지"** 만 따로 적는다. `scripts/measure_chat_llm.py` 의
+#: `check_place_search()` 가 이 값을 읽는다.
+#:
+#: 값이 `dict` 면 검사하고(`allowed` 목록 · `required` 여부 · `why` 근거),
+#: **문자열이면 판단 보류**다(그 문자열이 보류 이유).
+#:
+#: 원칙 셋:
+#:
+#: 1. 근거는 `app/rag/vocabulary.py`(`REGIONS`·`AREA_TO_REGIONS`·`CATEGORY_LABELS`)와
+#:    시스템 프롬프트에서만 가져온다. 새로 지어내지 않는다.
+#: 2. **올바른 검색 방법이 여러 개면 전부 허용한다.** 권역을 나눠 검색하는 것도
+#:    프롬프트가 시키는 일이라, 인접 권역이 섞였다고 틀린 것이 아니다.
+#: 3. **과거의 장소 개수를 정답으로 쓰지 않는다.** 위 `expected` 에 적힌 "2곳"·"4곳
+#:    이상" 같은 숫자는 그때 DB 의 상태지 검색이 맞았는지의 기준이 아니다 —
+#:    데이터가 바뀌면 숫자도 바뀐다. 기계는 **인자만** 본다.
 PLACE_QUESTIONS = [
     {
         "id": 1,
@@ -131,6 +164,26 @@ PLACE_QUESTIONS = [
             "소개하는 장소가 실제로 서귀포에 있어야 한다",
         ],
         "trap": "여전히 한두 곳이면 보정이 검색에 반영되지 않은 것이다.",
+        "expected_search": {
+            "region": {
+                "allowed": ("서귀포시/모슬포", "중문"),
+                "required": True,
+                "why": (
+                    "'서귀포'는 REGIONS 의 '서귀포시/모슬포' 에 그대로 있다. "
+                    "'중문' 도 행정구역상 서귀포시이고 AREA_TO_REGIONS 가 '남부' 로 "
+                    "둘을 함께 묶으므로, 나눠 검색한 경우까지 맞는 것으로 본다."
+                ),
+            },
+            "category": {
+                "allowed": ("cafe", "restaurant_cafe"),
+                "required": True,
+                "why": (
+                    "'카페'는 CATEGORY_LABELS 의 cafe 다. '식당 겸 카페'"
+                    "(restaurant_cafe)도 카페를 찾는 질문의 답이 되므로 함께 허용한다."
+                ),
+            },
+            "tags": "보류 — 카페는 카테고리로 찾는 것이라 태그는 있어도 없어도 된다.",
+        },
     },
     {
         "id": 2,
@@ -141,6 +194,20 @@ PLACE_QUESTIONS = [
             "동반정책을 기본으로 넘기지 않으므로 후보가 넉넉해야 한다",
         ],
         "trap": "1곳이면 보정 전과 같다.",
+        "expected_search": {
+            "region": {
+                "allowed": ("서귀포시/모슬포", "중문"),
+                "required": True,
+                "why": "1번과 같다 — '서귀포'는 REGIONS 에 있고 '중문'은 같은 '남부'다.",
+            },
+            "category": "보류 — '실내 장소'는 종류를 집지 않는다. 카페든 관광지든 답이 된다.",
+            "tags": (
+                "보류 — '실내'를 옮기는 길이 둘이고 **둘 다 말이 된다.** 도구 설명은 "
+                "'실내'를 indoor_tourism 태그로 찾으라 하지만, '강아지랑 갈 수 있는 실내'를 "
+                "pet_policy=indoor_allowed(실내까지 동반 가능)로 읽는 것도 질문에 맞는 "
+                "답이다. 한쪽을 정답으로 두면 맞는 검색을 틀렸다고 세게 된다."
+            ),
+        },
     },
     {
         "id": 3,
@@ -151,6 +218,23 @@ PLACE_QUESTIONS = [
             "소개하는 장소 주소에 **서귀포가 섞이면 안 된다**",
         ],
         "trap": "가장 중요한 문항. 빼는 쪽을 과하게 뺐으면 여기서 드러난다.",
+        "expected_search": {
+            "region": {
+                "allowed": ("제주시/제주국제공항",),
+                "required": True,
+                "why": (
+                    "AREA_TO_REGIONS 의 '제주시권' 이 '제주시/제주국제공항' 하나로만 간다. "
+                    "여기서 다른 권역을 섞으면 '서귀포가 섞이면 안 된다'는 이 문항의 "
+                    "취지가 그대로 깨지므로, 유일하게 인접 권역을 허용하지 않는다."
+                ),
+            },
+            "category": {
+                "allowed": ("cafe", "restaurant_cafe"),
+                "required": True,
+                "why": "1번과 같다.",
+            },
+            "tags": "보류 — 1번과 같다.",
+        },
     },
     {
         "id": 4,
@@ -158,6 +242,22 @@ PLACE_QUESTIONS = [
         "question": "애월에서 강아지랑 갈 수 있는 카페 알려줘",
         "expected": ["보정과 무관한 권역이다. 전과 같아야 한다(4곳 이상)"],
         "trap": "여기가 달라졌으면 엉뚱한 것까지 옮긴 것이다.",
+        "expected_search": {
+            "region": {
+                "allowed": ("애월/한림/협재",),
+                "required": True,
+                "why": (
+                    "'애월'이 REGIONS 의 '애월/한림/협재' 에 그대로 들어 있고, "
+                    "AREA_TO_REGIONS 의 '서부'도 이 권역 하나뿐이라 다른 후보가 없다."
+                ),
+            },
+            "category": {
+                "allowed": ("cafe", "restaurant_cafe"),
+                "required": True,
+                "why": "1번과 같다.",
+            },
+            "tags": "보류 — 1번과 같다.",
+        },
     },
     {
         "id": 5,
@@ -168,6 +268,23 @@ PLACE_QUESTIONS = [
             "상예동·색달동은 아직 `서귀포시/모슬포` 다 — 2단계 몫이라 지금은 정상",
         ],
         "trap": "중문이 비었으면 중문 장소까지 모슬포로 옮긴 것이다.",
+        "expected_search": {
+            "region": {
+                "allowed": ("중문", "서귀포시/모슬포"),
+                "required": True,
+                "why": (
+                    "'중문'은 REGIONS 에 그대로 있다. 질문이 '근처'라고 했고 "
+                    "AREA_TO_REGIONS 가 '남부'로 '서귀포시/모슬포'와 함께 묶으므로 "
+                    "인접 권역까지 허용한다 — 위 정답 기준도 상예동·색달동이 아직 "
+                    "모슬포에 있다고 적어 두었다."
+                ),
+            },
+            "category": (
+                "보류 — '갈 만한 곳'은 종류를 집지 않는다. 생략해도 되고 "
+                "카페·관광지 어느 쪽을 골라도 질문에 맞는다."
+            ),
+            "tags": "보류 — 종류를 집지 않은 질문이라 태그도 마찬가지다.",
+        },
     },
     {
         "id": 6,
@@ -178,6 +295,24 @@ PLACE_QUESTIONS = [
             "이제 남쪽 장소가 섞여 나오면 보정이 먹은 것이다",
         ],
         "trap": "권역을 여러 번 검색하는 질문이다. 답변이 여덟 문장을 넘지 않아야 한다(C3).",
+        "expected_search": {
+            "region": {
+                "allowed": REGIONS,
+                "required": False,
+                "why": (
+                    "'제주도'는 권역을 집지 않는다. 프롬프트는 권역을 나눠 검색하라고 "
+                    "하지만 생략하면 전 권역에서 나오므로 그것도 답이 된다 — 그래서 "
+                    "required 가 아니다. 다만 REGIONS 에 없는 값을 지어내면 검색이 "
+                    "조용히 0건이 되므로 목록 자체는 검사한다."
+                ),
+            },
+            "category": {
+                "allowed": ("cafe", "restaurant_cafe"),
+                "required": True,
+                "why": "1번과 같다.",
+            },
+            "tags": "보류 — 1번과 같다.",
+        },
     },
 ]
 
@@ -433,9 +568,7 @@ def main() -> None:
                     suffix = f" · {run}회차" if args.repeat > 1 else ""
                     print(f"### {model}{suffix}", flush=True)
                     print()
-                    sys.stderr.write(
-                        f"  [{spec['id']}/{len(questions)}] {model}{suffix} … "
-                    )
+                    sys.stderr.write(f"  [{spec['id']}/{len(questions)}] {model}{suffix} … ")
                     sys.stderr.flush()
 
                     answer, trace, seconds, error = _ask(db, model, spec["question"])
