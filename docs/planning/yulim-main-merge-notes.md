@@ -438,7 +438,7 @@ git add package-lock.json
 
 - [x] base 브랜치가 올바릅니다. (`dev/yulim-main` → `main`)
 - [x] 커밋 메시지가 `<type>: <내용>` 형식이고, 커밋당 목적이 하나입니다.
-- [x] `ruff check .` 통과 / `pytest` 통과 (345 passed, 333 skipped — DB 테스트는
+- [x] `ruff check .` 통과 / `pytest` 통과 (563 passed, 397 skipped — DB 테스트는
       `TEST_DATABASE_URL` 이 있을 때만 돕니다)
 - [x] 동작 확인 — 사진 여러 장으로 카드를 만들어 눈으로 봤습니다. 얼굴이 원본과 같은지,
       한글이 온전한 음절인지, 사진에 없는 것이 그려지지 않았는지를 봤습니다.
