@@ -26,6 +26,7 @@ import sys
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.db.models import TransportPetRule, TransportRestrictedBreed
 from app.db.models.enums import BreedRestrictionScope, BreedRestrictionType
@@ -45,109 +46,207 @@ def split_breeds(raw: str) -> list[str]:
 
 # (운송사 매칭 키, 제한 유형, 적용 구간, 예시 여부, 문서가 명시한 종수, `·` 원문)
 # 원문 줄은 travel-guide-collection.md 에서 그대로 가져온다 — 임의 수정 금지.
-BREED_GROUPS: list[tuple[tuple[str, str | None], BreedRestrictionType,
-                         BreedRestrictionScope, bool, int | None, str]] = [
+BREED_GROUPS: list[
+    tuple[
+        tuple[str, str | None], BreedRestrictionType, BreedRestrictionScope, bool, int | None, str
+    ]
+] = [
     # ── 대한항공 — 맹견은 전 구간, 단두종은 위탁만 불가(기내 조건 충족 시 기내 가능) ──
-    (("대한항공", None), DANGEROUS, BOTH, False, 8,
-     "도사견 · 핏불테리어 · 로트와일러 · 마스티프 · 라이카 · 오브차카 · 캉갈 · 울프독"),
-    (("대한항공", None), BRACHY, CARGO, False, None,
-     "뉴펀들랜드 · 도고 아르헨티노 · 도그 드 보르도 · 라사압소 · 보스턴 테리어 · 복서 · 불독 · "
-     "브뤼셀 그리폰 · 샤페이 · 스패니얼(잉글리쉬 토이) · 시추 · 아메리칸 불리 · 아펜핀셔 · "
-     "치와와 · 재패니스 친 · 차우차우 · 카네코르소 · 킹 찰스 스패니얼 · "
-     "카발리에 킹 찰스 스패니얼 · 퍼그 · 페키니즈 · 티베탄 스패니얼"),
-    (("대한항공", None), BRACHY, CARGO, False, None,
-     "버미스 · 브리티쉬 숏헤어 · 스코티쉬 폴드 · 엑조틱 · 페르시안 · 히말라얀"),
+    (
+        ("대한항공", None),
+        DANGEROUS,
+        BOTH,
+        False,
+        8,
+        "도사견 · 핏불테리어 · 로트와일러 · 마스티프 · 라이카 · 오브차카 · 캉갈 · 울프독",
+    ),
+    (
+        ("대한항공", None),
+        BRACHY,
+        CARGO,
+        False,
+        None,
+        "뉴펀들랜드 · 도고 아르헨티노 · 도그 드 보르도 · 라사압소 · 보스턴 테리어 · 복서 · 불독 · "
+        "브뤼셀 그리폰 · 샤페이 · 스패니얼(잉글리쉬 토이) · 시추 · 아메리칸 불리 · 아펜핀셔 · "
+        "치와와 · 재패니스 친 · 차우차우 · 카네코르소 · 킹 찰스 스패니얼 · "
+        "카발리에 킹 찰스 스패니얼 · 퍼그 · 페키니즈 · 티베탄 스패니얼",
+    ),
+    (
+        ("대한항공", None),
+        BRACHY,
+        CARGO,
+        False,
+        None,
+        "버미스 · 브리티쉬 숏헤어 · 스코티쉬 폴드 · 엑조틱 · 페르시안 · 히말라얀",
+    ),
     # ── 아시아나 — 맹견 12종, 단두종은 위탁 운송 중단(2019-07-01부) ──
-    (("아시아나항공", None), DANGEROUS, BOTH, False, 12,
-     "도사견 · 아메리칸 핏불테리어 · 아메리칸 스태퍼드셔 테리어 · 스태퍼드셔 불테리어 · "
-     "로트와일러 · 마스티프 · 라이카 · 오브차카 · 캉갈 · 울프독 · "
-     "아메리칸 불리/카네코르소 등 유사 견종 · 미니어쳐 불테리어"),
-    (("아시아나항공", None), BRACHY, CARGO, False, None,
-     "아펜핀셔 · 도고 아리젠티노 · 마스티프 · 보스턴 테리어 · 복서 · 불도그 · 브뤼셀 그리펀 · "
-     "시추 · 스패니얼(잉글리쉬 토이, 킹 찰스 스패니얼, 티베탄) · 치와와 · 재퍼니스친 · "
-     "라사압소 · 프레사 까나리오 · 차우차우 · 퍼그 · 페키니즈 · 샤페이 · 카네코르소 · "
-     "도그 드 보르도"),
-    (("아시아나항공", None), BRACHY, CARGO, False, None,
-     "버미스 · 엑조틱 · 히말라얀 · 페르시안 · 브리티쉬 숏헤어 · 스코티쉬 폴드 · 실버 친칠라"),
+    (
+        ("아시아나항공", None),
+        DANGEROUS,
+        BOTH,
+        False,
+        12,
+        "도사견 · 아메리칸 핏불테리어 · 아메리칸 스태퍼드셔 테리어 · 스태퍼드셔 불테리어 · "
+        "로트와일러 · 마스티프 · 라이카 · 오브차카 · 캉갈 · 울프독 · "
+        "아메리칸 불리/카네코르소 등 유사 견종 · 미니어쳐 불테리어",
+    ),
+    (
+        ("아시아나항공", None),
+        BRACHY,
+        CARGO,
+        False,
+        None,
+        "아펜핀셔 · 도고 아리젠티노 · 마스티프 · 보스턴 테리어 · 복서 · 불도그 · 브뤼셀 그리펀 · "
+        "시추 · 스패니얼(잉글리쉬 토이, 킹 찰스 스패니얼, 티베탄) · 치와와 · 재퍼니스친 · "
+        "라사압소 · 프레사 까나리오 · 차우차우 · 퍼그 · 페키니즈 · 샤페이 · 카네코르소 · "
+        "도그 드 보르도",
+    ),
+    (
+        ("아시아나항공", None),
+        BRACHY,
+        CARGO,
+        False,
+        None,
+        "버미스 · 엑조틱 · 히말라얀 · 페르시안 · 브리티쉬 숏헤어 · 스코티쉬 폴드 · 실버 친칠라",
+    ),
     # ── 제주항공 — 위탁이 없어 목록이 기내 기준. 도베르만은 여기에만 있다 ──
-    (("제주항공", None), DANGEROUS, CABIN, False, 15,
-     "도사견 · 아메리칸 핏불테리어 · 아메리칸 스태퍼드셔 테리어 · 스태퍼드셔 불테리어 · "
-     "불테리어 · 로트와일러 · 마스티프 · 라이카 · 오브차카(코카시안 셰퍼드 독) · 캉갈 · "
-     "울프독 · 도베르만 · 미니어쳐 불테리어 · 아메리칸 불리 · 카네코르소"),
+    (
+        ("제주항공", None),
+        DANGEROUS,
+        CABIN,
+        False,
+        15,
+        "도사견 · 아메리칸 핏불테리어 · 아메리칸 스태퍼드셔 테리어 · 스태퍼드셔 불테리어 · "
+        "불테리어 · 로트와일러 · 마스티프 · 라이카 · 오브차카(코카시안 셰퍼드 독) · 캉갈 · "
+        "울프독 · 도베르만 · 미니어쳐 불테리어 · 아메리칸 불리 · 카네코르소",
+    ),
     # ── 진에어 — 맹견 10종 전 구간, 단두종은 위탁 불가 ──
-    (("진에어", None), DANGEROUS, BOTH, False, 10,
-     "도사견 · 아메리칸 핏불테리어 · 아메리칸 스태퍼드셔 테리어 · 스태퍼드셔 불테리어 · "
-     "로트와일러 · 마스티프 · 라이카 · 오브차카(코카시안 셰퍼드 독) · "
-     "캉갈(아나톨리언 셰퍼드 독) · 울프독"),
-    (("진에어", None), BRACHY, CARGO, False, 20,
-     "아펜핀셔 · 아메리칸 불리 · 보스턴 테리어 · 복서 · 브뤼셀 그리폰 · 불독(전 품종) · "
-     "카네코르소 · 치와와 · 차우차우 · 도고 아르헨티노 · 도그 드 보르도 · "
-     "잉글리쉬 토이 스패니얼(킹 찰스 스패니얼) · 재패니스 친 · 라사압소 · 뉴펀들랜드 · "
-     "페키니즈 · 퍼그(전 품종) · 샤페이 · 시추 · 티베탄 스패니얼"),
-    (("진에어", None), BRACHY, CARGO, False, 6,
-     "버미스 · 브리티쉬 쇼트헤어 · 엑조틱 · 히말라얀 · 페르시안 · 스코티시 폴드"),
+    (
+        ("진에어", None),
+        DANGEROUS,
+        BOTH,
+        False,
+        10,
+        "도사견 · 아메리칸 핏불테리어 · 아메리칸 스태퍼드셔 테리어 · 스태퍼드셔 불테리어 · "
+        "로트와일러 · 마스티프 · 라이카 · 오브차카(코카시안 셰퍼드 독) · "
+        "캉갈(아나톨리언 셰퍼드 독) · 울프독",
+    ),
+    (
+        ("진에어", None),
+        BRACHY,
+        CARGO,
+        False,
+        20,
+        "아펜핀셔 · 아메리칸 불리 · 보스턴 테리어 · 복서 · 브뤼셀 그리폰 · 불독(전 품종) · "
+        "카네코르소 · 치와와 · 차우차우 · 도고 아르헨티노 · 도그 드 보르도 · "
+        "잉글리쉬 토이 스패니얼(킹 찰스 스패니얼) · 재패니스 친 · 라사압소 · 뉴펀들랜드 · "
+        "페키니즈 · 퍼그(전 품종) · 샤페이 · 시추 · 티베탄 스패니얼",
+    ),
+    (
+        ("진에어", None),
+        BRACHY,
+        CARGO,
+        False,
+        6,
+        "버미스 · 브리티쉬 쇼트헤어 · 엑조틱 · 히말라얀 · 페르시안 · 스코티시 폴드",
+    ),
     # ── 에어부산 — 맹견 12종 (아시아나와 동일 목록·같은 계열). 단두종 명시 없음 → 미적재 ──
-    (("에어부산", None), DANGEROUS, BOTH, False, 12,
-     "도사견 · 아메리칸 핏불테리어 · 아메리칸 스태퍼드셔 테리어 · 스태퍼드셔 불테리어 · "
-     "로트와일러 · 마스티프 · 라이카 · 오브차카 · 캉갈 · 울프독 · "
-     "아메리칸 불리/카네코르소 등 유사 견종 · 미니어쳐 불테리어"),
+    (
+        ("에어부산", None),
+        DANGEROUS,
+        BOTH,
+        False,
+        12,
+        "도사견 · 아메리칸 핏불테리어 · 아메리칸 스태퍼드셔 테리어 · 스태퍼드셔 불테리어 · "
+        "로트와일러 · 마스티프 · 라이카 · 오브차카 · 캉갈 · 울프독 · "
+        "아메리칸 불리/카네코르소 등 유사 견종 · 미니어쳐 불테리어",
+    ),
     # ── 티웨이 — 원문이 예시만 든다("~과 같은 투기견 종") → is_example_only ──
-    (("티웨이항공", None), DANGEROUS, BOTH, True, None,
-     "아메리칸 핏불테리어 · 로트와일러 · 도베르만"),
+    (
+        ("티웨이항공", None),
+        DANGEROUS,
+        BOTH,
+        True,
+        None,
+        "아메리칸 핏불테리어 · 로트와일러 · 도베르만",
+    ),
     # ── 이스타 — 예시 + 동물보호법 시행규칙 맹견류 준용 → is_example_only ──
-    (("이스타항공", None), DANGEROUS, CABIN, True, None,
-     "아메리칸 핏불 테리어 · 도베르만 · 로트와일러 · 투견"),
+    (
+        ("이스타항공", None),
+        DANGEROUS,
+        CABIN,
+        True,
+        None,
+        "아메리칸 핏불 테리어 · 도베르만 · 로트와일러 · 투견",
+    ),
     # ── 오션비스타제주 — 운송금지견종 8종("~류" 표기 그대로) ──
-    (("오션비스타제주", "삼천포↔제주"), DANGEROUS, BOTH, False, 8,
-     "도사견류 · 핏불테리어류 · 로트와일러류 · 마스티프류 · 라이카류 · 오브차가류 · "
-     "캉갈류 · 울프독류"),
+    (
+        ("오션비스타제주", "삼천포↔제주"),
+        DANGEROUS,
+        BOTH,
+        False,
+        8,
+        "도사견류 · 핏불테리어류 · 로트와일러류 · 마스티프류 · 라이카류 · 오브차가류 · "
+        "캉갈류 · 울프독류",
+    ),
 ]
+
+
+def seed_restricted_breeds(
+    db: Session, *, apply: bool = True, verbose: bool = False
+) -> tuple[int, int]:
+    """제한 견종을 심는다. 이미 있으면 건너뛴다. `(추가 대상, 이미 있음)` 을 돌려준다.
+
+    **커밋하지 않는다** — 부르는 쪽이 정한다(`seed_dev` 는 마지막에 한 번 커밋한다).
+    """
+    rules = {
+        (rule.carrier_name, rule.route): rule for rule in db.scalars(select(TransportPetRule)).all()
+    }
+    existing = {
+        (row.transport_pet_rule_id, row.breed_name_ko, row.restriction_type)
+        for row in db.scalars(select(TransportRestrictedBreed)).all()
+    }
+
+    planned = skipped = 0
+    for key, r_type, scope, example, declared, raw in BREED_GROUPS:
+        rule = rules.get(key)
+        if rule is None:
+            raise SystemExit(f"규정 행을 찾지 못했습니다: {key} — seed_guides 먼저 실행하세요.")
+        names = split_breeds(raw)
+        if declared is not None and len(names) != declared:
+            raise SystemExit(
+                f"{key} {r_type.value}: 문서 명시 {declared}종 ≠ 파싱 {len(names)}종 — 전사 확인"
+            )
+        for name in names:
+            key3 = (rule.id, name, r_type)
+            if key3 in existing:
+                skipped += 1
+                continue
+            existing.add(key3)  # 같은 실행 안의 중복도 막는다
+            planned += 1
+            if verbose:
+                print(
+                    f"  {key[0]} [{r_type.value}/{scope.value}{'/예시' if example else ''}] {name}"
+                )
+            if apply:
+                db.add(
+                    TransportRestrictedBreed(
+                        id=uuid.uuid4(),
+                        transport_pet_rule_id=rule.id,
+                        breed_name_ko=name,
+                        restriction_type=r_type,
+                        applies_to=scope,
+                        is_example_only=example,
+                    )
+                )
+    return planned, skipped
 
 
 def main() -> None:
     apply = "--apply" in sys.argv[1:]
 
     with SessionLocal() as db:
-        rules = {
-            (rule.carrier_name, rule.route): rule
-            for rule in db.scalars(select(TransportPetRule)).all()
-        }
-        existing = {
-            (row.transport_pet_rule_id, row.breed_name_ko, row.restriction_type)
-            for row in db.scalars(select(TransportRestrictedBreed)).all()
-        }
-
-        planned = skipped = 0
-        for key, r_type, scope, example, declared, raw in BREED_GROUPS:
-            rule = rules.get(key)
-            if rule is None:
-                raise SystemExit(f"규정 행을 찾지 못했습니다: {key} — seed_guides 먼저 실행하세요.")
-            names = split_breeds(raw)
-            if declared is not None and len(names) != declared:
-                raise SystemExit(
-                    f"{key} {r_type.value}: 문서 명시 {declared}종 ≠ "
-                    f"파싱 {len(names)}종 — 전사 확인"
-                )
-            for name in names:
-                key3 = (rule.id, name, r_type)
-                if key3 in existing:
-                    skipped += 1
-                    continue
-                existing.add(key3)  # 같은 실행 안의 중복도 막는다
-                planned += 1
-                print(f"  {key[0]} [{r_type.value}/{scope.value}"
-                      f"{'/예시' if example else ''}] {name}")
-                if apply:
-                    db.add(
-                        TransportRestrictedBreed(
-                            id=uuid.uuid4(),
-                            transport_pet_rule_id=rule.id,
-                            breed_name_ko=name,
-                            restriction_type=r_type,
-                            applies_to=scope,
-                            is_example_only=example,
-                        )
-                    )
+        planned, skipped = seed_restricted_breeds(db, apply=apply, verbose=True)
         if apply:
             db.commit()
 

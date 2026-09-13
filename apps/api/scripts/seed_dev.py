@@ -41,6 +41,7 @@ from app.db.models.enums import (
 )
 from app.db.session import SessionLocal
 from scripts.seed_guides import seed_guides
+from scripts.seed_restricted_breeds import seed_restricted_breeds
 
 KST = timezone(timedelta(hours=9))
 
@@ -488,6 +489,11 @@ def main() -> None:
         route = seed_route(db, user, pet, places)
         seed_checklist_and_memos(db, route)
         seed_guides(db)
+        # 견종은 `seed_guides` 가 심은 규정 행에 붙으므로 **반드시 그 뒤**다.
+        # 여기 빠져 있었던 탓에 로컬 DB 는 0건, 팀 RDS 는 152건이라 같은 질문이
+        # 다른 데이터 위에서 돌았다 — 로컬 점검이 견종 문제를 통째로 못 봤다.
+        planned, _ = seed_restricted_breeds(db)
+        print(f"  제한 견종 {planned}건")
         db.commit()
     print("완료")
 
