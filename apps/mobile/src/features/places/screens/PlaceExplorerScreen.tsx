@@ -18,10 +18,7 @@ import {
 import { PetPolicyBadge } from '@/src/components/domain/PetPolicyBadge';
 import { RemoteImage } from '@/src/components/ui/RemoteImage';
 import { ScreenHeader } from '@/src/components/ui/ScreenHeader';
-import {
-  useSavedPlaceIds,
-  useToggleSavedPlace,
-} from '@/src/features/saved/hooks/useSavedPlaces';
+import { useSavedPlaceIds, useToggleSavedPlace } from '@/src/features/saved/hooks/useSavedPlaces';
 import { colors, radius, shadow, spacing } from '@/src/theme';
 
 import { InteractivePlaceMap } from '../components/InteractivePlaceMap';
@@ -40,7 +37,12 @@ type ViewMode = 'list' | 'map';
  */
 const SCROLL_TOP_THRESHOLD = 320;
 
-export function PlaceExplorerScreen() {
+type PlaceExplorerScreenProps = {
+  tripId?: string;
+  scheduleId?: string;
+};
+
+export function PlaceExplorerScreen({ tripId, scheduleId }: PlaceExplorerScreenProps = {}) {
   const { region, view } = useLocalSearchParams<{ region?: string; view?: string }>();
   const regionScrollRef = useRef<ScrollView>(null);
   const listRef = useRef<FlatList<Place>>(null);
@@ -87,6 +89,17 @@ export function PlaceExplorerScreen() {
     toggleSavedPlace.mutate({ isSaved: savedPlaceIds.has(place.id), placeId: place.id });
   };
 
+  const openPlace = (placeId: string) => {
+    if (tripId) {
+      router.push({
+        pathname: '/trips/[tripId]/places/[placeId]',
+        params: { tripId, placeId, scheduleId: scheduleId ?? '' },
+      });
+      return;
+    }
+    router.push({ pathname: '/places/[placeId]', params: { placeId } });
+  };
+
   const handleListScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const shouldShow = event.nativeEvent.contentOffset.y > SCROLL_TOP_THRESHOLD;
     // 스크롤 이벤트는 초당 수십 번 들어온다. 같은 값을 그대로 넣으면 React 가
@@ -100,7 +113,7 @@ export function PlaceExplorerScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScreenHeader title="장소 탐색" />
+      <ScreenHeader title={tripId ? '일정 장소 찾기' : '장소 탐색'} />
 
       <View style={styles.searchBar}>
         <Ionicons color={colors.iconGray} name="search-outline" size={20} />
@@ -228,6 +241,7 @@ export function PlaceExplorerScreen() {
           renderItem={({ item }) => (
             <PlaceRow
               isFavorite={savedPlaceIds.has(item.id)}
+              onPress={() => openPlace(item.id)}
               onPressFavorite={() => toggleFavorite(item)}
               place={item}
             />
@@ -282,14 +296,15 @@ function ModeButton({ icon, isSelected, label, onPress }: ModeButtonProps) {
 type PlaceRowProps = {
   place: Place;
   isFavorite: boolean;
+  onPress: () => void;
   onPressFavorite: () => void;
 };
 
-function PlaceRow({ isFavorite, onPressFavorite, place }: PlaceRowProps) {
+function PlaceRow({ isFavorite, onPress, onPressFavorite, place }: PlaceRowProps) {
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={() => router.push(`/places/${place.id}`)}
+      onPress={onPress}
       style={({ pressed }) => [styles.placeRow, pressed && styles.rowPressed]}
     >
       <RemoteImage style={styles.placeImage} uri={place.imageUrl ?? undefined} />

@@ -43,6 +43,7 @@ from app.db.models.routes import (
     RouteRequest,
     RouteRequestPet,
     RouteRequestStay,
+    RouteStay,
     WeatherSnapshot,
 )
 from app.db.models.users import (
@@ -93,6 +94,7 @@ __all__ = [
     "RouteRequest",
     "RouteRequestPet",
     "RouteRequestStay",
+    "RouteStay",
     "TravelLog",
     "TravelLogPet",
     "TransportPetRule",
