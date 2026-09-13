@@ -11,6 +11,7 @@ import { getApiErrorMessage } from '@/src/services/apiError';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
 import { TripDeleteConfirmModal } from '../components/TripDeleteConfirmModal';
+import { TripCreationSheet } from '../components/TripCreationSheet';
 import { TripListCard } from '../components/TripListCard';
 import { useDeleteTrip } from '../hooks/useDeleteTrip';
 import { useTrips } from '../hooks/useTrips';
@@ -22,17 +23,19 @@ export function MyTripsScreen() {
   const deleteMutation = useDeleteTrip();
   const [pendingDeleteTrip, setPendingDeleteTrip] = useState<TripListItem | null>(null);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState('');
+  const [isCreationSheetOpen, setIsCreationSheetOpen] = useState(false);
 
   const openTrip = (tripId: string) => {
     router.push({ pathname: '/trips/[tripId]', params: { tripId } });
   };
 
-  /**
-   * 여행은 코스 추천으로 만든다.
-   * TODO: 추천 결과 저장이 내 여행으로 연결되면 저장 후 이 목록으로 돌아오게 한다.
-   */
   const startNewTrip = () => {
-    router.push('/routes');
+    setIsCreationSheetOpen(true);
+  };
+
+  const openCreationFlow = (pathname: '/routes' | '/trips/new') => {
+    setIsCreationSheetOpen(false);
+    router.push(pathname);
   };
 
   const confirmDelete = () => {
@@ -74,7 +77,7 @@ export function MyTripsScreen() {
         <View style={styles.centered}>
           <Text style={styles.stateTitle}>저장한 여행이 없어요</Text>
           <Text style={styles.stateDescription}>
-            코스 추천으로 첫 여행을 만들어보세요.
+            직접 일정을 만들거나 루트를 추천받아 첫 여행을 시작해보세요.
           </Text>
           <Pressable onPress={startNewTrip} style={styles.createButton}>
             <Text style={styles.createButtonText}>＋ 새 여행 만들기</Text>
@@ -130,6 +133,12 @@ export function MyTripsScreen() {
         onConfirm={confirmDelete}
         tripTitle={pendingDeleteTrip?.title ?? '여행 삭제'}
         visible={Boolean(pendingDeleteTrip)}
+      />
+      <TripCreationSheet
+        onClose={() => setIsCreationSheetOpen(false)}
+        onCreateManually={() => openCreationFlow('/trips/new')}
+        onRequestRecommendation={() => openCreationFlow('/routes')}
+        visible={isCreationSheetOpen}
       />
     </SafeAreaView>
   );

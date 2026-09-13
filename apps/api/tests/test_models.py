@@ -44,6 +44,7 @@ EXPECTED_TABLES = {
     "route_request_pets",
     "route_request_stays",
     "route_requests",
+    "route_stays",
     "routes",
     "transport_pet_rules",
     "transport_restricted_breeds",

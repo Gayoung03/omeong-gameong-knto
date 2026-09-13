@@ -16,6 +16,8 @@ export type PlaceDetail = {
   address: string;
   /** 화면에 그대로 보여줄 분류 문구 */
   categoryLabel: string;
+  /** 일정 추가 요청의 itemType 변환에 사용하는 서버 원본 분류 코드 */
+  serverCategory: string;
   imageUrl: string | null;
   imageUrls: string[];
   latitude: number;

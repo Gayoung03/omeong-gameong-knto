@@ -207,6 +207,7 @@ export function toPlaceDetail(response: PlaceDetailResponse): PlaceDetail {
       response.businessHours,
     ),
     description: toDisplayDescription(response.description, categoryLabel),
+    serverCategory: response.category,
     environment: toEnvironmentLabel(response.environment),
     homepageUrl: response.homepageUrl,
     id: response.id,

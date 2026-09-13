@@ -134,7 +134,7 @@ export function TripDetailScreen({ tripId }: { tripId: string }) {
     }
 
     router.push({
-      pathname: '/trips/[tripId]/add-schedule',
+      pathname: '/trips/[tripId]/places',
       // 보고 있던 날짜에 바로 담을 수 있도록 함께 넘긴다
       params: { tripId: trip.id, scheduleId: selectedSchedule?.id ?? '' },
     });
@@ -260,7 +260,7 @@ export function TripDetailScreen({ tripId }: { tripId: string }) {
             onPress={handlePressAddSchedule}
             style={styles.addButton}
           >
-            <Text style={styles.addButtonText}>＋ 일정 추가</Text>
+            <Text style={styles.addButtonText}>＋ 장소 추가</Text>
           </Pressable>
         </ScrollView>
       )}
