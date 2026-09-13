@@ -208,10 +208,16 @@ function toSchedule(day: RouteDayResponse): Schedule {
 }
 
 /**
- * 숙소 요약. 서버의 `stays` 는 아직 없지만
- * 일정 안의 숙소 항목에서 이름을 뽑아낼 수 있다. 중복은 없앤다.
+ * 숙소 요약. 입력 단계에서 저장한 `stays`를 우선 쓰고,
+ * 구버전 응답이면 일정 안의 숙소 항목으로 대체한다. 중복은 없앤다.
  */
-function toAccommodationSummary(days: RouteDayResponse[]): string {
+function toAccommodationSummary(
+  days: RouteDayResponse[],
+  stays: RouteDetailResponse['stays'],
+): string {
+  const savedStayNames = (stays ?? []).map((stay) => stay.name).filter(Boolean);
+  if (savedStayNames.length > 0) return [...new Set(savedStayNames)].join(', ');
+
   const names = days
     .flatMap((day) => day.items)
     .filter((item) => item.itemType === 'accommodation')
@@ -225,6 +231,7 @@ function toAccommodationSummary(days: RouteDayResponse[]): string {
 export function toTripListItem(route: RouteListItemResponse): TripListItem {
   return {
     id: route.id,
+    creationType: route.creationType,
     title: route.title,
     startAt: route.startAt,
     startDate: toKstDate(route.startAt),
@@ -254,7 +261,8 @@ export function toTrip(route: RouteDetailResponse): Trip {
     ...toTripListItem(route),
     transport: TRANSPORT_MAP[route.transport] ?? 'rentalCar',
     pets: route.pets.map(toTripPet),
-    accommodationSummary: toAccommodationSummary(route.routeDays),
+    departureLocation: route.departureLocation ?? '',
+    accommodationSummary: toAccommodationSummary(route.routeDays, route.stays),
     travelStyle: PACE_LABEL[route.pace] ?? '',
     styleKeywords: route.styleKeywords ?? [],
     memo: route.memo ?? '',

@@ -23,7 +23,7 @@ export function ScheduleTimeline({
     return (
       <View style={styles.empty}>
         <Text style={styles.emptyTitle}>아직 등록한 일정이 없어요</Text>
-        <Text style={styles.emptyDescription}>아래 일정 추가 버튼으로 첫 장소를 담아보세요.</Text>
+        <Text style={styles.emptyDescription}>아래 장소 추가 버튼으로 첫 방문지를 담아보세요.</Text>
       </View>
     );
   }

@@ -45,7 +45,7 @@ from app.recommend.schemas import CandidateTier, PetPolicy, ScoredCandidate, Wei
 from app.recommend.tmap import RouteLeg, TMapError
 from app.recommend.weights import resolve_weights
 from app.schemas.pet import calculate_age
-from app.schemas.route import RouteRequestCreate, RouteRequestStayCreate
+from app.schemas.route import RouteRequestCreate, RouteStayCreate
 from app.services import route_recommendation as rr
 from app.services.route_recommendation import (
     _cascade_item_times,
@@ -149,7 +149,7 @@ def test_resolve_location_geocodes_address_without_place_id() -> None:
 
 def test_stay_requires_db_place_or_address() -> None:
     with pytest.raises(ValidationError, match="placeId 또는 address"):
-        RouteRequestStayCreate(name="좌표 없는 숙소")
+        RouteStayCreate(name="좌표 없는 숙소")
 
 
 def test_route_request_accepts_stay_as_start_location() -> None:
@@ -840,7 +840,7 @@ def _scored_with_source(source: DataProvider) -> ScoredCandidate:
         pet_policy=PetPolicy(policy_type=PetPolicyType.OUTDOOR_ONLY, source=source),
         total_score=0.5,
         sub_scores={key: 0.5 for key in Weights.model_fields},
-        reason="목줄 착용 시 야외 동반 가능 · 한국관광공사 반려동물 동반 정보 기준",
+        reason="목줄 착용 시 야외 동반 가능 · 확인된 반려동물 동반 정보 기준",
     )
 
 
@@ -850,7 +850,7 @@ def test_tour_api_note_skipped_when_source_already_tour_api() -> None:
 
     result = rr._with_tour_api_note(candidate)
 
-    assert result.reason.count("한국관광공사") == 1
+    assert result.reason.count("확인된 반려동물 동반 정보") == 1
     assert "실시간 정보 확인" not in result.reason
 
 
@@ -859,7 +859,7 @@ def test_tour_api_note_added_for_other_sources() -> None:
 
     result = rr._with_tour_api_note(candidate)
 
-    assert result.reason.endswith("· 한국관광공사 TourAPI 실시간 정보 확인")
+    assert result.reason.endswith("· 최신 관광정보 확인")
 
 
 def test_llm_explanation_runs_before_itinerary_save(

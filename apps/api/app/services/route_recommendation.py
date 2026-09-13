@@ -173,10 +173,10 @@ def generate_route(db: Session, route_id: uuid.UUID) -> None:
 
     selected = [item.candidate for day in itinerary.days for item in day.items]
     tour_api_explanation = (
-        f"한국관광공사 TourAPI 실시간 관광정보 {len(tour_places)}건을 조회해 "
-        f"DB 장소 {len(tour_matched_ids)}건과 대조했습니다."
+        f"최신 주변 관광정보 {len(tour_places)}건을 조회해 "
+        f"등록된 장소 {len(tour_matched_ids)}건과 대조했습니다."
         if tour_api_succeeded
-        else "한국관광공사 TourAPI 실시간 조회에 실패해 DB 장소로 추천했습니다."
+        else "최신 주변 정보를 불러오지 못해 등록된 장소로 추천했습니다."
     )
     template_explanation = (
         "사용자가 선택한 취향과 우선순위, 숙소 기준 이동 거리를 반영했습니다. "

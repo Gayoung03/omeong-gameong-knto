@@ -8,6 +8,7 @@ import type {
   RouteItemResponse,
   RouteItemUpdateRequest,
   RouteListResponse,
+  ManualRouteCreateRequest,
   RouteRequestAcceptedResponse,
   RouteRequestCreateRequest,
   RouteUpdateRequest,
@@ -36,6 +37,12 @@ export async function getTrips(): Promise<TripListItem[]> {
 /** 여행 상세 조회 */
 export async function getTrip(tripId: string): Promise<Trip> {
   const { data } = await apiClient.get<RouteDetailResponse>(`/routes/${tripId}`);
+  return toTrip(data);
+}
+
+/** 추천을 거치지 않고 빈 일정의 여행을 직접 만든다. */
+export async function createManualTrip(payload: ManualRouteCreateRequest): Promise<Trip> {
+  const { data } = await apiClient.post<RouteDetailResponse>('/routes', payload);
   return toTrip(data);
 }
 

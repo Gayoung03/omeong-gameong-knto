@@ -31,6 +31,7 @@ from app.db.models import (
     RouteItemCandidate,
     RouteMove,
     RouteRequest,
+    RouteStay,
     TravelLog,
     User,
 )
@@ -1038,6 +1039,61 @@ def test_직접_만든_여행은_saved_로_시작한다(client: TestClient) -> N
     assert body["status"] == "saved"
     assert body["creationType"] == "manual"
     assert body["version"] == 1
+
+
+def test_직접_만든_여행은_출발지와_숙소만_메타정보로_저장한다(client: TestClient) -> None:
+    body = client.post(
+        "/api/v1/routes",
+        json=_manual_trip(
+            departureLocation="제주국제공항",
+            stays=[
+                {
+                    "name": "애월 숙소",
+                    "address": "제주시 애월읍 애월로 1",
+                    "checkInAt": "2026-09-11T15:00:00+09:00",
+                    "checkOutAt": "2026-09-12T11:00:00+09:00",
+                }
+            ],
+        ),
+    ).json()
+
+    assert body["departureLocation"] == "제주국제공항"
+    assert [stay["name"] for stay in body["stays"]] == ["애월 숙소"]
+    # 숙소·출발지는 기본 정보이고, 사용자가 담기 전 실제 일정은 비어 있어야 한다.
+    assert all(day["items"] == [] for day in body["routeDays"])
+
+
+def test_직접_만든_여행은_추천요청을_만들지_않는다(client: TestClient, db: Session) -> None:
+    body = client.post(
+        "/api/v1/routes",
+        json=_manual_trip(
+            departureLocation="제주국제공항",
+            stays=[{"name": "애월 숙소", "address": "제주시 애월읍 애월로 1"}],
+        ),
+    ).json()
+    route = db.get(Route, uuid.UUID(body["id"]))
+
+    assert route is not None
+    assert route.route_request_id is None
+    assert db.scalar(select(func.count(RouteStay.id)).where(RouteStay.route_id == route.id)) == 1
+
+
+def test_직접_만든_여행을_삭제하면_숙소도_함께_정리한다(client: TestClient, db: Session) -> None:
+    body = client.post(
+        "/api/v1/routes",
+        json=_manual_trip(
+            departureLocation="제주국제공항",
+            stays=[{"name": "애월 숙소", "address": "제주시 애월읍 애월로 1"}],
+        ),
+    ).json()
+    route = db.get(Route, uuid.UUID(body["id"]))
+    assert route is not None
+    route_id = route.id
+
+    response = client.delete(f"/api/v1/routes/{route.id}")
+
+    assert response.status_code == 204
+    assert db.scalar(select(func.count(RouteStay.id)).where(RouteStay.route_id == route_id)) == 0
 
 
 def test_만든_여행에_바로_일정을_넣을_수_있다(client: TestClient) -> None:
