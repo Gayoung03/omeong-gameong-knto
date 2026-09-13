@@ -60,11 +60,13 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 from openai import OpenAI as RealOpenAI
 
@@ -74,6 +76,10 @@ from app.integrations.llm import chat as chat_module
 from scripts.chat_quality_check import QUESTION_SETS, SET_HEADINGS, _trace_dispatch
 
 KST = timezone(timedelta(hours=9))
+
+#: 요금표를 확인한 날. 단가가 바뀌면 여기도 고친다 — 기록에 함께 남겨야 나중에
+#: "그때 얼마짜리로 계산한 숫자인가"를 되짚을 수 있다.
+PRICING_CHECKED_ON = "2026-09-12"
 
 #: 출처: https://developers.openai.com/api/docs/pricing (확인일 2026-09-12).
 #: 자주 바뀌는 값이라 오래 쓰기 전에 다시 확인할 것 — 여기가 틀리면 비용 숫자가 전부 틀린다.
@@ -137,6 +143,68 @@ class _TrackedOpenAI:
         self._real = RealOpenAI(*args, **kwargs)
         self.usage: list = []
         self.chat = _TrackedChat(self._real.chat, self.usage)
+
+
+def _git_revision() -> str:
+    """측정에 쓰인 **코드 버전**. 전후 비교에서 "무엇이 달라졌나"의 기준점이다.
+
+    커밋되지 않은 변경이 있으면 `+dirty` 를 붙인다 — 커밋 해시만 적어 두면
+    나중에 그 해시를 체크아웃해도 측정 당시의 코드가 아닐 수 있다.
+    """
+    try:
+        head = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        ).stdout.strip()
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        ).stdout.strip()
+        return f"{head}+dirty" if dirty else head
+    except (subprocess.SubprocessError, OSError):
+        return "unknown"
+
+
+def _db_identity() -> dict:
+    """대상 DB 를 식별할 수 있는 만큼만. **비밀번호는 담지 않는다.**
+
+    로컬 씨앗과 팀 RDS 는 데이터가 달라 같은 질문도 다른 답이 나온다(로컬 장소 4건).
+    어느 DB 에서 잰 숫자인지가 기록에 없으면 전후 비교가 성립하지 않는다.
+    """
+    parsed = urlparse(settings.database_url)
+    return {
+        "host": parsed.hostname,
+        "port": parsed.port,
+        "database": (parsed.path or "").lstrip("/"),
+    }
+
+
+def _usage_rounds(usage_list: list) -> list[dict]:
+    """라운드마다의 토큰. 합계만 두면 **어느 라운드가 비싼지**를 못 본다.
+
+    도구 강제(0라운드)와 답변 라운드는 성격이 다르다 — 앞은 고정 오버헤드가
+    거의 전부고, 뒤는 거기에 도구 결과가 얹힌다. 최적화 후보를 고르려면 나눠 봐야 한다.
+    """
+    rounds = []
+    for index, usage in enumerate(usage_list):
+        details = usage.prompt_tokens_details
+        cached = (details.cached_tokens if details else 0) or 0
+        rounds.append(
+            {
+                "round": index,
+                "prompt": usage.prompt_tokens,
+                "cached": cached,
+                "uncached": max(usage.prompt_tokens - cached, 0),
+                "completion": usage.completion_tokens,
+            }
+        )
+    return rounds
 
 
 def _cost_usd(model: str, usage_list: list) -> float:
@@ -398,7 +466,13 @@ class Measurement:
     first_token_seconds: float | None = None
     #: 답변이 끝까지 나오기까지.
     seconds: float = 0.0
+    #: 도구(DB 조회)에 쓴 시간의 합. 병목이 모델인지 DB 인지 가르는 데 쓴다.
+    tool_seconds: float = 0.0
+    #: 전체에서 도구 시간을 뺀 나머지 — 모델을 기다린 시간이다.
+    llm_seconds: float = 0.0
     rounds: int = 0
+    #: 라운드별 토큰. 합계만 보면 어느 라운드를 줄여야 하는지 알 수 없다.
+    rounds_detail: list[dict] = field(default_factory=list)
     prompt_tokens: int = 0
     completion_tokens: int = 0
     cached_tokens: int = 0
@@ -442,7 +516,21 @@ def _ask(db, model: str, question: str) -> _Run:
     """
     trace: list[dict] = []
     traced, original_dispatch = _trace_dispatch(trace)
-    chat_module._dispatch = traced
+
+    def timed(db_, name, raw_arguments):
+        """도구 한 번에 걸린 시간을 기록에 얹는다.
+
+        `_trace_dispatch` 를 고치지 않고 한 겹 더 감싼다 — 저쪽은
+        `chat_quality_check` 도 쓰는 코드라, 측정 전용 항목을 끼워 넣지 않는다.
+        """
+        started = time.perf_counter()
+        try:
+            return traced(db_, name, raw_arguments)
+        finally:
+            if trace:
+                trace[-1]["seconds"] = time.perf_counter() - started
+
+    chat_module._dispatch = timed
     settings.openai_model = model
 
     original_openai = chat_module.OpenAI
@@ -486,6 +574,7 @@ def _measure(spec: dict, model: str, run: int, db) -> Measurement:
     got = _ask(db, model, spec["question"])
     usage = got.usage
     is_error = isinstance(got.result, Exception)
+    tool_seconds = sum(step.get("seconds", 0.0) for step in got.trace)
     measurement = Measurement(
         question_id=spec["id"],
         question=spec["question"],
@@ -495,7 +584,10 @@ def _measure(spec: dict, model: str, run: int, db) -> Measurement:
             round(got.first_token_seconds, 2) if got.first_token_seconds else None
         ),
         seconds=round(got.seconds, 2),
+        tool_seconds=round(tool_seconds, 3),
+        llm_seconds=round(got.seconds - tool_seconds, 3),
         rounds=len(usage),
+        rounds_detail=_usage_rounds(usage),
         prompt_tokens=sum(u.prompt_tokens for u in usage),
         completion_tokens=sum(u.completion_tokens for u in usage),
         cached_tokens=sum(
@@ -520,12 +612,16 @@ def _measure(spec: dict, model: str, run: int, db) -> Measurement:
     return measurement
 
 
-def _print_report(question_set: str, measurements: list[Measurement]) -> None:
+def _print_report(question_set: str, measurements: list[Measurement], meta: dict) -> None:
     title, _ = SET_HEADINGS[question_set]
-    host = settings.database_url.split("@")[-1].split("/")[0]
     print(f"# {title} — 성능·비용·쿼리 정확도")
     print()
-    print(f"실행: {datetime.now(KST):%Y-%m-%d %H:%M} KST · 대상 DB: `{host}`")
+    print(f"실행: {meta['started_at']} · 코드 `{meta['code_revision']}`")
+    print(f"대상 DB: `{meta['database']['host']}/{meta['database']['database']}`")
+    print(
+        f"모델: {' / '.join(meta['models'])} · 문항 {meta['questions']}개 · "
+        f"반복 {meta['repeat']}회 · 단가 확인일 {meta['pricing_checked_on']}"
+    )
     print()
     header = (
         f"{'#':>3} {'모델':<14} {'회차':>4} {'첫글자':>7} {'완료':>6} {'라운드':>6} "
@@ -565,6 +661,41 @@ def _print_report(question_set: str, measurements: list[Measurement]) -> None:
             f"{sum(r.rounds for r in rows) / n:>8.2f}{total_cost / n:>13.6f}"
             f"{_input_cost_share(model, rows) * 100:>9.1f}%"
         )
+    print()
+
+    # 병목이 모델인지 DB 인지 가른다. 도구 시간이 작으면 DB 튜닝은 헛수고다.
+    print("## 시간이 어디로 갔나 (평균 초)")
+    print()
+    print(f"{'모델':<14}{'완료':>8}{'모델대기':>10}{'DB조회':>9}{'DB비중':>9}")
+    for model, rows in by_model.items():
+        n = len(rows)
+        total = sum(r.seconds for r in rows) / n
+        tool = sum(r.tool_seconds for r in rows) / n
+        llm = sum(r.llm_seconds for r in rows) / n
+        share = (tool / total * 100) if total else 0.0
+        print(f"{model:<14}{total:>8.2f}{llm:>10.2f}{tool:>9.2f}{share:>8.1f}%")
+    print()
+
+    # 라운드별 토큰 — 어느 라운드를 줄여야 하는지. 0라운드는 고정 오버헤드가 거의
+    # 전부고, 1라운드는 거기에 도구 결과가 얹힌다.
+    print("## 라운드별 토큰 (평균)")
+    print()
+    print(f"{'모델':<14}{'라운드':>7}{'prompt':>9}{'cached':>8}{'uncached':>10}{'completion':>12}")
+    for model, rows in by_model.items():
+        per_round: dict[int, list[dict]] = {}
+        for row in rows:
+            for detail in row.rounds_detail:
+                per_round.setdefault(detail["round"], []).append(detail)
+        for index in sorted(per_round):
+            group = per_round[index]
+            count = len(group)
+            print(
+                f"{model:<14}{index:>7}"
+                f"{sum(d['prompt'] for d in group) / count:>9.0f}"
+                f"{sum(d['cached'] for d in group) / count:>8.0f}"
+                f"{sum(d['uncached'] for d in group) / count:>10.0f}"
+                f"{sum(d['completion'] for d in group) / count:>12.0f}"
+            )
     print()
 
     # 인자·항목은 **판정이 아니라 의심 신호**다. 세는 방식이 문자열 대조뿐이라
@@ -650,6 +781,21 @@ def main() -> None:
         file=sys.stderr,
     )
 
+    #: 이 측정이 **무엇을 잰 것인지**. 전후 비교를 하려면 코드 버전과 대상 DB 가
+    #: 같은지부터 확인해야 하는데, 기록에 없으면 확인할 방법이 없다.
+    meta = {
+        "started_at": f"{datetime.now(KST):%Y-%m-%d %H:%M:%S} KST",
+        "code_revision": _git_revision(),
+        "question_set": args.question_set,
+        "questions": len(questions),
+        "models": models,
+        "repeat": args.repeat,
+        "database": _db_identity(),
+        "pricing_checked_on": PRICING_CHECKED_ON,
+        "pricing_usd_per_1m": PRICING_USD_PER_1M,
+        "max_tool_rounds": chat_module.MAX_TOOL_ROUNDS,
+    }
+
     measurements: list[Measurement] = []
     with SessionLocal() as db:
         for spec in questions:
@@ -669,12 +815,13 @@ def main() -> None:
                         f"{' · 오류' if measurement.error else ''}\n"
                     )
 
-    _print_report(args.question_set, measurements)
+    meta["finished_at"] = f"{datetime.now(KST):%Y-%m-%d %H:%M:%S} KST"
+    _print_report(args.question_set, measurements, meta)
 
     if args.json_path:
         with open(args.json_path, "w", encoding="utf-8") as handle:
             json.dump(
-                [m.__dict__ for m in measurements],
+                {"meta": meta, "measurements": [m.__dict__ for m in measurements]},
                 handle,
                 ensure_ascii=False,
                 indent=2,
