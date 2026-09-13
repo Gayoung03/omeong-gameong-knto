@@ -69,7 +69,7 @@ from app.db.models.enums import (
     MessageRole,
     PetPolicyType,
 )
-from app.rag.prompts.system import build_system_prompt
+from app.rag.prompts.system import build_system_prompt, build_tool_selection_prompt
 from app.rag.retrieval.guide_search import (
     DEFAULT_GUIDE_LIMIT,
     MAX_GUIDE_LIMIT,
@@ -737,8 +737,9 @@ def stream_answer(
     상태라 "중지하면 저장하지 않는다"가 자연히 지켜진다.
     """
     client = _client()
+    system_prompt = build_system_prompt()
     messages: list[dict] = [
-        {"role": "system", "content": build_system_prompt()},
+        {"role": "system", "content": system_prompt},
         *history[-HISTORY_LIMIT:],
         {"role": "user", "content": question},
     ]
@@ -752,6 +753,15 @@ def stream_answer(
     try:
         for round_index in range(MAX_TOOL_ROUNDS):
             choice = _tool_choice(round_index, declined_search)
+            # 0라운드는 도구와 인자를 고르는 일만 한다. 말투·서식·판정 옮기기 규칙은
+            # 그 결정에 쓰이지 않으면서 매번 함께 실려 갔다(실측: prompt 5,124 토큰에
+            # completion 21 토큰). 그 라운드에만 짧은 안내를 보낸다.
+            messages[0] = {
+                "role": "system",
+                "content": (
+                    build_tool_selection_prompt() if choice == "required" else system_prompt
+                ),
+            }
             stream = client.chat.completions.create(
                 model=settings.openai_model,
                 messages=messages,

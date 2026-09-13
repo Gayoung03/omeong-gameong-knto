@@ -159,8 +159,11 @@ def _git_revision() -> str:
             timeout=5,
             check=True,
         ).stdout.strip()
+        # **추적 중인 파일의 변경만 본다.** `--porcelain` 만 쓰면 저장소에 놔둔
+        # 메모 파일 하나 때문에 모든 측정이 `+dirty` 로 찍혀, 정작 코드가 달랐던
+        # 실행과 같았던 실행을 구분하지 못한다(2026-09-13 에 실제로 그랬다).
         dirty = subprocess.run(
-            ["git", "status", "--porcelain"],
+            ["git", "status", "--porcelain", "--untracked-files=no"],
             capture_output=True,
             text=True,
             timeout=5,
