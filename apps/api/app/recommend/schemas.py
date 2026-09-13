@@ -5,11 +5,32 @@
 """
 
 import uuid
-from datetime import time
+from datetime import datetime, time
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.db.models.enums import PetPolicyType, PlaceEnvironment, ScheduleItemType
+from app.db.models.enums import (
+    DataProvider,
+    PetActivityLevel,
+    PetEnergyLevel,
+    PetPolicyType,
+    PetSize,
+    PlaceEnvironment,
+    ScheduleItemType,
+)
+
+
+class CandidateTier(StrEnum):
+    """반려 정책 판정 3등급.
+
+    VERIFIED: 정책상 확실히 동반 가능 / NEEDS_CHECK: 정책 없음·unknown 이라 확인 필요 /
+    BLOCKED: 동반 불가 또는 종·크기·체중 제한 불통과(후보에서 제외).
+    """
+
+    VERIFIED = "verified"
+    NEEDS_CHECK = "needs_check"
+    BLOCKED = "blocked"
 
 
 class RecommendationSchema(BaseModel):
@@ -51,7 +72,24 @@ class PetPolicy(RecommendationSchema):
     carrier_required: bool | None = None
     leash_required: bool | None = None
     vaccination_required: bool | None = None
+    muzzle_required: bool | None = None
     reliability_score: float | None = Field(default=None, ge=0, le=100)
+    # 근거 출처 문장(recommendationReason)에만 쓰는 스냅샷. 하드 필터·점수에는 안 쓴다.
+    source: DataProvider | None = None
+    source_url: str | None = None
+    verified_at: datetime | None = None
+    caution_note: str | None = None
+
+
+class PetProfile(RecommendationSchema):
+    """반려 점수·하루 구성에 쓰는 반려동물 프로필. ORM 대신 엔진 경계에서 이걸 쓴다."""
+
+    size: PetSize | None = None
+    weight_kg: float | None = Field(default=None, ge=0)
+    age_years: int | None = Field(default=None, ge=0)
+    activity_level: PetActivityLevel | None = None
+    car_sickness: bool | None = None
+    energy_level: PetEnergyLevel | None = None
 
 
 class Candidate(RecommendationSchema):
@@ -71,6 +109,9 @@ class Candidate(RecommendationSchema):
     saved_count: int = Field(default=0, ge=0)
     pet_policy: PetPolicy | None = None
     business_hours: list[BusinessHour] = Field(default_factory=list)
+    # 반려 정책 판정 등급과 확인 전화번호. filter_candidates 가 채운다.
+    tier: CandidateTier = CandidateTier.VERIFIED
+    phone: str | None = None
 
 
 class Weights(RecommendationSchema):

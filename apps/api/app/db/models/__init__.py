@@ -1,6 +1,8 @@
 """Import every SQLAlchemy model so Alembic can discover the metadata."""
 
 from app.db.models.community import (
+    AdminInquiryAuditLog,
+    AdminNoticeAuditLog,
     ChatConversation,
     ChatMessage,
     Favorite,
@@ -13,7 +15,7 @@ from app.db.models.community import (
     TravelLog,
     TravelLogPet,
 )
-from app.db.models.editorial import EditorialStory, EditorialStorySource
+from app.db.models.editorial import AdminEditorialAuditLog, EditorialStory, EditorialStorySource
 from app.db.models.guides import (
     GuideDocument,
     GuideDocumentSource,
@@ -34,12 +36,14 @@ from app.db.models.routes import (
     RouteChecklistItem,
     RouteDay,
     RouteItem,
+    RouteItemCandidate,
     RouteMemo,
     RouteMove,
     RoutePet,
     RouteRequest,
     RouteRequestPet,
     RouteRequestStay,
+    RouteStay,
     WeatherSnapshot,
 )
 from app.db.models.users import (
@@ -53,6 +57,9 @@ from app.db.models.users import (
 )
 
 __all__ = [
+    "AdminEditorialAuditLog",
+    "AdminInquiryAuditLog",
+    "AdminNoticeAuditLog",
     "ChatConversation",
     "ChatMessage",
     "Favorite",
@@ -80,12 +87,14 @@ __all__ = [
     "RouteChecklistItem",
     "RouteDay",
     "RouteItem",
+    "RouteItemCandidate",
     "RouteMemo",
     "RouteMove",
     "RoutePet",
     "RouteRequest",
     "RouteRequestPet",
     "RouteRequestStay",
+    "RouteStay",
     "TravelLog",
     "TravelLogPet",
     "TransportPetRule",

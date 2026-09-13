@@ -26,7 +26,7 @@ type Props = {
  * ## 버튼을 Pressable 안에 넣지 않는다
  *
  * 웹에서 `<button>` 이 중첩되면 안쪽 버튼이 눌리지 않는다. 그래서 줄 전체를
- * 덮는 Pressable 과 오른쪽 아이콘 버튼들을 **형제**로 두고 겹쳐 놓았다
+ * 덮는 Pressable 과 오른쪽 삭제 버튼을 **형제**로 두고 겹쳐 놓았다
  * (줄 안쪽에 오른쪽 여백을 줘서 글자가 아이콘 밑으로 들어가지 않는다).
  *
  * ## 진행 중 점
@@ -40,7 +40,6 @@ export function ConversationRow({
   isAnswering,
   onDelete,
   onPress,
-  onRename,
 }: Props) {
   const title = conversation.title ?? UNTITLED_CONVERSATION;
 
@@ -69,20 +68,13 @@ export function ConversationRow({
           <Text numberOfLines={1} style={styles.preview}>
             {conversation.preview ?? '아직 주고받은 말이 없어요'}
           </Text>
-          <Text style={styles.time}>{relativeTime(conversation.updatedAt)}</Text>
+          <Text numberOfLines={1} style={styles.time}>
+            {relativeTime(conversation.updatedAt)}
+          </Text>
         </View>
       </Pressable>
 
       <View style={styles.actions}>
-        <Pressable
-          accessibilityLabel={`${title} 이름 바꾸기`}
-          accessibilityRole="button"
-          hitSlop={8}
-          onPress={onRename}
-          style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-        >
-          <Ionicons color={colors.iconGray} name="pencil" size={15} />
-        </Pressable>
         <Pressable
           accessibilityHint="휴지통으로 옮깁니다. 대화 내용은 지워지지 않아요"
           accessibilityLabel={`${title} 삭제`}
@@ -137,8 +129,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     minHeight: 58,
     paddingHorizontal: spacing.sm + 2,
-    // 오른쪽 아이콘 두 개가 겹쳐 있는 만큼 비워 둔다.
-    paddingRight: 62,
+    // 오른쪽 삭제 버튼이 겹쳐 있는 만큼 비워 둔다.
+    paddingRight: 36,
     paddingVertical: spacing.sm,
   },
   rowActive: {
@@ -146,6 +138,7 @@ const styles = StyleSheet.create({
   },
   time: {
     color: colors.textTertiary,
+    flexShrink: 0,
     fontSize: typography.micro.fontSize,
   },
   title: {

@@ -1,5 +1,8 @@
 export type InquiryStatus = 'pending' | 'completed';
 
+/** API·DB가 쓰는 값(docs/api/notifications.md). 화면 표시는 아래 라벨로 바꾼다. */
+export type InquiryCategoryCode = 'account' | 'pet' | 'saved' | 'schedule' | 'bug' | 'etc';
+
 export type InquiryCategory =
   | '계정 및 회원정보'
   | '반려동물 정보'
@@ -8,7 +11,20 @@ export type InquiryCategory =
   | '오류·불편'
   | '기타';
 
-/** 작성 화면의 유형 선택 시트와 목업이 함께 쓰는 유일한 원본 목록 */
+export const INQUIRY_CATEGORY_CODE_TO_LABEL: Record<InquiryCategoryCode, InquiryCategory> = {
+  account: '계정 및 회원정보',
+  pet: '반려동물 정보',
+  saved: '저장한 장소·코스',
+  schedule: '여행 일정',
+  bug: '오류·불편',
+  etc: '기타',
+};
+
+export const INQUIRY_CATEGORY_LABEL_TO_CODE = Object.fromEntries(
+  Object.entries(INQUIRY_CATEGORY_CODE_TO_LABEL).map(([code, label]) => [label, code]),
+) as Record<InquiryCategory, InquiryCategoryCode>;
+
+/** 작성 화면의 유형 선택 시트가 쓰는 원본 목록 */
 export const INQUIRY_CATEGORY_OPTIONS: InquiryCategory[] = [
   '계정 및 회원정보',
   '반려동물 정보',

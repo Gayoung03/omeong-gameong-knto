@@ -27,7 +27,9 @@ from app.db.base import Base
 from app.db.models.enums import (
     AuthProvider,
     ConsentType,
+    PetActivityLevel,
     PetSize,
+    PetSociabilityLevel,
     PetSpecies,
     TransportType,
     TripPace,
@@ -60,6 +62,11 @@ class User(Base):
         Boolean, nullable=False, server_default=text("true")
     )
     marketing_notification_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    # 관리자 API 권한의 정본. JWT claim만 믿지 않고 요청마다 DB의 현재 권한을
+    # 확인해서 권한 회수도 다음 요청부터 즉시 적용되게 한다.
+    is_admin: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
     #: 비밀번호를 마지막으로 바꾼 시각. **이 시각 이전에 발급된 access·refresh
@@ -141,6 +148,14 @@ class Pet(Base):
     birth_date: Mapped[date | None] = mapped_column(Date)
     image_url: Mapped[str | None] = mapped_column(Text)
     health_notes: Mapped[str | None] = mapped_column(Text)
+    # 반려동물 중심 개인화 여행 특성(NULL = 규칙 미적용). car_sickness 는 NULL=모름.
+    activity_level: Mapped[PetActivityLevel | None] = mapped_column(
+        db_enum(PetActivityLevel, "pet_activity_level")
+    )
+    sociability: Mapped[PetSociabilityLevel | None] = mapped_column(
+        db_enum(PetSociabilityLevel, "pet_sociability_level")
+    )
+    car_sickness: Mapped[bool | None] = mapped_column(Boolean)
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(

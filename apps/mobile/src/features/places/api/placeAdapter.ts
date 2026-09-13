@@ -4,6 +4,8 @@ import type { PlaceDetailResponse, PlaceListItemResponse } from '../types/placeA
 import type { Place, PlaceRegion } from '../types/place';
 import type { PlaceDetail } from '../types/placeDetail';
 
+import { toBusinessHoursDisplay, toClosedDaysDisplay } from './businessHoursDisplay';
+
 /**
  * 서버 장소 → 앱 장소.
  *
@@ -111,6 +113,50 @@ function toEnvironmentLabel(
   return null;
 }
 
+const POLICY_METADATA_LINE = /^(?:반려동물 동반 가능정보|반려동물 전용 정보|입장 가능 동물 크기|반려동물 제한사항|장소\(실내\) 여부|장소\(실외\) 여부|애견 동반 추가 요금)\s*:/;
+
+/**
+ * 수집 출처의 블록 마커와 이미 아이콘으로 보여주는 key/value 행을 제거한다.
+ * DB의 원문은 보존하고 화면용 문구만 정리한다.
+ */
+export function toDisplayPolicyNotes(notes: string | null): string | null {
+  if (!notes) return null;
+
+  const seen = new Set<string>();
+  const lines = notes
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\[(?:기존 정책|KCISA)\]/g, '').trim())
+    .filter((line) => line && !POLICY_METADATA_LINE.test(line))
+    .filter((line) => {
+      const normalized = line.replace(/\s+/g, ' ');
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    });
+
+  return lines.join('\n') || null;
+}
+
+/** 소개가 아니라 수집 메타데이터인 줄은 상세 화면에 노출하지 않는다. */
+export function toDisplayDescription(
+  description: string | null,
+  categoryLabel: string,
+): string | null {
+  if (!description) return null;
+
+  const lines = description
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line &&
+        line !== categoryLabel &&
+        !/^\[(?:KCISA 원본 분류|입장료)\]/.test(line),
+    );
+
+  return lines.join('\n') || null;
+}
+
 export function toPlace(response: PlaceListItemResponse): Place {
   const petPolicy = toPetPolicy(response.petPolicyType);
 
@@ -142,22 +188,51 @@ export function toPlace(response: PlaceListItemResponse): Place {
  *   못 맞춘 값을 `null` 로 지우면 보여줄 수 있는 정보만 사라진다.
  * - 상세 응답에는 거리가 없다. 좌표 파라미터를 받지 않는 엔드포인트라 아예 안 온다.
  *
- * 전화번호 · 영업시간 · 태그 · 편의시설도 함께 내려오지만 아직 그리는 화면이 없어
- * 옮기지 않는다. 필요해지면 이 함수와 `PlaceDetail` 에 같이 추가한다.
+ * 상세 화면에서 설명·시설·동반 정책·영업 정보를 모두 그리므로 원문을 보존해 옮긴다.
  */
 export function toPlaceDetail(response: PlaceDetailResponse): PlaceDetail {
+  const categoryLabel = toCategoryLabel(response.category);
+
   return {
     address: response.address ?? response.roadAddress ?? '',
-    categoryLabel: toCategoryLabel(response.category),
-    description: response.description,
+    amenities: response.amenities ?? [],
+    businessHoursRaw: toBusinessHoursDisplay(
+      response.businessHoursRaw,
+      response.businessHours,
+    ),
+    categoryLabel,
+    closedDaysRaw: toClosedDaysDisplay(
+      response.closedDaysRaw,
+      response.businessHoursRaw,
+      response.businessHours,
+    ),
+    description: toDisplayDescription(response.description, categoryLabel),
+    serverCategory: response.category,
     environment: toEnvironmentLabel(response.environment),
+    homepageUrl: response.homepageUrl,
     id: response.id,
     imageUrl: response.primaryImageUrl,
+    imageUrls: response.imageUrls ?? [],
     isReservable: response.reservationRequired,
     latitude: response.latitude,
     longitude: response.longitude,
     name: response.name,
     petPolicy: toPetPolicy(response.petPolicy.policyType),
+    petPolicyInfo: {
+      allowedSizes: response.petPolicy.allowedSizes ?? [],
+      carrierRequired: response.petPolicy.carrierRequired,
+      cautionNote: response.petPolicy.cautionNote,
+      extraFeeAmount: response.petPolicy.extraFeeAmount,
+      foodAreaAllowed: response.petPolicy.foodAreaAllowed,
+      leashRequired: response.petPolicy.leashRequired,
+      maxWeightKg: response.petPolicy.maxWeightKg,
+      maxPetsPerPerson: response.petPolicy.maxPetsPerPerson,
+      muzzleRequired: response.petPolicy.muzzleRequired,
+      notes: toDisplayPolicyNotes(response.petPolicy.notes),
+      requiredItems: response.petPolicy.requiredItems ?? [],
+      vaccinationRequired: response.petPolicy.vaccinationRequired,
+    },
+    phone: response.phone,
     rating: response.rating,
     region: response.region,
     reviewCount: response.reviewCount,

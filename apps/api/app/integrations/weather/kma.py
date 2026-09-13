@@ -31,6 +31,17 @@ class CurrentWeather:
     source_updated_at: datetime
 
 
+@dataclass(frozen=True)
+class DayForecast:
+    """하루치 단기예보 요약. 하루 구성 규칙(비·더위)과 스냅샷 저장에 쓴다."""
+
+    pop_max: int
+    tmax: float | None
+    tmin: float | None
+    #: 시각(0~23) → 기온(TMP). 정오~오후 시간대 더위 판정·조건 매핑에 쓴다.
+    hourly_tmp: dict[int, float]
+
+
 def get_current_weather(
     latitude: float,
     longitude: float,
@@ -77,6 +88,66 @@ def get_current_weather(
     )
 
 
+def get_daily_forecasts(
+    latitude: float,
+    longitude: float,
+    dates: set[date],
+    *,
+    now: datetime | None = None,
+    client: httpx.Client | None = None,
+) -> dict[date, DayForecast]:
+    """요청한 날짜마다 하루치 예보 요약(강수확률·최고/최저기온·시간대별 기온)을 반환한다.
+
+    예보 범위(+3일) 밖 날짜는 결과 dict 에 없다. 호출 실패는 WeatherForecastError.
+    """
+
+    if not dates:
+        return {}
+    items, _ = _fetch_forecast_items(latitude, longitude, now or datetime.now(KST), client)
+
+    pop: dict[date, int] = {}
+    tmax: dict[date, float] = {}
+    tmin: dict[date, float] = {}
+    hourly: dict[date, dict[int, float]] = {}
+    for item in items:
+        category = item.get("category")
+        if category not in {"POP", "TMP", "TMN", "TMX"}:
+            continue
+        try:
+            forecast_date = datetime.strptime(item["fcstDate"], "%Y%m%d").date()
+            value = item["fcstValue"]
+        except (KeyError, TypeError, ValueError):
+            continue
+        if forecast_date not in dates:
+            continue
+        try:
+            if category == "POP":
+                probability = int(value)
+                if 0 <= probability <= 100:
+                    pop[forecast_date] = max(pop.get(forecast_date, 0), probability)
+            elif category == "TMX":
+                tmax[forecast_date] = float(value)
+            elif category == "TMN":
+                tmin[forecast_date] = float(value)
+            elif category == "TMP":
+                hour = int(item["fcstTime"][:2])
+                if 0 <= hour <= 23:
+                    hourly.setdefault(forecast_date, {})[hour] = float(value)
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    covered = set(pop) | set(tmax) | set(tmin) | set(hourly)
+    return {
+        forecast_date: DayForecast(
+            pop_max=pop.get(forecast_date, 0),
+            tmax=tmax.get(forecast_date),
+            tmin=tmin.get(forecast_date),
+            hourly_tmp=hourly.get(forecast_date, {}),
+        )
+        for forecast_date in covered
+    }
+
+
 def get_precipitation_probabilities(
     latitude: float,
     longitude: float,
@@ -87,22 +158,8 @@ def get_precipitation_probabilities(
 ) -> dict[date, int]:
     """요청한 날짜마다 가장 높은 강수확률(POP)을 반환한다."""
 
-    if not dates:
-        return {}
-    items, _ = _fetch_forecast_items(latitude, longitude, now or datetime.now(KST), client)
-
-    result: dict[date, int] = {}
-    for item in items:
-        if item.get("category") != "POP":
-            continue
-        try:
-            forecast_date = datetime.strptime(item["fcstDate"], "%Y%m%d").date()
-            probability = int(item["fcstValue"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        if forecast_date in dates and 0 <= probability <= 100:
-            result[forecast_date] = max(result.get(forecast_date, 0), probability)
-    return result
+    forecasts = get_daily_forecasts(latitude, longitude, dates, now=now, client=client)
+    return {forecast_date: forecast.pop_max for forecast_date, forecast in forecasts.items()}
 
 
 def _fetch_forecast_items(
@@ -167,6 +224,15 @@ def _latest_base(now: datetime) -> tuple[date, int]:
     if available:
         return current.date(), available[-1]
     return current.date() - timedelta(days=1), BASE_HOURS[-1]
+
+
+def region_key(latitude: float, longitude: float) -> str:
+    """좌표를 기상청 격자 기반 지역 키 `kma:{nx},{ny}` 로 바꾼다.
+
+    weather_snapshots.region(UNIQUE(region, forecast_at))에 쓰는 좌표 유래 키다.
+    """
+    nx, ny = _to_grid(latitude, longitude)
+    return f"kma:{nx},{ny}"
 
 
 def _to_grid(latitude: float, longitude: float) -> tuple[int, int]:

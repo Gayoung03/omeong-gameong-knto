@@ -32,6 +32,9 @@ def _to_response(pet: Pet) -> PetResponse:
         age=calculate_age(pet.birth_date),
         image_url=pet.image_url,
         health_notes=pet.health_notes,
+        activity_level=pet.activity_level,
+        sociability=pet.sociability,
+        car_sickness=pet.car_sickness,
         is_primary=pet.is_primary,
         status="deleted" if pet.deleted_at else "active",
     )

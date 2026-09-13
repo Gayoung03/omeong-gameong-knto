@@ -30,7 +30,9 @@ ALLOWED = {
         "muzzle_required", "food_area_allowed", "caution_note",
     },
     "place_business_hours": {"opens_at", "closes_at"},
-    "places": {"check_in_time", "check_out_time", "category_detail", "business_hours_raw"},
+    "places": {
+        "check_in_time", "check_out_time", "category_detail", "business_hours_raw", "cuisine",
+    },
 }
 
 

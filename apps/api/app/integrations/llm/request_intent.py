@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from openai import APITimeoutError, OpenAI
 
 from app.core.config import settings
-from app.recommend.config.tags import STANDARD_TAG_SET, STANDARD_TAGS
+from app.recommend.config.tags import STANDARD_TAG_SET, STANDARD_TAGS, tag_hint_text
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,10 @@ def _intent_tool() -> dict:
         "type": "function",
         "function": {
             "name": "extract_request_intent",
-            "description": "여행 요청문에서 표준 선호 태그만 고른다. 없으면 빈 배열.",
+            "description": (
+                "여행 요청문에서 표준 선호 태그(영문 코드)만 고른다. 없으면 빈 배열. "
+                f"코드 의미: {tag_hint_text()}."
+            ),
             "strict": True,
             "parameters": {
                 "type": "object",

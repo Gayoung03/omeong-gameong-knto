@@ -8,8 +8,8 @@ import type { Place } from '../types/place';
 
 import { toPlace, toPlaceDetail } from './placeAdapter';
 
-/** 제주도 장소 수가 많지 않아 한 번에 받아 화면에서 거른다. */
-const LIST_LIMIT = 1000;
+/** API의 최대 페이지 크기. 전체 목록은 페이지를 모두 받아 화면에서 거른다. */
+const LIST_PAGE_SIZE = 1000;
 
 /**
  * 공식 장소 목록.
@@ -19,11 +19,22 @@ const LIST_LIMIT = 1000;
  * 섞이는 구조라, 섞일 수 없게 막아둔 것이다.
  */
 export async function getPlaces(): Promise<Place[]> {
-  const { data } = await apiClient.get<PlaceListResponse>('/places', {
-    params: { limit: LIST_LIMIT },
+  const { data: firstPage } = await apiClient.get<PlaceListResponse>('/places', {
+    params: { limit: LIST_PAGE_SIZE },
   });
+  const items = [...firstPage.items];
 
-  return data.items.map(toPlace);
+  while (items.length < firstPage.total) {
+    const { data: nextPage } = await apiClient.get<PlaceListResponse>('/places', {
+      params: { limit: LIST_PAGE_SIZE, offset: items.length },
+    });
+    if (nextPage.items.length === 0) break;
+    items.push(...nextPage.items);
+  }
+
+  return items
+    .map(toPlace)
+    .sort((left, right) => left.name.localeCompare(right.name, 'ko-KR'));
 }
 
 /** 장소명으로 검색한다. 서버가 좁혀 주므로 전체를 받아 거르지 않는다. */

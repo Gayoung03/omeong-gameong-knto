@@ -104,6 +104,7 @@ export type TripPet = {
 /** 여행 전체 */
 export type Trip = {
   id: string;
+  creationType: 'recommended' | 'manual';
   title: string;
   /** YYYY-MM-DD */
   startDate: string;
@@ -113,6 +114,7 @@ export type Trip = {
   days: number;
   transport: TripTransport;
   pets: TripPet[];
+  departureLocation: string;
   accommodationSummary: string;
   /** 여행 성향 한 줄 요약 (예: 여유로운 힐링 여행) */
   travelStyle: string;
@@ -148,7 +150,7 @@ export type TripMemo = {
 /** 여행 목록에서 사용하는 축약 정보 */
 export type TripListItem = Pick<
   Trip,
-  'id' | 'title' | 'startDate' | 'endDate' | 'nights' | 'days' | 'coverEmoji'
+  'id' | 'title' | 'startDate' | 'endDate' | 'nights' | 'days' | 'coverEmoji' | 'creationType'
 > & { startAt: string };
 
 /** 내 여행 상세 화면의 상단 탭 */

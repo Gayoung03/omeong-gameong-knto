@@ -5,9 +5,12 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from app.db import models  # noqa: F401
 from app.db.base import Base
-from app.db.models.enums import RouteCreationType
+from app.db.models.enums import DataProvider, RouteCreationType
 
 EXPECTED_TABLES = {
+    "admin_editorial_audit_logs",
+    "admin_inquiry_audit_logs",
+    "admin_notice_audit_logs",
     "chat_conversations",
     "chat_messages",
     "editorial_stories",
@@ -33,6 +36,7 @@ EXPECTED_TABLES = {
     "route_calculation_cache",
     "route_checklist_items",
     "route_days",
+    "route_item_candidates",
     "route_items",
     "route_memos",
     "route_moves",
@@ -40,6 +44,7 @@ EXPECTED_TABLES = {
     "route_request_pets",
     "route_request_stays",
     "route_requests",
+    "route_stays",
     "routes",
     "transport_pet_rules",
     "transport_restricted_breeds",
@@ -51,6 +56,30 @@ EXPECTED_TABLES = {
     "users",
     "weather_snapshots",
 }
+
+
+def test_admin_editorial_schema() -> None:
+    users = Base.metadata.tables["users"]
+    audit_logs = Base.metadata.tables["admin_editorial_audit_logs"]
+
+    assert users.c.is_admin.nullable is False
+    assert isinstance(audit_logs.c.changes.type, JSONB)
+    assert audit_logs.c.actor_user_id.nullable is False
+    assert audit_logs.c.story_id.nullable is False
+
+
+def test_support_console_schema() -> None:
+    notices = Base.metadata.tables["notices"]
+    assert notices.c.announced_at.nullable is True
+
+    for name, fk_column in (
+        ("admin_inquiry_audit_logs", "inquiry_id"),
+        ("admin_notice_audit_logs", "notice_id"),
+    ):
+        table = Base.metadata.tables[name]
+        assert isinstance(table.c.changes.type, JSONB)
+        assert table.c.actor_user_id.nullable is False
+        assert table.c[fk_column].nullable is False
 
 
 def test_all_documented_tables_are_registered() -> None:
@@ -110,6 +139,15 @@ def test_unverifiable_place_scores_are_removed() -> None:
         "crowd_level",
         "weather_sensitivity",
     }.intersection(places.c.keys())
+
+
+def test_place_enrichment_schema() -> None:
+    places = Base.metadata.tables["places"]
+    policies = Base.metadata.tables["place_pet_policies"]
+
+    assert places.c.closed_days_raw.nullable is True
+    assert policies.c.required_items.nullable is True
+    assert DataProvider.MFDS.value == "mfds"
 
 
 def test_route_request_stores_applied_weight_snapshot() -> None:

@@ -137,8 +137,7 @@ export type RoutePetResponse = {
 /**
  * GET /routes/{routeId}.
  *
- * 명세에 있지만 아직 서버가 안 내려주는 것 —
- * `weather`(기상청) · `stays`(추천 요청서).
+ * 명세에 있지만 아직 서버가 안 내려주는 것 — `weather`(기상청).
  *
  * `logCount` 와 place 의 `rating`·`reviewCount`·`petPolicyType` 은
  * 2026-08-23 에 채워졌다.
@@ -147,6 +146,9 @@ export type RouteDetailResponse = RouteListItemResponse & {
   explanation: string | null;
   totalScore: number | null;
   memo: string | null;
+  /** 구버전 서버와의 순차 배포 중에는 필드가 없을 수 있다. */
+  departureLocation?: string | null;
+  stays?: RouteStayCreateRequest[];
   shareToken: string | null;
   pets: RoutePetResponse[];
   distanceSummary: {
@@ -200,6 +202,18 @@ export type RouteUpdateRequest = {
   isPublic?: boolean;
 };
 
+/** POST /routes — 추천 없이 여행의 기본 정보와 날짜를 직접 만든다. */
+export type ManualRouteCreateRequest = {
+  title: string;
+  startAt: string;
+  endAt: string;
+  pace: ServerTripPace;
+  transport: ServerTransportType;
+  petIds: string[];
+  departureLocation?: string;
+  stays: RouteStayCreateRequest[];
+};
+
 /**
  * PATCH /route-items/{routeItemId} 요청. **보낸 필드만** 바뀐다.
  *
@@ -215,7 +229,7 @@ export type RouteItemUpdateRequest = {
   isSelected?: boolean;
 };
 
-export type RouteRequestStayCreateRequest = {
+export type RouteStayCreateRequest = {
   placeId?: string;
   name: string;
   address?: string;
@@ -237,7 +251,7 @@ export type RouteRequestCreateRequest = {
   userCriteria: string[];
   requestText?: string;
   petIds: string[];
-  stays: RouteRequestStayCreateRequest[];
+  stays: RouteStayCreateRequest[];
 };
 
 export type RouteRequestAcceptedResponse = {

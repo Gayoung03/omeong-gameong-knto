@@ -4,8 +4,9 @@
 
 signup·login·check-email 이 같은 이메일을 서로 다르게 다루면(대소문자·공백)
 "가입은 됐는데 로그인이 안 되는" 사고가 난다. 그래서 정규화(소문자+trim)를
-`NormalizedEmail` 한 타입에 모아 세 곳이 공유한다. 형식 검증은 `EmailStr` 가 맡아
-형식 오류는 422 로 나간다.
+`_normalize_email` 한 곳에 모아 세 곳이 공유한다. 회원가입·중복 확인은
+`EmailStr`로 엄격히 검증하고, 로그인은 이미 DB에 존재하는 로컬 시드 계정의
+`.local` 도메인도 조회할 수 있게 기본 구조만 검증한다.
 
 ## 비밀번호는 SecretStr
 
@@ -32,8 +33,16 @@ def _normalize_email(value: object) -> object:
     return value.strip().lower() if isinstance(value, str) else value
 
 
-#: 소문자+trim 정규화 후 형식 검증. signup·login·check-email 공용.
+#: 소문자+trim 정규화 후 엄격한 형식 검증. signup·check-email 공용.
 NormalizedEmail = Annotated[EmailStr, BeforeValidator(_normalize_email)]
+
+#: 로그인은 계정 소유를 비밀번호로 확인한다. 신규 주소를 저장하지 않으므로
+#: 예약 도메인을 거부하는 EmailStr 대신 최소 이메일 구조만 검사한다.
+NormalizedLoginEmail = Annotated[
+    str,
+    BeforeValidator(_normalize_email),
+    Field(min_length=3, max_length=255, pattern=r"^[^\s@]+@[^\s@]+$"),
+]
 
 #: 회원가입·회원탈퇴에서 쓰는 비밀번호. 규칙은 여기 한 곳.
 Password = Annotated[
@@ -86,7 +95,7 @@ class SignupRequest(APISchema):
 
 
 class LoginRequest(APISchema):
-    email: NormalizedEmail
+    email: NormalizedLoginEmail
     #: 로그인은 비밀번호 규칙(길이)을 노출하지 않는다 — 값만 받고 맞는지만 본다.
     password: SecretStr
 

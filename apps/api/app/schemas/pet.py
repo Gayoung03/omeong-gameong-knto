@@ -7,7 +7,12 @@ from zoneinfo import ZoneInfo
 
 from pydantic import Field, StringConstraints, field_validator, model_validator
 
-from app.db.models.enums import PetSize, PetSpecies
+from app.db.models.enums import (
+    PetActivityLevel,
+    PetSize,
+    PetSociabilityLevel,
+    PetSpecies,
+)
 from app.schemas.base import APISchema
 from app.schemas.validators import OptionalImageUrl
 
@@ -36,6 +41,9 @@ class PetResponse(APISchema):
     age: int | None
     image_url: str | None
     health_notes: str | None
+    activity_level: PetActivityLevel | None
+    sociability: PetSociabilityLevel | None
+    car_sickness: bool | None
     is_primary: bool
     status: Literal["active", "deleted"]
 
@@ -57,6 +65,9 @@ class PetCreate(APISchema):
     birth_date: date | None = None
     image_url: OptionalImageUrl = None
     health_notes: str | None = None
+    activity_level: PetActivityLevel | None = None
+    sociability: PetSociabilityLevel | None = None
+    car_sickness: bool | None = None
 
     @field_validator("birth_date")
     @classmethod
@@ -86,6 +97,9 @@ class PetUpdate(APISchema):
     birth_date: date | None = None
     image_url: OptionalImageUrl = None
     health_notes: str | None = None
+    activity_level: PetActivityLevel | None = None
+    sociability: PetSociabilityLevel | None = None
+    car_sickness: bool | None = None
 
     @field_validator("birth_date")
     @classmethod

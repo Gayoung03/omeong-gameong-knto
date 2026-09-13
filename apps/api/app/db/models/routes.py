@@ -27,7 +27,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.db.models.enums import (
+    PetEnergyLevel,
     RouteCreationType,
+    RouteItemSlotStatus,
     RouteStatus,
     ScheduleItemType,
     TransportType,
@@ -87,6 +89,10 @@ class RouteRequestPet(Base):
     pet_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("pets.id", ondelete="RESTRICT"), primary_key=True
     )
+    # 이번 여행 컨디션 스냅샷(NULL = 미적용, pets.activity_level 로 폴백).
+    energy_level: Mapped[PetEnergyLevel | None] = mapped_column(
+        db_enum(PetEnergyLevel, "pet_energy_level")
+    )
 
 
 class RouteRequestStay(Base):
@@ -145,6 +151,10 @@ class Route(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    departure_location: Mapped[str | None] = mapped_column(String(100))
+    departure_place_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("places.id", ondelete="SET NULL")
+    )
     pace: Mapped[TripPace] = mapped_column(db_enum(TripPace, "trip_pace"), nullable=False)
     transport: Mapped[TransportType] = mapped_column(
         db_enum(TransportType, "transport_type"), nullable=False
@@ -172,7 +182,39 @@ class Route(Base):
         order_by="RouteDay.day_number",
         cascade="all, delete-orphan",
     )
+    stays: Mapped[list["RouteStay"]] = relationship(
+        "RouteStay",
+        order_by="RouteStay.check_in_at, RouteStay.id",
+        cascade="all, delete-orphan",
+    )
     pets: Mapped[list["Pet"]] = relationship("Pet", secondary="route_pets", viewonly=True)
+
+
+class RouteStay(Base):
+    """추천 방식과 무관하게 최종 여행에 저장된 숙소."""
+
+    __tablename__ = "route_stays"
+    __table_args__ = (
+        CheckConstraint(
+            "check_out_at IS NULL OR check_in_at IS NULL OR check_out_at > check_in_at",
+            name="date_order",
+        ),
+        Index("ix_route_stays_route", "route_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    route_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("routes.id", ondelete="CASCADE"), nullable=False
+    )
+    place_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("places.id", ondelete="SET NULL")
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    address: Mapped[str | None] = mapped_column(Text)
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    check_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    check_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class RoutePet(Base):
@@ -252,6 +294,12 @@ class RouteItem(Base):
             "ends_at IS NULL OR starts_at IS NULL OR ends_at > starts_at", name="date_order"
         ),
         CheckConstraint("stay_minutes IS NULL OR stay_minutes >= 0", name="stay_nonnegative"),
+        CheckConstraint(
+            "(slot_status = 'unfilled' AND place_id IS NULL AND custom_place_name IS NULL) "
+            "OR (slot_status <> 'unfilled' "
+            "AND (place_id IS NOT NULL OR custom_place_name IS NOT NULL))",
+            name="slot_status_place_consistency",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -276,6 +324,11 @@ class RouteItem(Base):
     recommendation_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     recommendation_reason: Mapped[str | None] = mapped_column(Text)
     is_selected: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    slot_status: Mapped[RouteItemSlotStatus] = mapped_column(
+        db_enum(RouteItemSlotStatus, "route_item_slot_status"),
+        nullable=False,
+        server_default="filled",
+    )
 
     place: Mapped["Place | None"] = relationship("Place")
 
@@ -296,6 +349,35 @@ class RouteMove(Base):
     )
     transport: Mapped[TransportType] = mapped_column(
         db_enum(TransportType, "transport_type"), nullable=False
+    )
+
+
+class RouteItemCandidate(Base):
+    """슬롯별 대안 후보(최대 3). filled·needs_verification 은 "대신 갈 곳",
+    unfilled 은 "확인 필요 후보"(requires_verification=true). 조인은 쿼리에서 명시."""
+
+    __tablename__ = "route_item_candidates"
+    __table_args__ = (
+        CheckConstraint("rank BETWEEN 1 AND 3", name="rank_range"),
+        UniqueConstraint("route_item_id", "rank"),
+        Index("ix_route_item_candidates_place_id", "place_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    route_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("route_items.id", ondelete="CASCADE"), nullable=False
+    )
+    place_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("places.id", ondelete="CASCADE"), nullable=False
+    )
+    rank: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    recommendation_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    recommendation_reason: Mapped[str | None] = mapped_column(Text)
+    requires_verification: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 

@@ -32,6 +32,7 @@ class PlaceListItem(APISchema):
     id: uuid.UUID
     name: str
     category: str
+    cuisine: str | None
     region: str | None
     address: str | None
     road_address: str | None
@@ -88,6 +89,7 @@ class PetPolicyResponse(APISchema):
     food_area_allowed: bool | None
     max_pets_per_person: int | None
     caution_note: str | None
+    required_items: list[str] | None
 
 
 class BusinessHourResponse(APISchema):
@@ -106,8 +108,10 @@ class PlaceDetail(APISchema):
     id: uuid.UUID
     name: str
     category: str
-    # etc 세부 분류(예: 동물약국). category 는 불변 enum, 이 필드가 세분화를 담는다. null 가능.
+    # 상위 카테고리의 세부 분류(예: 동물약국). null 가능.
     category_detail: str | None
+    # 음식점·카페 세부 음식 종류(한식·중식 …). null 가능.
+    cuisine: str | None
     region: str | None
     address: str | None
     road_address: str | None
@@ -116,11 +120,14 @@ class PlaceDetail(APISchema):
     phone: str | None
     homepage_url: str | None
     primary_image_url: str | None
+    image_urls: list[str] | None
     description: str | None
     description_source: DataProvider | None
     environment: PlaceEnvironment | None
     amenities: list[str] | None
     average_stay_minutes: int | None
+    business_hours_raw: str | None
+    closed_days_raw: str | None
     # 숙박 체크인/아웃(신규 가산 필드). 한쪽만 알 수 있어 짝을 강제하지 않는다. null 가능.
     check_in_time: time | None
     check_out_time: time | None

@@ -2,15 +2,15 @@ COMPOSE = docker compose --env-file .env -f infra/docker-compose.yml
 LOCAL_COMPOSE = $(COMPOSE) -f infra/docker-compose.local.yml
 REHEARSAL_COMPOSE = docker compose -f infra/docker-compose.rehearsal.yml
 
-.PHONY: setup dev dev-local mobile-install api-install mobile-dev api-dev backend-up \
+.PHONY: setup dev dev-local mobile-install admin-install api-install mobile-dev admin-dev api-dev backend-up \
 	backend-down backend-logs backend-local-up backend-local-down backend-local-logs \
 	db-migrate db-migrate-check db-migrate-local db-seed db-seed-local \
 	db-migration-smoke db-dump-dev db-rehearsal-up db-rehearsal-restore \
 	db-rehearsal-migrate db-rehearsal-down chat-check chat-check-places \
-	chat-check-guardrails \
+	chat-check-guardrails chat-measure \
 	lint typecheck test check
 
-setup: mobile-install api-install
+setup: mobile-install admin-install api-install
 
 dev: backend-up
 	@trap 'cd "$(CURDIR)" && $(COMPOSE) down --remove-orphans' EXIT; \
@@ -33,11 +33,17 @@ dev-local: backend-local-up
 mobile-install:
 	cd apps/mobile && npm ci
 
+admin-install:
+	cd apps/admin && npm ci
+
 api-install:
 	cd apps/api && uv sync --frozen
 
 mobile-dev:
 	cd apps/mobile && npm run dev
+
+admin-dev:
+	cd apps/admin && npm run dev
 
 api-dev:
 	$(COMPOSE) up --build api
@@ -133,12 +139,31 @@ chat-check-places:
 		> ../../tmp/chat-quality-places.md
 	@echo "→ tmp/chat-quality-places.md"
 
+# 성능(응답시간·라운드)·비용(토큰·달러)·쿼리 정확도(인자·항목 누락) 측정.
+# 실제 OpenAI 호출이 나가 비용이 청구된다 — repeat 올리기 전에 횟수를 어림할 것.
+# .env 의 DATABASE_URL(dev RDS)로 붙는다 — search_* 는 전부 SELECT라 쓰기가 없어 안전하다.
+#
+# **결과 파일에 실행 시각을 붙인다.** 고정 이름으로 두었더니 나중 실행이 앞 실행을
+# 덮어써서, 돈을 내고 얻은 비교 데이터를 잃었다(2026-09-12). 전후 비교가 이 도구의
+# 존재 이유라 덮어쓰면 안 된다.
+#
+# 예) make chat-measure SET=guardrails MODELS=gpt-4o-mini REPEAT=4
+chat-measure:
+	@mkdir -p tmp
+	@set=$(if $(SET),$(SET),rules); out=tmp/chat-measure-$$set-$$(date +%Y%m%d-%H%M%S); \
+	(cd apps/api && uv run python -m scripts.measure_chat_llm \
+		--set $$set $(if $(MODELS),--models $(MODELS)) $(if $(REPEAT),--repeat $(REPEAT)) \
+		--json ../../$$out.json > ../../$$out.md) \
+	&& echo "→ $$out.md (+ .json)"
+
 lint:
 	cd apps/mobile && npm run lint
+	cd apps/admin && npm run lint
 	cd apps/api && uv run ruff check .
 
 typecheck:
 	cd apps/mobile && npm run typecheck
+	cd apps/admin && npm run typecheck
 
 test:
 	cd apps/api && uv run pytest

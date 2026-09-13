@@ -16,7 +16,7 @@ def test_parse_route_edit_intent_accepts_only_current_item() -> None:
             {
                 "target_item_id": str(item_id),
                 "requested_category": "cafe",
-                "preferred_tags": ["카페", "휴식", "카페"],
+                "preferred_tags": ["cafe", "rest", "cafe"],
                 "location_anchor": "stay",
                 "interpretation": "첫 카페를 조용한 카페로 교체",
             }
@@ -26,7 +26,7 @@ def test_parse_route_edit_intent_accepts_only_current_item() -> None:
 
     assert intent.target_item_id == item_id
     assert intent.requested_category == ScheduleItemType.CAFE
-    assert intent.preferred_tags == ("카페", "휴식")
+    assert intent.preferred_tags == ("cafe", "rest")
     assert intent.location_anchor == "stay"
 
 

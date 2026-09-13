@@ -191,6 +191,7 @@ WHERE created_by_user_id IS NULL
   "name": "함덕해수욕장",
   "category": "beach",
   "categoryDetail": null,
+  "cuisine": null,
   "region": "함덕/김녕/세화",
   "address": "제주특별자치도 제주시 조천읍 함덕리 1004",
   "roadAddress": "제주특별자치도 제주시 조천읍 조함해안로 525",
@@ -199,11 +200,14 @@ WHERE created_by_user_id IS NULL
   "phone": "064-728-3989",
   "homepageUrl": "https://...",
   "primaryImageUrl": "https://...",
+  "imageUrls": ["https://...", "https://..."],
   "description": "제주 동부를 대표하는 에메랄드빛 해수욕장입니다.",
   "descriptionSource": "visitjeju",
   "environment": "outdoor",
   "amenities": ["주차장", "화장실", "편의점"],
   "averageStayMinutes": 90,
+  "businessHoursRaw": "09:00~18:00",
+  "closedDaysRaw": "연중무휴",
   "checkInTime": null,
   "checkOutTime": null,
   "reservationRequired": false,
@@ -229,7 +233,8 @@ WHERE created_by_user_id IS NULL
     "muzzleRequired": null,
     "foodAreaAllowed": true,
     "maxPetsPerPerson": 2,
-    "cautionNote": "대형견은 입마개를 착용해 주세요."
+    "cautionNote": "대형견은 입마개를 착용해 주세요.",
+    "requiredItems": ["목줄", "배변봉투"]
   },
   "businessHours": [
     {
@@ -255,11 +260,16 @@ WHERE created_by_user_id IS NULL
 - `petPolicy` — 정책 정보가 없는 장소는 `policyType`이 `unknown`이고 나머지는 대부분 `null`입니다.
   `not_allowed`인 장소는 이 응답에 도달하지 않습니다(`404`).
 - `categoryDetail` — `category`(불변 enum)의 세부 분류(예: `etc` 안의 동물약국·동물병원). 아직 채워지지 않은 장소는 `null`입니다. 라벨은 앱에서 표기합니다.
+- `cuisine` — 식당·카페의 음식 종류. 카카오 로컬 분류에서 보강해 저장하며 값 집합은 보강 배치에서 확정합니다. `categoryDetail`과 별개 축이고 없으면 `null`입니다. **[재설계 2026-09-07]**
 - `checkInTime`·`checkOutTime` — 숙박 장소의 체크인/아웃 시각(`HH:MM:SS`, `null` 가능). 한쪽만 알려진 경우도 있어 짝이 항상 맞지는 않습니다. 숙박이 아닌 장소는 보통 둘 다 `null`입니다.
+- `businessHoursRaw`·`closedDaysRaw` — 제공처의 운영시간·휴무일 원문입니다. 요일별로 정규화할 수 없는 값도 보존하며, 없으면 `null`입니다.
 - `reliabilityScore` — 0~100. 정책 정보의 신뢰도로, 출처와 확인 시점에 따라 달라집니다.
 - `muzzleRequired`·`foodAreaAllowed` — 3값 불리언입니다. `true`/`false`는 명시, `null`은 미확인이라 "정보 없음"으로 표시하세요(false 로 단정하지 않습니다).
 - `maxPetsPerPerson` — 1인당 동반 마리수 상한(정수, `null`이면 미확인).
 - `cautionNote` — 정제된 주의사항(최대 150자, `null` 가능). 원본 `notes`와 별개 컬럼입니다.
+- `requiredItems` — 목줄·배변봉투·이동장처럼 방문자가 준비해야 할 항목입니다. 확인되지 않았으면 `null`입니다.
+- `primaryImageUrl` — VisitJeju에서 장소명·주소가 확인된 이미지를 우선 사용하고, 없으면 다른 공식 제공처 이미지를 사용할 수 있습니다. 이미지 파일이 아니라 공개 URL을 저장합니다.
+- `imageUrls` — 제공처 상세 페이지에서 확인한 장소 이미지 URL 목록입니다. 대표 이미지는 `primaryImageUrl`에도 함께 저장합니다.
 - `isUserCreated` — `created_by_user_id`가 있으면 `true`. 사용자 ID 자체는 노출하지 않습니다.
 
 `place_external_refs`(제공처 원본 ID)는 내부 동기화용이라 응답에 포함하지 않습니다.
@@ -495,3 +505,5 @@ GET /api/v1/users/me/favorites?limit=20&offset=0
 | 2026-08-15 | PR #29 머지 반영 — `activityLevel` `crowdLevel` `weatherSensitivity` 삭제. 마이그레이션 `8c71f4a2d9e0`에서 `places` 컬럼이 drop되어 응답에서 제거 |
 | 2026-08-18 | 미정 3건 확정 — 사용자 등록 장소 **완전 분리**(`GET /users/me/places` 신설), 등록 화면 **제작 확정**, `petPolicyType` 5종 유지 및 `unknown`은 회색 "정보 없음" 뱃지. 태그 목록은 보류 사유를 "추천 방식 미확정"으로 정정 |
 | 2026-08-31 | 동반 불가(`not_allowed`) 장소를 **서비스 전체에서 미노출**로 확정. 목록·상세·리뷰·즐겨찾기·일정·챗봇 검색에서 모두 제외하고, 저장 해제만 예외로 열어 둠 |
+| 2026-09-07 | 루트 추천 재설계 반영 ([`route-redesign.md`](../planning/route-redesign.md)) — 상세 응답에 `cuisine` 추가(카카오 로컬 분류 보강). 루트 일정 항목의 장소 요약에 `phone`·`cuisine`·`petPolicy`(출처·확인 시점·주의사항)를 노출 ([`routes.md`](./routes.md)) |
+| 2026-09-11 | 장소 상세 보강 — `businessHoursRaw`·`closedDaysRaw`·`petPolicy.requiredItems`를 노출하고, VisitJeju 확인 이미지를 `primaryImageUrl`로 사용할 수 있도록 명시 |

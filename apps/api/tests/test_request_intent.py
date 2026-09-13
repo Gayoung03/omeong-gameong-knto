@@ -22,13 +22,13 @@ from app.integrations.llm.request_intent import (
 
 
 def test_표준_태그만_남긴다() -> None:
-    raw = json.dumps({"preferred_tags": ["바다", "카페", "개인서사같은값", "산책"]})
-    assert parse_intent_arguments(raw).preferred_tags == ("바다", "카페", "산책")
+    raw = json.dumps({"preferred_tags": ["sea", "cafe", "개인서사같은값", "walk"]})
+    assert parse_intent_arguments(raw).preferred_tags == ("sea", "cafe", "walk")
 
 
 def test_중복은_한_번만() -> None:
-    raw = json.dumps({"preferred_tags": ["바다", "바다", "휴식"]})
-    assert parse_intent_arguments(raw).preferred_tags == ("바다", "휴식")
+    raw = json.dumps({"preferred_tags": ["sea", "sea", "rest"]})
+    assert parse_intent_arguments(raw).preferred_tags == ("sea", "rest")
 
 
 def test_빈_결과도_유효하다() -> None:
@@ -42,12 +42,12 @@ def test_빈_결과도_유효하다() -> None:
 
 
 def test_기존_태그는_절대_사라지지_않는다() -> None:
-    merged = merge_preferred_tags(["바다", "category:restaurant"], ("산책",))
-    assert merged == {"바다", "category:restaurant", "산책"}
+    merged = merge_preferred_tags(["sea", "category:restaurant"], ("walk",))
+    assert merged == {"sea", "category:restaurant", "walk"}
 
 
 def test_기존이_없으면_추출값만() -> None:
-    assert merge_preferred_tags(None, ("휴식",)) == {"휴식"}
+    assert merge_preferred_tags(None, ("rest",)) == {"rest"}
     assert merge_preferred_tags([], ()) == frozenset()
 
 
@@ -96,7 +96,7 @@ def _generate_with_request_text(client, db, place, monkeypatch, *, intent_behavi
         rr, "get_route",
         lambda *_a, **_k: RouteLeg(distance_m=0, duration_min=0, polyline=None),
     )
-    monkeypatch.setattr(rr, "get_precipitation_probabilities", lambda *_a, **_k: {})
+    monkeypatch.setattr(rr, "get_daily_forecasts", lambda *_a, **_k: {})
     monkeypatch.setattr(rr, "extract_request_intent", intent_behavior)
 
     restaurant = Place(
@@ -117,7 +117,7 @@ def _generate_with_request_text(client, db, place, monkeypatch, *, intent_behavi
         "departurePlaceId": str(place.id),
         "pace": "relaxed",
         "transport": "rental_car",
-        "preferredTags": ["바다"],
+        "preferredTags": ["sea"],
         "priorityPreset": "pet",
         "userCriteria": [],
         "requestText": "우리 애랑 산책할 곳 위주로 부탁해요",
@@ -152,10 +152,10 @@ def test_추출_태그는_이번_생성에만_쓰고_요청_행은_바꾸지_않
 ) -> None:
     route, request = _generate_with_request_text(
         client, db, place, monkeypatch,
-        intent_behavior=lambda text: RequestIntent(preferred_tags=("산책",)),
+        intent_behavior=lambda text: RequestIntent(preferred_tags=("walk",)),
     )
 
     assert route.status.value == "generated"
-    # 요청 행의 preferred_tags 는 사용자가 보낸 그대로 — 추출값이 영속화되면 안 된다.
-    assert request.preferred_tags == ["바다"]
+    # 요청 행의 preferred_tags 는 사용자가 보낸 그대로(코드) — 추출값(walk)이 영속화되면 안 된다.
+    assert request.preferred_tags == ["sea"]
     assert request.request_text == "우리 애랑 산책할 곳 위주로 부탁해요"

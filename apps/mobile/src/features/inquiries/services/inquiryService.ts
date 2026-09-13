@@ -1,23 +1,31 @@
-import { toIsoDate } from '@/src/features/travel-logs/utils/dateFormat';
-import type { InquiryCategory, InquiryItem } from '@/src/types/inquiry';
-import { createId } from '@/src/utils/createId';
+import { isAxiosError } from 'axios';
 
-import { mockInquiries } from '../mocks/inquiry.mock';
+import { apiClient } from '@/src/services/apiClient';
+import { uploadImage } from '@/src/services/uploadImage';
+import {
+  INQUIRY_CATEGORY_CODE_TO_LABEL,
+  INQUIRY_CATEGORY_LABEL_TO_CODE,
+  type InquiryCategory,
+  type InquiryCategoryCode,
+  type InquiryItem,
+  type InquiryStatus,
+} from '@/src/types/inquiry';
 
-const FETCH_DELAY_MS = 300;
-const UPLOAD_DELAY_MS = 400;
-const MUTATION_DELAY_MS = 300;
+type InquiryListItemResponse = {
+  id: string;
+  category: InquiryCategoryCode;
+  status: InquiryStatus;
+  title: string;
+  createdAt: string;
+  answeredAt: string | null;
+};
 
-const wait = (ms: number) =>
-  new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
-/**
- * 세션 내 메모리 저장소.
- * TODO: 실제 API 연동 시 이 배열 접근을 apiClient 호출로 교체 (inquiries 테이블)
- */
-let currentInquiries: InquiryItem[] = mockInquiries.map((inquiry) => ({ ...inquiry }));
+type InquiryDetailResponse = InquiryListItemResponse & {
+  content: string;
+  imageUrls: string[];
+  answer: string | null;
+  updatedAt: string;
+};
 
 export type InquiryFormInput = {
   category: InquiryCategory;
@@ -34,54 +42,69 @@ export class InquiryNotFoundError extends Error {
   }
 }
 
-/** 최신 문의가 항상 맨 앞에 온다. TODO: 실제 API 연동 시 GET /inquiries */
+/** API 는 시각(ISO), 화면 타입은 `YYYY-MM-DD` 문자열이라 날짜 부분만 자른다. */
+function dateOnly(iso: string | null | undefined): string | undefined {
+  return iso ? iso.slice(0, 10) : undefined;
+}
+
+function toLabel(code: InquiryCategoryCode): InquiryCategory {
+  return INQUIRY_CATEGORY_CODE_TO_LABEL[code] ?? '기타';
+}
+
+function toListItem(item: InquiryListItemResponse): InquiryItem {
+  return {
+    id: item.id,
+    status: item.status,
+    category: toLabel(item.category),
+    title: item.title,
+    content: '', // 목록 응답에는 없다 — 상세에서 채워진다
+    createdAt: dateOnly(item.createdAt) ?? '',
+    answeredAt: dateOnly(item.answeredAt),
+  };
+}
+
+function toDetail(item: InquiryDetailResponse): InquiryItem {
+  return {
+    ...toListItem(item),
+    content: item.content,
+    answer: item.answer ?? undefined,
+    images: item.imageUrls?.length ? item.imageUrls : undefined,
+  };
+}
+
+/** 최신 문의가 항상 맨 앞에 온다(서버 정렬). */
 export async function fetchInquiries(): Promise<InquiryItem[]> {
-  await wait(FETCH_DELAY_MS);
-  return [...currentInquiries]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .map((inquiry) => ({ ...inquiry }));
+  const { data } = await apiClient.get<{ items: InquiryListItemResponse[] }>('/inquiries', {
+    params: { limit: 100 },
+  });
+  return data.items.map(toListItem);
 }
 
-/** TODO: 실제 API 연동 시 GET /inquiries/{id} */
 export async function fetchInquiry(inquiryId: string): Promise<InquiryItem> {
-  await wait(FETCH_DELAY_MS);
-
-  const found = currentInquiries.find((inquiry) => inquiry.id === inquiryId);
-  if (!found) throw new InquiryNotFoundError(inquiryId);
-
-  return { ...found };
+  try {
+    const { data } = await apiClient.get<InquiryDetailResponse>(`/inquiries/${inquiryId}`);
+    return toDetail(data);
+  } catch (error) {
+    if (isAxiosError(error) && error.response?.status === 404) {
+      throw new InquiryNotFoundError(inquiryId);
+    }
+    throw error;
+  }
 }
 
-/**
- * 목업에서는 로컬 URI를 그대로 돌려준다.
- * TODO: 실제 API 연동 시 이미지 업로드 API 호출 후 서버 URL 반환
- */
+/** 로컬 이미지를 `POST /uploads`(purpose=inquiry)로 올리고 서버 URL 목록을 돌려준다. */
 export async function uploadInquiryImages(localUris: string[]): Promise<string[]> {
   if (localUris.length === 0) return [];
-
-  await wait(UPLOAD_DELAY_MS);
-  return [...localUris];
+  return Promise.all(localUris.map((uri) => uploadImage(uri, 'inquiry')));
 }
 
-/** TODO: 실제 API 연동 시 POST /inquiries. id·createdAt은 서버가 발급한 값으로 대체된다. */
 export async function createInquiry(input: InquiryFormInput): Promise<InquiryItem> {
-  await wait(MUTATION_DELAY_MS);
-
-  const created: InquiryItem = {
-    id: createId('inquiry'),
-    status: 'pending',
-    category: input.category,
+  const { data } = await apiClient.post<InquiryDetailResponse>('/inquiries', {
+    category: INQUIRY_CATEGORY_LABEL_TO_CODE[input.category],
     title: input.title.trim(),
     content: input.content.trim(),
-    createdAt: toIsoDate(new Date()),
-    images: input.localImageUris?.length ? [...input.localImageUris] : undefined,
-  };
-
-  currentInquiries = [created, ...currentInquiries];
-  return { ...created };
-}
-
-/** 목업 저장소를 초기 상태로 되돌린다. 검증 스크립트 전용. */
-export function __resetInquiriesForTest(): void {
-  currentInquiries = mockInquiries.map((inquiry) => ({ ...inquiry }));
+    // useCreateInquiry 가 업로드를 먼저 끝내고 서버 URL 을 넣어 넘긴다.
+    imageUrls: input.localImageUris ?? [],
+  });
+  return toDetail(data);
 }

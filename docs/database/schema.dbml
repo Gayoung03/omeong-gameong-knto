@@ -22,6 +22,24 @@ Enum pet_size {
   large
 }
 
+Enum pet_activity_level {
+  low
+  normal
+  high
+}
+
+Enum pet_sociability_level {
+  low
+  normal
+  high
+}
+
+Enum pet_energy_level {
+  low
+  normal
+  high
+}
+
 Enum trip_pace {
   relaxed
   normal
@@ -82,6 +100,12 @@ Enum schedule_item_type {
   cafe
   accommodation
   custom
+}
+
+Enum route_item_slot_status {
+  filled
+  unfilled
+  needs_verification
 }
 
 Enum weather_condition {
@@ -155,6 +179,9 @@ Table pets {
   birth_date date
   image_url text
   health_notes text
+  activity_level pet_activity_level [note: '추천 개인화: NULL=규칙 미적용']
+  sociability pet_sociability_level [note: '추천 개인화: 1차는 라벨 노출만']
+  car_sickness boolean [note: 'NULL=모름. true 면 이동시간 상한·휴식 상향']
   is_primary boolean [not null, default: false]
   deleted_at timestamptz
   created_at timestamptz [not null]
@@ -189,6 +216,7 @@ Table places {
   name varchar(200) [not null]
   category varchar(50) [not null]
   category_detail varchar(50) [note: 'AI 입출력: etc 세부 분류. category enum 은 불변']
+  cuisine varchar(30) [note: 'AI 입출력: 음식점·카페 세부 음식 종류(한식·중식 …). enum 아님, 카카오 category_name 파싱 배치가 채움']
   region varchar(50)
   address text
   road_address text
@@ -309,6 +337,7 @@ Table route_requests {
 Table route_request_pets {
   route_request_id uuid [ref: > route_requests.id]
   pet_id uuid [ref: > pets.id]
+  energy_level pet_energy_level [note: '이번 여행 컨디션 스냅샷. NULL=미적용(pets.activity_level 폴백)']
 
   indexes {
     (route_request_id, pet_id) [pk]
@@ -390,6 +419,7 @@ Table route_items {
   recommendation_score decimal(6,2)
   recommendation_reason text
   is_selected boolean [not null, default: true]
+  slot_status route_item_slot_status [not null, default: 'filled', note: 'filled/needs_verification 은 place 있음, unfilled 은 place·시각 NULL']
 
   indexes {
     (route_day_id, sort_order) [unique]
@@ -401,6 +431,22 @@ Table route_moves {
   from_item_id uuid [not null, ref: > route_items.id]
   to_item_id uuid [not null, ref: > route_items.id]
   transport transport_type [not null]
+}
+
+Table route_item_candidates {
+  id uuid [pk]
+  route_item_id uuid [not null, ref: > route_items.id]
+  place_id uuid [not null, ref: > places.id]
+  rank smallint [not null, note: '1~3']
+  recommendation_score decimal(6,2)
+  recommendation_reason text
+  requires_verification boolean [not null, default: false]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (route_item_id, rank) [unique]
+    place_id
+  }
 }
 
 Table weather_snapshots {
