@@ -59,9 +59,7 @@ def test_회원가입은_토큰과_사용자를_돌려주고_세_테이블을_�
     assert pref is not None and pref.companion_count == 1
 
 
-def test_펫_취향_없이도_가입되고_기본_취향_행이_생긴다(
-    client: TestClient, db: Session
-) -> None:
+def test_펫_취향_없이도_가입되고_기본_취향_행이_생긴다(client: TestClient, db: Session) -> None:
     response = client.post(
         "/api/v1/auth/signup",
         json={"email": "solo@example.com", "password": "password123", "nickname": "혼자"},
@@ -87,9 +85,7 @@ def test_잘못된_펫이면_유저도_만들어지지_않는다(client: TestCli
     # species=other 인데 speciesDetail 이 없다 → PetCreate 검증 실패(422).
     response = client.post(
         "/api/v1/auth/signup",
-        json=_signup_body(
-            email="atomic@example.com", pet={"name": "몽이", "species": "other"}
-        ),
+        json=_signup_body(email="atomic@example.com", pet={"name": "몽이", "species": "other"}),
     )
 
     assert response.status_code == 422
@@ -134,9 +130,7 @@ def test_로그인_성공은_토큰을_준다(client: TestClient) -> None:
     assert response.json()["user"]["email"] == "login@example.com"
 
 
-def test_로컬_시드_예약_도메인도_로그인된다(
-    client: TestClient, db: Session
-) -> None:
+def test_로컬_시드_예약_도메인도_로그인된다(client: TestClient, db: Session) -> None:
     db.add(
         User(
             email="seed@omeong.local",
@@ -193,9 +187,7 @@ def test_재발급은_새_access와_같은_refresh를_준다(client: TestClient)
         "/api/v1/auth/signup", json=_signup_body(email="refresh@example.com")
     ).json()
 
-    response = client.post(
-        "/api/v1/auth/refresh", json={"refreshToken": signed["refreshToken"]}
-    )
+    response = client.post("/api/v1/auth/refresh", json={"refreshToken": signed["refreshToken"]})
     assert response.status_code == 200
     body = response.json()
     assert body["accessToken"]
@@ -205,14 +197,10 @@ def test_재발급은_새_access와_같은_refresh를_준다(client: TestClient)
 
 
 def test_access_토큰으로_재발급하면_401(client: TestClient) -> None:
-    signed = client.post(
-        "/api/v1/auth/signup", json=_signup_body(email="cross@example.com")
-    ).json()
+    signed = client.post("/api/v1/auth/signup", json=_signup_body(email="cross@example.com")).json()
 
     # access token 을 refresh 로 쓰면 typ 불일치 → 401.
-    response = client.post(
-        "/api/v1/auth/refresh", json={"refreshToken": signed["accessToken"]}
-    )
+    response = client.post("/api/v1/auth/refresh", json={"refreshToken": signed["accessToken"]})
     assert response.status_code == 401
 
 
@@ -229,7 +217,5 @@ def test_탈퇴_사용자_재발급은_401(client: TestClient, db: Session) -> N
     user.deleted_at = datetime.now(UTC)
     db.flush()
 
-    response = client.post(
-        "/api/v1/auth/refresh", json={"refreshToken": signed["refreshToken"]}
-    )
+    response = client.post("/api/v1/auth/refresh", json={"refreshToken": signed["refreshToken"]})
     assert response.status_code == 401

@@ -52,6 +52,7 @@ OpenAI 응답은 `tool_calls` 가 있는 메시지에는 `content` 가 없고, `
 """
 
 import json
+import re
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -560,6 +561,9 @@ def _carrier_conclusions(hits: list[TransportRuleHit]) -> list[dict]:
         text = ", ".join(legs)
 
         blocked = {Verdict.OVER_WEIGHT, Verdict.NOT_ALLOWED}
+        #: 모델에게만 주는 지시. **`결론` 과 나눠 담는다** — `결론` 은 답변에 그대로
+        #: 붙는 문장이라, 지시문을 섞으면 사용자 화면에 지시가 새어 나온다(실제로 그랬다).
+        note = ""
         if hit.cabin_verdict in blocked and hit.cargo_verdict in blocked:
             text += " → 이 회사로는 이 무게로 갈 수 없음"
         elif (
@@ -569,10 +573,12 @@ def _carrier_conclusions(hits: list[TransportRuleHit]) -> list[dict]:
         ):
             # 무게를 묻지 않은 질문에서도 "아예 안 되는 곳"은 따로 떼어 말해야 한다.
             # 아리온제주(녹동)가 여기다 — 빠지면 "없는 항로"로 읽힌다.
-            # **지시문을 결론에 함께 담는다.** `answer_directly` 가 다음에 할 일을
-            # 적어 보내는 것과 같은 방식이다 — 프롬프트에만 적어 두었더니 샜다.
-            text += " → 반려동물 동반 불가. 가능한 곳과 섞지 말고 이 회사도 반드시 함께 밝힐 것"
-        conclusions.append({"carrier": _carrier_label(hit), "결론": text})
+            text += " → 반려동물 동반 불가"
+            note = "가능한 곳과 섞지 말고 이 회사도 반드시 함께 밝힐 것"
+        item = {"carrier": _carrier_label(hit), "결론": text}
+        if note:
+            item["주의"] = note
+        conclusions.append(item)
     return conclusions
 
 
@@ -615,8 +621,44 @@ def _breed_phrase(check: BreedCheck) -> str:
     return " · ".join(parts)
 
 
+def _breed_summary(check: BreedCheck, cargo_allowed: bool | None) -> str:
+    """**답변에 그대로 붙일 한 마디.** 회사마다 이 견종에게 무엇이 달라지는지만.
+
+    `_breed_phrase` 는 제한 유형 둘을 모두 적어 모델이 헷갈리지 않게 하는 것이 목적이라
+    길다. 그걸 회사 일곱 곳에 그대로 붙이면 답변이 벽이 된다 — 사람이 읽을 자리에는
+    **이 아이에게 실제로 걸리는 것 하나**만 낸다.
+    """
+    hit_types = [
+        restriction_type
+        for restriction_type in (
+            BreedRestrictionType.DANGEROUS,
+            BreedRestrictionType.BRACHYCEPHALIC,
+        )
+        if check.status(restriction_type) == "제한"
+    ]
+    if hit_types:
+        matched = [m for m in check.matches if m.restriction_type in hit_types]
+        labels = "·".join(dict.fromkeys(_BREED_TYPE_LABEL[t] for t in hit_types))
+        scopes = "·".join(dict.fromkeys(_BREED_SCOPE_LABEL[m.applies_to] for m in matched))
+        return f"{check.query}는 {labels} 목록에 있어 {scopes} 불가"
+    if cargo_allowed is False:
+        # 위탁 자체가 없으니 견종을 따질 것이 없다. `결론` 이 이미 "위탁 제도 없음" 이다.
+        return ""
+    unknown = [
+        _BREED_TYPE_LABEL[t]
+        for t in (BreedRestrictionType.DANGEROUS, BreedRestrictionType.BRACHYCEPHALIC)
+        if check.status(t) == "확인불가"
+    ]
+    if unknown:
+        return f"{check.query}는 {'·'.join(unknown)} 목록이 공개되지 않아 확인 안 됨"
+    return f"{check.query}는 제한 목록에 없음"
+
+
 def _breed_conclusions(hits: list[TransportRuleHit]) -> list[dict]:
-    """견종을 넣어 부른 경우의 회사별 결론."""
+    """견종을 넣어 부른 경우의 회사별 결론.
+
+    `결론` 은 모델이 읽는 상세본, `요약` 은 답변에 그대로 붙는 한 마디다.
+    """
     conclusions = []
     for hit in hits:
         if hit.breed_check is None:
@@ -624,7 +666,11 @@ def _breed_conclusions(hits: list[TransportRuleHit]) -> list[dict]:
         text = _breed_phrase(hit.breed_check)
         if hit.cargo_allowed is False:
             text = f"위탁 제도 자체가 없어 견종과 무관하게 위탁 불가 · {text}"
-        conclusions.append({"carrier": _carrier_label(hit), "결론": text})
+        item = {"carrier": _carrier_label(hit), "결론": text}
+        summary = _breed_summary(hit.breed_check, hit.cargo_allowed)
+        if summary:
+            item["요약"] = summary
+        conclusions.append(item)
     return conclusions
 
 
@@ -661,6 +707,89 @@ def _run_transport_search(db: Session, raw_arguments: str) -> str:
         payload["이 견종 기준 결론"] = _breed_conclusions(hits)
     payload["규정"] = [_describe_rule(hit) for hit in hits]
     return json.dumps(payload, ensure_ascii=False)
+
+
+#: 운송사 목록을 **모델에게 옮겨 적게 하지 않고 우리가 붙일지.**
+#:
+#: 끄면 예전처럼 모델이 목록까지 쓴다. A/B 로 재보려고 남겨 둔 스위치다.
+RENDER_TRANSPORT_LIST = True
+
+#: 목록을 우리가 붙일 때 모델에게 시키는 일. `answer_directly` 가 다음에 할 일을
+#: 적어 보내는 것과 같은 방식이다 — 도구 결과 안에 지시를 담는다.
+_TRANSPORT_HANDOFF = (
+    "\n\n[안내] 위 `회사별 결론` 은 **시스템이 답변에 그대로 붙입니다.** "
+    "당신은 **앞머리 한두 문장만** 쓰세요 — 질문에 대한 짧은 도입입니다. "
+    "회사 이름을 나열하지 말고, 무게·요금·상한 숫자도 쓰지 마세요. "
+    "확인일 안내도 시스템이 붙이므로 쓰지 마세요."
+)
+
+
+#: 글머리표·번호 목록이 시작되는 줄. 모델이 쓴 나열을 잘라내는 데 쓴다.
+_LIST_LINE = re.compile(r"^\s*(?:[-*•]|\d+[.)]|#{1,6}\s)", re.MULTILINE)
+
+
+def _lead_in(content: str) -> str:
+    """모델이 쓴 것에서 **앞머리 문장만** 남기고 나열을 잘라낸다.
+
+    목록은 우리가 붙이므로 모델에게는 앞머리만 쓰라고 일러두는데, **`gpt-4o-mini` 는
+    그 지시를 무시하고 목록을 또 썼다**(2026-09-13 확인). 같은 목록이 두 번 나오는
+    답변이 됐다. 지시를 안 따르는 것이 애초의 문제였으니 지시를 더 세게 적는 것은
+    답이 될 수 없다 — **결과를 우리가 자른다.**
+    """
+    match = _LIST_LINE.search(content)
+    head = content[: match.start()] if match else content
+    return head.strip()
+
+
+def _transport_block(results: list[str]) -> tuple[str, str] | None:
+    """도구가 돌려준 것에서 **답변에 그대로 붙일 목록**과 확인일 문장을 만든다.
+
+    모델이 옮겨 적다 빠뜨리는 것을 막으려고 나온 자리다 — 2026-09-13 측정에서
+    `gpt-4o-mini` 가 조회된 항공사 7곳 중 3곳만 쓰고 `"위 항공사들은 실어도 되니"`
+    로 닫았다. 빠진 곳은 "안 되는 곳"으로 읽힌다.
+
+    **옮겨 적을 일이 없으면 빠뜨릴 일도 없다.** 결론 문장은 이미 파이썬이 만들어
+    두었으므로(`_carrier_conclusions`), 그걸 그대로 붙인다.
+    """
+    lines: dict[str, str] = {}
+    breeds: dict[str, str] = {}
+    verified: set[str] = set()
+
+    for raw in results:
+        try:
+            payload = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        for item in payload.get("회사별 결론") or []:
+            if isinstance(item, dict) and item.get("carrier"):
+                lines.setdefault(item["carrier"], item.get("결론", ""))
+        for item in payload.get("이 견종 기준 결론") or []:
+            # **`요약` 만 쓴다.** `결론` 은 모델이 읽는 상세본이라 답변에 붙이면 벽이 된다.
+            if isinstance(item, dict) and item.get("carrier") and item.get("요약"):
+                breeds.setdefault(item["carrier"], item["요약"])
+        for rule in payload.get("규정") or []:
+            if isinstance(rule, dict) and rule.get("verified_at"):
+                verified.add(rule["verified_at"])
+
+    if not lines:
+        return None
+
+    rendered = "\n".join(
+        f"- **{carrier}** {text}" + (f" — {breeds[carrier]}" if carrier in breeds else "")
+        for carrier, text in lines.items()
+    )
+    if verified:
+        # 가장 오래된 확인일로 말한다 — 여럿이면 그게 이 답변이 보장할 수 있는 선이다.
+        when = min(verified)
+        closing = (
+            f"{when[:4]}년 {int(when[5:7])}월 확인 기준이에요. "
+            "규정이 바뀔 수 있으니 예약 전에 꼭 다시 확인해 주세요."
+        )
+    else:
+        closing = "규정이 바뀔 수 있으니 예약 전에 꼭 다시 확인해 주세요."
+    return rendered, closing
 
 
 def _dispatch(db: Session, name: str, raw_arguments: str) -> tuple[str, list[PlaceHit]]:
@@ -750,9 +879,20 @@ def stream_answer(
     #: 모델이 `answer_directly` 를 골랐는지. 다음 라운드의 도구를 막는 데 쓴다.
     declined_search = False
 
+    #: `search_transport_rules` 가 돌려준 것들. 답변 끝에 붙일 목록을 여기서 만든다.
+    transport_results: list[str] = []
+
     try:
         for round_index in range(MAX_TOOL_ROUNDS):
             choice = _tool_choice(round_index, declined_search)
+            #: 이번 라운드가 답변 라운드라면 붙일 목록. 미리 구해 두는 이유는 **조각을
+            #: 흘려보낼지 말지**를 여기서 정해야 하기 때문이다 — 모델이 쓴 나열을
+            #: 나중에 잘라낼 것이라, 흘려보낸 뒤에는 화면에서 되돌릴 수가 없다.
+            pending_block = (
+                _transport_block(transport_results)
+                if RENDER_TRANSPORT_LIST and transport_results
+                else None
+            )
             # 0라운드는 도구와 인자를 고르는 일만 한다. 말투·서식·판정 옮기기 규칙은
             # 그 결정에 쓰이지 않으면서 매번 함께 실려 갔다(실측: prompt 5,124 토큰에
             # completion 21 토큰). 그 라운드에만 짧은 안내를 보낸다.
@@ -796,7 +936,9 @@ def stream_answer(
                         # 여기서 나올 리 없는 것이고(`required`), 그래도 나왔다면
                         # 규약 위반이라 아래에서 버린다. 한 번 흘려보내면 앱이
                         # 이미 타이핑으로 찍어서 되돌릴 수가 없다.
-                        if choice != "required":
+                        # 목록을 붙일 라운드는 **조각을 참는다.** 모델이 쓴 나열을
+                        # 아래에서 잘라내므로, 흘려보내면 지운 것이 화면에 남는다.
+                        if choice != "required" and pending_block is None:
                             yield AnswerDelta(delta.content)
             finally:
                 close = getattr(stream, "close", None)
@@ -825,7 +967,15 @@ def stream_answer(
                     seen.update({hit.place_id: hit for hit in hits})
                     if call["name"] == ANSWER_DIRECTLY_NAME:
                         declined_search = True
+                    if call["name"] == "search_transport_rules":
+                        transport_results.append(result)
                     messages.append({"role": "tool", "tool_call_id": call["id"], "content": result})
+
+                # 목록을 우리가 붙일 것이라면, **그 사실을 모델에게 알려** 앞머리만 쓰게 한다.
+                # 알리지 않으면 모델이 목록을 또 써서 같은 내용이 두 번 나온다.
+                if RENDER_TRANSPORT_LIST and transport_results and messages[-1]["role"] == "tool":
+                    if _transport_block(transport_results):
+                        messages[-1]["content"] += _TRANSPORT_HANDOFF
                 continue
 
             content = "".join(content_parts).strip()
@@ -838,6 +988,18 @@ def stream_answer(
 
             if not content:
                 raise ChatGenerationError("빈 답변을 받았습니다")
+
+            # 운송사 목록은 **모델이 옮겨 적지 않고 우리가 붙인다.** 모델이 쓴 나열은
+            # 잘라내고 앞머리만 남긴 뒤, 목록과 확인일을 이어 붙여 답변을 완성한다.
+            # 이 라운드는 조각을 참았으므로 완성본을 한 번에 내보낸다.
+            if pending_block is not None:
+                rendered, closing = pending_block
+                head = _lead_in(content)
+                content = (
+                    f"{head}\n\n{rendered}\n\n{closing}" if head else f"{rendered}\n\n{closing}"
+                )
+                yield AnswerDelta(content)
+
             yield Answer(
                 content=content,
                 model_name=model_name,

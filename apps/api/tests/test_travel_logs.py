@@ -451,12 +451,8 @@ def test_장소를_id_로_보내면_그때_이름이_박제된다(
     assert body["placeNameSnapshot"] == "테스트 해변"
 
 
-def test_반려동물도_스냅샷으로_복사된다(
-    client: TestClient, db: Session, pet: Pet
-) -> None:
-    created = client.post(
-        "/api/v1/travel-logs", json=_create_body(petIds=[str(pet.id)])
-    ).json()
+def test_반려동물도_스냅샷으로_복사된다(client: TestClient, db: Session, pet: Pet) -> None:
+    created = client.post("/api/v1/travel-logs", json=_create_body(petIds=[str(pet.id)])).json()
 
     pet.name = "이름이 바뀐 몽이"
     db.flush()
@@ -482,9 +478,7 @@ def test_미래_날짜로는_못_만든다(client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_남의_여행에는_못_붙인다(
-    client: TestClient, db: Session, stranger: User
-) -> None:
+def test_남의_여행에는_못_붙인다(client: TestClient, db: Session, stranger: User) -> None:
     others_route = Route(
         id=uuid.uuid4(),
         user_id=stranger.id,
@@ -499,23 +493,17 @@ def test_남의_여행에는_못_붙인다(
     db.add(others_route)
     db.flush()
 
-    response = client.post(
-        "/api/v1/travel-logs", json=_create_body(routeId=str(others_route.id))
-    )
+    response = client.post("/api/v1/travel-logs", json=_create_body(routeId=str(others_route.id)))
 
     assert response.status_code == 403
 
 
-def test_남의_반려동물은_못_붙인다(
-    client: TestClient, db: Session, stranger: User
-) -> None:
+def test_남의_반려동물은_못_붙인다(client: TestClient, db: Session, stranger: User) -> None:
     others = Pet(id=uuid.uuid4(), user_id=stranger.id, name="남의개", species=PetSpecies.DOG)
     db.add(others)
     db.flush()
 
-    response = client.post(
-        "/api/v1/travel-logs", json=_create_body(petIds=[str(others.id)])
-    )
+    response = client.post("/api/v1/travel-logs", json=_create_body(petIds=[str(others.id)]))
 
     assert response.status_code == 403
 
@@ -523,9 +511,7 @@ def test_남의_반려동물은_못_붙인다(
 def test_완성되면_알림이_쌓인다(client: TestClient, db: Session, owner: User) -> None:
     client.post("/api/v1/travel-logs", json=_create_body())
 
-    notification = db.scalars(
-        select(Notification).where(Notification.user_id == owner.id)
-    ).one()
+    notification = db.scalars(select(Notification).where(Notification.user_id == owner.id)).one()
 
     assert notification.type == "travel_log_ready"
     assert "함덕해수욕장" in notification.content
@@ -552,9 +538,9 @@ def test_그림을_못_만들면_failed_로_남고_알림은_없다(
     assert body["generationStatus"] == "failed"
     assert body["generatedImageUrl"] is None
     assert (
-        db.scalar(select(func.count()).select_from(Notification).where(
-            Notification.user_id == owner.id
-        ))
+        db.scalar(
+            select(func.count()).select_from(Notification).where(Notification.user_id == owner.id)
+        )
         == 0
     )
 
@@ -597,7 +583,4 @@ def test_남의_기록은_상태도_재생성도_막힌다(
     other = _make_log(db, stranger, recorded_date=date(2026, 9, 10))
 
     assert client.get(f"/api/v1/travel-logs/{other.id}/status").status_code == 403
-    assert (
-        client.post(f"/api/v1/travel-logs/{other.id}/regenerate", json={}).status_code
-        == 403
-    )
+    assert client.post(f"/api/v1/travel-logs/{other.id}/regenerate", json={}).status_code == 403

@@ -52,8 +52,7 @@ class TestSplitBlocks:
 class TestParseKcisaKv:
     def test_kv_파싱(self):
         block = (
-            "반려동물 동반 가능정보: Y\n입장 가능 동물 크기: 모두 가능\n"
-            "애견 동반 추가 요금: 없음"
+            "반려동물 동반 가능정보: Y\n입장 가능 동물 크기: 모두 가능\n애견 동반 추가 요금: 없음"
         )
         kv = parse_kcisa_kv(block)
         assert kv["반려동물 동반 가능정보"] == "Y"

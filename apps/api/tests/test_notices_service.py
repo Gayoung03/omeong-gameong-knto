@@ -51,6 +51,7 @@ def test_create_and_publish_inserts_active_and_announces(db: Session, owner: Use
 
     assert notice.is_active is True
     assert notice.announced_at is not None
-    assert db.scalar(
-        select(func.count(Notification.id)).where(Notification.target_id == notice.id)
-    ) >= 1
+    assert (
+        db.scalar(select(func.count(Notification.id)).where(Notification.target_id == notice.id))
+        >= 1
+    )

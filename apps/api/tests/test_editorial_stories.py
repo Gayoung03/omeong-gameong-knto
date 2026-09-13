@@ -42,9 +42,7 @@ def _story(db: Session, *, status=EditorialStoryStatus.PUBLISHED) -> EditorialSt
     return story
 
 
-def test_editorial_list_and_detail_only_expose_published(
-    client: TestClient, db: Session
-) -> None:
+def test_editorial_list_and_detail_only_expose_published(client: TestClient, db: Session) -> None:
     published = _story(db)
     draft = _story(db, status=EditorialStoryStatus.DRAFT)
 

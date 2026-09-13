@@ -30,9 +30,7 @@ def test_daily_candidates_fill_four_distinct_slots() -> None:
         _content(5, "제주 숲"),
     ]
 
-    selected = select_daily_candidates(
-        contents, day=date(2026, 9, 6), weather_condition="rainy"
-    )
+    selected = select_daily_candidates(contents, day=date(2026, 9, 6), weather_condition="rainy")
 
     assert [item.kind for item in selected] == [
         EditorialStoryKind.EVENT,
@@ -54,9 +52,7 @@ def test_daily_candidates_exclude_content_with_past_year() -> None:
         _content(5, "유네스코 세계유산"),
     ]
 
-    selected = select_daily_candidates(
-        contents, day=date(2026, 9, 7), weather_condition="rainy"
-    )
+    selected = select_daily_candidates(contents, day=date(2026, 9, 7), weather_condition="rainy")
 
     assert len(selected) == 4
     assert "CONT_1" not in {item.source.content_id for item in selected}

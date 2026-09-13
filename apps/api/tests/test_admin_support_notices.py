@@ -23,9 +23,7 @@ def _make_admin(db: Session, user: User) -> None:
 
 
 def _notice_count(db: Session, notice_id: str) -> int:
-    return db.scalar(
-        select(func.count(Notification.id)).where(Notification.target_id == notice_id)
-    )
+    return db.scalar(select(func.count(Notification.id)).where(Notification.target_id == notice_id))
 
 
 def _public_ids(client: TestClient) -> list[str]:
@@ -71,9 +69,7 @@ def test_publish_fans_out_once(
     client: TestClient, db: Session, owner: User, stranger: User
 ) -> None:
     _make_admin(db, owner)
-    active_users = db.scalar(
-        select(func.count(User.id)).where(User.deleted_at.is_(None))
-    )
+    active_users = db.scalar(select(func.count(User.id)).where(User.deleted_at.is_(None)))
     notice_id = client.post(
         "/api/v1/admin/notices", json={"title": "공지", "content": "본문"}
     ).json()["id"]
@@ -86,12 +82,15 @@ def test_publish_fans_out_once(
     # 비삭제 사용자 한 명당 하나씩(owner·stranger 포함).
     assert _notice_count(db, notice_id) == active_users
     for user_id in (owner.id, stranger.id):
-        assert db.scalar(
-            select(func.count(Notification.id)).where(
-                Notification.target_id == notice_id,
-                Notification.user_id == user_id,
+        assert (
+            db.scalar(
+                select(func.count(Notification.id)).where(
+                    Notification.target_id == notice_id,
+                    Notification.user_id == user_id,
+                )
             )
-        ) == 1
+            == 1
+        )
     assert notice_id in _public_ids(client)
 
     again = client.post(f"/api/v1/admin/notices/{notice_id}/publish", json={})

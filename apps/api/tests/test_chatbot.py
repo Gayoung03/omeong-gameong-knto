@@ -205,9 +205,7 @@ def test_사라진_장소는_referenced_places_에서_빠진다(
     assert [ref["id"] for ref in body["items"][0]["referencedPlaces"]] == [str(place.id)]
 
 
-def test_대화를_지우면_목록에서만_사라지고_메시지는_남는다(
-    client: TestClient, db: Session
-) -> None:
+def test_대화를_지우면_목록에서만_사라지고_메시지는_남는다(client: TestClient, db: Session) -> None:
     """사용자가 지운 것은 "안 보이게 해달라"이지 "기록을 없애달라"가 아니다."""
     conversation = _create(client)
     conversation_id = uuid.UUID(conversation["id"])
@@ -288,7 +286,7 @@ def test_지우지_않은_대화는_복구할_수_없다(client: TestClient) -> 
 def test_지운_대화는_개수_상한에_잡히지_않는다(
     client: TestClient, db: Session, owner: User
 ) -> None:
-    """"안 쓰는 대화를 지워주세요"라고 안내하므로, 지우면 실제로 자리가 나야 한다."""
+    """ "안 쓰는 대화를 지워주세요"라고 안내하므로, 지우면 실제로 자리가 나야 한다."""
     db.add_all(
         ChatConversation(id=uuid.uuid4(), user_id=owner.id, title=f"대화 {index}")
         for index in range(MAX_CONVERSATIONS)
@@ -354,9 +352,7 @@ def test_목록에는_내_대화만_나온다(client: TestClient, db: Session, s
     assert [item["id"] for item in body["items"]] == [mine["id"]]
 
 
-def test_남의_여행에는_대화를_붙일_수_없다(
-    client: TestClient, db: Session, stranger: User
-) -> None:
+def test_남의_여행에는_대화를_붙일_수_없다(client: TestClient, db: Session, stranger: User) -> None:
     from app.db.models import Route
     from app.db.models.enums import RouteCreationType, RouteStatus, TransportType, TripPace
 

@@ -107,9 +107,7 @@ def test_제목_없는_대화의_첫_질문이_제목이_된다(
     assert _get_title(client, conversation["id"]) == "동쪽 바닷가 카페 어디가 좋을까?"
 
 
-def test_지정한_제목은_첫_질문이_덮지_않는다(
-    quick_answer, client: TestClient, db: Session
-) -> None:
+def test_지정한_제목은_첫_질문이_덮지_않는다(quick_answer, client: TestClient, db: Session) -> None:
     conversation = _create_conversation(client, title="아껴둔 제목")
 
     _send_message(client, conversation["id"], "서귀포 카페 알려줘")
@@ -117,9 +115,7 @@ def test_지정한_제목은_첫_질문이_덮지_않는다(
     assert _get_title(client, conversation["id"]) == "아껴둔 제목"
 
 
-def test_두_번째_질문은_제목을_바꾸지_않는다(
-    quick_answer, client: TestClient, db: Session
-) -> None:
+def test_두_번째_질문은_제목을_바꾸지_않는다(quick_answer, client: TestClient, db: Session) -> None:
     conversation = _create_conversation(client)
     _send_message(client, conversation["id"], "첫 질문이에요")
 

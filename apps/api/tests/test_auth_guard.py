@@ -64,9 +64,7 @@ def _expired_access(user_id: uuid.UUID) -> str:
 # ---------------------------------------------------------------------------
 
 
-def test_유효한_access_토큰은_200_이고_그_사용자다(
-    anon_client: TestClient, db: Session
-) -> None:
+def test_유효한_access_토큰은_200_이고_그_사용자다(anon_client: TestClient, db: Session) -> None:
     user = _make_user(db)
     response = anon_client.get(_ME, headers=_bearer(create_access_token(user.id)))
 
@@ -79,18 +77,14 @@ def test_유효한_access_토큰은_200_이고_그_사용자다(
 # ---------------------------------------------------------------------------
 
 
-def test_헤더_없음_비local은_401(
-    anon_client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_헤더_없음_비local은_401(anon_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     # autouse 픽스처가 local 로 고정하므로 여기서 명시적으로 뒤집는다.
     monkeypatch.setattr(settings, "environment", "production")
     response = anon_client.get(_ME)
     assert response.status_code == 401
 
 
-def test_헤더_없음_local은_DEV_사용자로_폴백_200(
-    anon_client: TestClient, db: Session
-) -> None:
+def test_헤더_없음_local은_DEV_사용자로_폴백_200(anon_client: TestClient, db: Session) -> None:
     # 폴백 대상인 고정 사용자를 심어둔다(환경은 이미 local).
     _make_user(db, user_id=DEV_USER_ID)
     response = anon_client.get(_ME)

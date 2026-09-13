@@ -93,7 +93,8 @@ def _generate_with_request_text(client, db, place, monkeypatch, *, intent_behavi
     monkeypatch.setattr(routes, "get_nearby_places", lambda *_a, **_k: [])
     monkeypatch.setattr(routes, "run_route_generation", lambda _route_id, _open: None)
     monkeypatch.setattr(
-        rr, "get_route",
+        rr,
+        "get_route",
         lambda *_a, **_k: RouteLeg(distance_m=0, duration_min=0, polyline=None),
     )
     monkeypatch.setattr(rr, "get_daily_forecasts", lambda *_a, **_k: {})
@@ -151,7 +152,10 @@ def test_추출_태그는_이번_생성에만_쓰고_요청_행은_바꾸지_않
     client, db, place, monkeypatch
 ) -> None:
     route, request = _generate_with_request_text(
-        client, db, place, monkeypatch,
+        client,
+        db,
+        place,
+        monkeypatch,
         intent_behavior=lambda text: RequestIntent(preferred_tags=("walk",)),
     )
 

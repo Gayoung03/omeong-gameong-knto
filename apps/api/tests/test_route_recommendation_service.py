@@ -605,9 +605,7 @@ def test_generate_route_saves_and_returns_day_weather(
     start = datetime(2026, 9, 20, 9, tzinfo=KST)
     forecast = DayForecast(pop_max=70, tmax=31.0, tmin=24.0, hourly_tmp={15: 29.0})
     monkeypatch.setattr(rr, "_tour_api_places", lambda *_a, **_k: [])
-    monkeypatch.setattr(
-        rr, "get_daily_forecasts", lambda *_a, **_k: {start.date(): forecast}
-    )
+    monkeypatch.setattr(rr, "get_daily_forecasts", lambda *_a, **_k: {start.date(): forecast})
     monkeypatch.setattr(
         rr, "get_route", lambda *_a, **_k: RouteLeg(distance_m=1000, duration_min=10, polyline=None)
     )
@@ -722,9 +720,7 @@ def test_upsert_weather_snapshot_is_idempotent_on_region_and_date(db: Session) -
     db.flush()
 
     assert id_a == id_b
-    rows = list(
-        db.scalars(select(WeatherSnapshot).where(WeatherSnapshot.region == region))
-    )
+    rows = list(db.scalars(select(WeatherSnapshot).where(WeatherSnapshot.region == region)))
     assert len(rows) == 1
     assert rows[0].precipitation_probability == 80  # 갱신됨
     assert rows[0].condition == WeatherCondition.RAINY

@@ -123,9 +123,7 @@ def test_쪼개진_도구_인자를_이어_붙인다(fake_openai, monkeypatch: p
     assert isinstance(pieces[-1], Answer)
 
 
-def test_한_라운드에_도구_두_개도_각각_모은다(
-    fake_openai, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_한_라운드에_도구_두_개도_각각_모은다(fake_openai, monkeypatch: pytest.MonkeyPatch) -> None:
     """`index` 로 갈라 담지 않으면 두 호출의 인자가 한 덩어리로 섞인다."""
     dispatched: list[tuple[str, str]] = []
 
@@ -195,9 +193,7 @@ def test_도구만_반복하면_포기한다(fake_openai, monkeypatch: pytest.Mo
 # ---------------------------------------------------------------------------
 
 
-def test_첫_라운드는_말로_때울_수_없어야_한다(
-    fake_openai, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_첫_라운드는_말로_때울_수_없어야_한다(fake_openai, monkeypatch: pytest.MonkeyPatch) -> None:
     """8/31 에 말투 규칙으로 두 번 싸우고 두 번 되돌린 사고다.
 
     `tool_calls` 와 `content` 는 한 메시지에 못 들어간다. 그래서 모델이 "말하기"를
@@ -299,10 +295,7 @@ def test_라운드를_다_쓰면_가진_것으로_답한다(fake_openai, monkeyp
     없어진다.
     """
     monkeypatch.setattr(chat, "_dispatch", lambda db, name, raw: ("[]", []))
-    rounds = [
-        [_search_call()]
-        for _ in range(chat.MAX_TOOL_ROUNDS - 1)
-    ]
+    rounds = [[_search_call()] for _ in range(chat.MAX_TOOL_ROUNDS - 1)]
     rounds.append([_chunk(content="세 곳 찾았어요.")])
     calls = fake_openai(rounds)
 
@@ -311,9 +304,7 @@ def test_라운드를_다_쓰면_가진_것으로_답한다(fake_openai, monkeyp
     assert calls[-1]["tool_choice"] == "none"
 
 
-def test_중지하면_다음_라운드로_가지_않는다(
-    fake_openai, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_중지하면_다음_라운드로_가지_않는다(fake_openai, monkeypatch: pytest.MonkeyPatch) -> None:
     """제너레이터를 닫는 것이 앱의 중지 버튼이다. 남은 청크를 더 받지 않아야 한다."""
     monkeypatch.setattr(chat, "_dispatch", lambda db, name, raw: ("[]", []))
     fake_openai(

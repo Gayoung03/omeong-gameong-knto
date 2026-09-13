@@ -92,11 +92,14 @@ def test_answer_sets_fields_audit_and_notification(
     assert body["answeredAt"] is not None
     assert body["auditLogs"][0]["action"] == "answered"
 
-    assert db.scalar(
-        select(func.count(AdminInquiryAuditLog.id)).where(
-            AdminInquiryAuditLog.inquiry_id == inquiry.id
+    assert (
+        db.scalar(
+            select(func.count(AdminInquiryAuditLog.id)).where(
+                AdminInquiryAuditLog.inquiry_id == inquiry.id
+            )
         )
-    ) == 1
+        == 1
+    )
     notification = db.scalar(
         select(Notification).where(
             Notification.user_id == stranger.id,
@@ -200,9 +203,7 @@ def test_draft_answer_daily_limit(
 
     for _ in range(2):
         inquiry = _inquiry(db, stranger)
-        assert (
-            client.post(f"/api/v1/admin/inquiries/{inquiry.id}/draft-answer").status_code == 200
-        )
+        assert client.post(f"/api/v1/admin/inquiries/{inquiry.id}/draft-answer").status_code == 200
 
     blocked = _inquiry(db, stranger)
     assert client.post(f"/api/v1/admin/inquiries/{blocked.id}/draft-answer").status_code == 429

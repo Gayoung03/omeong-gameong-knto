@@ -161,9 +161,7 @@ def test_이미지는_보낸_순서대로_저장된다(client: TestClient, place
 def test_이미지를_보내면_통째로_갈아끼운다(client: TestClient, place: Place) -> None:
     created = _write(client, place, imageUrls=["https://a", "https://b"])
 
-    response = client.patch(
-        f"/api/v1/reviews/{created['id']}", json={"imageUrls": ["https://c"]}
-    )
+    response = client.patch(f"/api/v1/reviews/{created['id']}", json={"imageUrls": ["https://c"]})
 
     # 개별 이미지만 빼는 방식은 없다. 화면이 항상 전체 목록을 제출한다.
     assert [image["imageUrl"] for image in response.json()["images"]] == ["https://c"]

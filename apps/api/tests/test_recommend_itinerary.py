@@ -106,9 +106,7 @@ def test_daily_tmap_calls_are_capped_and_fall_back_to_estimates(caplog) -> None:
     )
     # 서로 가까워 추정 이동시간으로는 모두 통과하지만, 실제(가짜) TMAP 시간은
     # 하루 창을 넘겨 매번 _fit_visit 에서 탈락하는 후보들.
-    candidates = [
-        _candidate(0.9 - index / 1000, lat=33.5 + index / 5000) for index in range(20)
-    ]
+    candidates = [_candidate(0.9 - index / 1000, lat=33.5 + index / 5000) for index in range(20)]
     calls: list[tuple] = []
 
     def slow_route(*args):
@@ -136,9 +134,7 @@ def test_tmap_call_cap_resets_each_day() -> None:
         transport=TransportType.RENTAL_CAR,
         start_coord=(33.5, 126.53),
     )
-    candidates = [
-        _candidate(0.9 - index / 1000, lat=33.5 + index / 5000) for index in range(40)
-    ]
+    candidates = [_candidate(0.9 - index / 1000, lat=33.5 + index / 5000) for index in range(40)]
     calls: list[tuple] = []
 
     def slow_route(*args):
@@ -162,9 +158,7 @@ def test_cap_counts_only_real_tmap_calls_not_cache_hits() -> None:
         transport=TransportType.RENTAL_CAR,
         start_coord=(33.5, 126.53),
     )
-    candidates = [
-        _candidate(0.9 - index / 1000, lat=33.5 + index / 5000) for index in range(25)
-    ]
+    candidates = [_candidate(0.9 - index / 1000, lat=33.5 + index / 5000) for index in range(25)]
     calls: list[tuple] = []
 
     def cache_route(*args):
@@ -186,9 +180,7 @@ def test_tmap_error_disables_real_calls_for_whole_trip(caplog) -> None:
         transport=TransportType.RENTAL_CAR,
         start_coord=(33.5, 126.53),
     )
-    candidates = [
-        _candidate(0.9 - index / 1000, lat=33.5 + index / 5000) for index in range(10)
-    ]
+    candidates = [_candidate(0.9 - index / 1000, lat=33.5 + index / 5000) for index in range(10)]
     calls: list[tuple] = []
 
     def failing_route(*args):

@@ -25,9 +25,7 @@ def _fake_openai_factory(arguments: dict):
         def create(self, **_kw: object) -> object:
             message = SimpleNamespace(
                 tool_calls=[
-                    SimpleNamespace(
-                        function=SimpleNamespace(arguments=json.dumps(arguments))
-                    )
+                    SimpleNamespace(function=SimpleNamespace(arguments=json.dumps(arguments)))
                 ]
             )
             return SimpleNamespace(choices=[SimpleNamespace(message=message)])

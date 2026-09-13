@@ -15,9 +15,7 @@ def test_admin_update_rejects_unsafe_image_scheme() -> None:
 
 
 def test_admin_update_accepts_nullable_schedule_fields() -> None:
-    payload = AdminEditorialStoryUpdate.model_validate(
-        {"publishedAt": None, "expiresAt": None}
-    )
+    payload = AdminEditorialStoryUpdate.model_validate({"publishedAt": None, "expiresAt": None})
 
     assert payload.model_dump(exclude_unset=True) == {
         "published_at": None,

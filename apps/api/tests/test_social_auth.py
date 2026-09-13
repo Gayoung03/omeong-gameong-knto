@@ -197,9 +197,7 @@ def test_탈퇴_소셜계정_재로그인은_401(client: TestClient, db: Session
     # (provider, id) 가 탈퇴 사용자 소유면 401.
     user = _make_local(db, "ghost@example.com", deleted=True)
     db.add(
-        UserSocialAccount(
-            user_id=user.id, provider=AuthProvider.KAKAO, provider_user_id="ghost-1"
-        )
+        UserSocialAccount(user_id=user.id, provider=AuthProvider.KAKAO, provider_user_id="ghost-1")
     )
     db.flush()
     code = _callback_to_code(client, _profile(kakao_id="ghost-1"))
@@ -288,9 +286,7 @@ def test_선점가입_공격_비번없이_연동불가_separate로_별도계정(
     # 공격자 계정에는 소셜이 연결되지 않았다.
     victim_local = db.scalar(select(User).where(User.email == "victim@example.com"))
     assert (
-        db.scalar(
-            select(UserSocialAccount).where(UserSocialAccount.user_id == victim_local.id)
-        )
+        db.scalar(select(UserSocialAccount).where(UserSocialAccount.user_id == victim_local.id))
         is None
     )
 

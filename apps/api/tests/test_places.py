@@ -59,9 +59,7 @@ def test_남이_등록한_장소는_목록에_안_나온다(
     assert "남의 단골 카페" not in names
 
 
-def test_남이_등록한_장소는_상세도_404(
-    client: TestClient, db: Session, stranger: User
-) -> None:
+def test_남이_등록한_장소는_상세도_404(client: TestClient, db: Session, stranger: User) -> None:
     hidden = _make_place(db, "남의 단골 카페", owner=stranger)
 
     response = client.get(f"/api/v1/places/{hidden.id}")
@@ -105,9 +103,7 @@ def test_정책이_없는_장소도_unknown_으로_내려온다(client: TestClie
     assert body["petPolicy"]["cautionNote"] is None
 
 
-def test_AI_입출력_컬럼은_상세_응답에_그대로_내려온다(
-    client: TestClient, db: Session
-) -> None:
+def test_AI_입출력_컬럼은_상세_응답에_그대로_내려온다(client: TestClient, db: Session) -> None:
     place = _make_place(db, "입마개 카페")
     db.add(
         PlacePetPolicy(
@@ -162,9 +158,7 @@ def test_unknown_필터는_정책_행이_없는_장소도_잡는다(
 # ---------------------------------------------------------------------------
 
 
-def test_동반_불가인_장소는_목록에_안_나온다(
-    client: TestClient, db: Session, place: Place
-) -> None:
+def test_동반_불가인_장소는_목록에_안_나온다(client: TestClient, db: Session, place: Place) -> None:
     _make_not_allowed_place(db)
 
     body = client.get("/api/v1/places").json()

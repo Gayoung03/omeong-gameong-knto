@@ -209,3 +209,109 @@ class TestBreedConclusions:
             ]
         )
         assert result["carrier"] == "오션비스타제주(삼천포↔제주)"
+
+
+class TestTransportBlock:
+    """운송사 목록을 **모델이 옮겨 적지 않고 우리가 붙이는** 부분.
+
+    2026-09-13 측정에서 `gpt-4o-mini` 가 조회된 항공사 7곳 중 3곳만 쓰고
+    "위 항공사들은 실어도 되니" 로 닫았다. 빠진 곳은 "안 되는 곳"으로 읽힌다.
+    """
+
+    def _payload(self, **extra) -> str:
+        import json
+
+        base = {
+            "회사별 결론": [
+                {"carrier": "대한항공", "결론": "기내 가능(상한 7kg), 위탁 가능(상한 45kg)"},
+                {"carrier": "제주항공", "결론": "기내 가능(상한 9kg), 위탁 제도 없음"},
+            ],
+            "규정": [{"carrier_name": "대한항공", "verified_at": "2026-08-26"}],
+        }
+        return json.dumps({**base, **extra}, ensure_ascii=False)
+
+    def test_조회된_회사가_하나도_빠지지_않는다(self):
+        from app.integrations.llm.chat import _transport_block
+
+        rendered, _ = _transport_block([self._payload()])
+        assert "대한항공" in rendered
+        assert "제주항공" in rendered
+
+    def test_확인일_문장을_함께_만든다(self):
+        from app.integrations.llm.chat import _transport_block
+
+        _, closing = _transport_block([self._payload()])
+        assert closing.startswith("2026년 8월 확인 기준")
+
+    def test_모델에게만_주는_지시는_붙이지_않는다(self):
+        # `주의` 는 모델이 읽는 칸이다. 답변에 붙으면 지시문이 사용자에게 보인다.
+        from app.integrations.llm.chat import _transport_block
+
+        payload = self._payload(
+            **{
+                "회사별 결론": [
+                    {
+                        "carrier": "아리온제주",
+                        "결론": "동승 불가(규정상 불가) → 반려동물 동반 불가",
+                        "주의": "가능한 곳과 섞지 말고 이 회사도 반드시 함께 밝힐 것",
+                    }
+                ]
+            }
+        )
+        rendered, _ = _transport_block([payload])
+        assert "반드시 함께 밝힐 것" not in rendered
+
+    def test_견종은_요약만_붙인다(self):
+        # `결론` 은 모델이 읽는 상세본이라 답변에 붙이면 벽이 된다.
+        from app.integrations.llm.chat import _transport_block
+
+        payload = self._payload(
+            **{
+                "이 견종 기준 결론": [
+                    {
+                        "carrier": "대한항공",
+                        "결론": "맹견 목록에는 없음 · 단두종 목록에 있음 → 위탁 불가",
+                        "요약": "복서는 단두종 목록에 있어 위탁 불가",
+                    }
+                ]
+            }
+        )
+        rendered, _ = _transport_block([payload])
+        assert "복서는 단두종 목록에 있어 위탁 불가" in rendered
+        assert "맹견 목록에는 없음" not in rendered
+
+    def test_읽을_수_없는_결과에는_터지지_않는다(self):
+        from app.integrations.llm.chat import _transport_block
+
+        assert _transport_block(["깨진 JSON"]) is None
+        assert _transport_block(["null"]) is None
+        assert _transport_block(["[]"]) is None
+        assert _transport_block([]) is None
+
+
+class TestLeadIn:
+    """모델이 지시를 무시하고 목록을 또 쓴 경우 잘라내는 부분.
+
+    `gpt-4o-mini` 는 "목록은 쓰지 말라"는 지시를 무시했다(2026-09-13 실측).
+    지시를 안 따르는 것이 애초의 문제라, **결과를 우리가 자른다.**
+    """
+
+    def test_글머리표부터_잘라낸다(self):
+        from app.integrations.llm.chat import _lead_in
+
+        assert _lead_in("앞머리예요.\n\n- 대한항공 기내 가능\n- 제주항공") == "앞머리예요."
+
+    def test_번호_목록도_잘라낸다(self):
+        from app.integrations.llm.chat import _lead_in
+
+        assert _lead_in("앞머리예요.\n\n1. 대한항공\n2. 제주항공") == "앞머리예요."
+
+    def test_목록이_없으면_그대로_둔다(self):
+        from app.integrations.llm.chat import _lead_in
+
+        assert _lead_in("앞머리만 있어요.") == "앞머리만 있어요."
+
+    def test_목록으로_시작하면_빈_문자열이다(self):
+        from app.integrations.llm.chat import _lead_in
+
+        assert _lead_in("- 대한항공 기내 가능") == ""

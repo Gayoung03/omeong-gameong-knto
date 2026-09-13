@@ -57,9 +57,7 @@ def test_422_응답에_입력값_에코가_없다(client: TestClient, place: Pla
 # ---------------------------------------------------------------------------
 
 
-def test_남의_개인_장소에는_리뷰를_못_쓴다(
-    client: TestClient, db: Session, stranger: User
-) -> None:
+def test_남의_개인_장소에는_리뷰를_못_쓴다(client: TestClient, db: Session, stranger: User) -> None:
     hidden = _make_private_place(db, stranger)
 
     response = client.post(f"/api/v1/places/{hidden.id}/reviews", json={"rating": 5})
@@ -67,9 +65,7 @@ def test_남의_개인_장소에는_리뷰를_못_쓴다(
     assert response.status_code == 404
 
 
-def test_남의_개인_장소의_리뷰_목록도_404(
-    client: TestClient, db: Session, stranger: User
-) -> None:
+def test_남의_개인_장소의_리뷰_목록도_404(client: TestClient, db: Session, stranger: User) -> None:
     hidden = _make_private_place(db, stranger)
 
     response = client.get(f"/api/v1/places/{hidden.id}/reviews")
@@ -143,9 +139,9 @@ def test_unique_위반은_409_로_바뀌고_내부를_숨긴다() -> None:
     # SQLAlchemy IntegrityError(statement, params, orig) — statement·params 에
     # 제약명이나 테이블명이 있어도 응답에 새지 않아야 한다.
     exc = IntegrityError(
-        'INSERT INTO routes (share_token) ...',
+        "INSERT INTO routes (share_token) ...",
         {"share_token": "dup"},
-        _FakeOrig("duplicate key value violates unique constraint \"uq_routes_share_token\""),
+        _FakeOrig('duplicate key value violates unique constraint "uq_routes_share_token"'),
     )
 
     response = asyncio.run(integrity_error_handler(_FakeRequest(), exc))

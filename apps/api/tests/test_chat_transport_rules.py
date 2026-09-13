@@ -272,7 +272,10 @@ class TestConclusionsWithoutWeight:
         [result] = _carrier_conclusions(
             [_hit(carrier_name="아리온제주", cabin_allowed=False, cargo_allowed=False)]
         )
-        assert result["결론"].endswith("반드시 함께 밝힐 것")
+        # **지시문은 `결론` 이 아니라 `주의` 에 담는다** — `결론` 은 답변에 그대로
+        # 붙는 문장이라, 섞으면 지시가 사용자 화면에 새어 나온다(2026-09-13 실제로 그랬다).
+        assert result["결론"].endswith("→ 반려동물 동반 불가")
+        assert "반드시 함께 밝힐 것" in result["주의"]
 
     def test_여객선은_위탁_미확인을_붙이지_않는다(self):
         # 여객선 5건은 cargo_allowed 가 전부 NULL 이다. "위탁 가능 여부 미확인" 을
@@ -309,8 +312,8 @@ class TestConclusionsWithoutWeight:
                 )
             ]
         )
-        assert result["결론"].startswith("동승 불가(규정상 불가)")
-        assert result["결론"].endswith("반드시 함께 밝힐 것")
+        assert result["결론"] == "동승 불가(규정상 불가) → 반려동물 동반 불가"
+        assert "반드시 함께 밝힐 것" in result["주의"]
 
     def test_무게가_있으면_기존_문구를_그대로_쓴다(self):
         # 무게 판정이 붙은 경우는 문구가 바뀌지 않아야 한다(회귀).

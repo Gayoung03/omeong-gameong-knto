@@ -153,9 +153,7 @@ def test_587_이면_STARTTLS_로_올린다(smtp, monkeypatch) -> None:
     assert client.started_tls is True
 
 
-def test_실제_발송이_켜지면_로컬이어도_로그에_코드가_남지_않는다(
-    smtp, monkeypatch, caplog
-) -> None:
+def test_실제_발송이_켜지면_로컬이어도_로그에_코드가_남지_않는다(smtp, monkeypatch, caplog) -> None:
     """스텁일 때만 터미널에 코드를 찍는다. 진짜 메일이 나가는데 로그에도 남을 이유가 없다."""
     monkeypatch.setattr(settings, "environment", "local")
 

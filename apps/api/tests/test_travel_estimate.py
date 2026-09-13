@@ -43,6 +43,7 @@ CALIBRATION: list[tuple[str, str, int]] = [
     ("함덕", "표선", 45),
 ]
 
+
 @pytest.mark.parametrize(("frm", "to", "tmap_min"), CALIBRATION)
 def test_car_estimate_ratio_within_bounds(frm: str, to: str, tmap_min: int) -> None:
     # 배율 없는 7+직선/600 은 전 구간 0.75~1.40(현재 최대 1.36, 애월→성산).

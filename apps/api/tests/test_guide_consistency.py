@@ -20,8 +20,12 @@ from scripts import seed_guides as sg
 UNIT_FIELDS: dict[str, tuple[str, ...]] = {
     "kg": ("cabin_max_weight_kg", "cargo_max_weight_kg", "cargo_fee_threshold_kg"),
     "weeks": ("min_age_weeks_cabin", "min_age_weeks_cargo"),
-    "krw": ("cabin_fee_krw", "cargo_fee_light_krw", "cargo_fee_heavy_krw",
-            "airport_cage_price_krw"),
+    "krw": (
+        "cabin_fee_krw",
+        "cargo_fee_light_krw",
+        "cargo_fee_heavy_krw",
+        "airport_cage_price_krw",
+    ),
     "hours": ("request_deadline_hours",),
     "minutes": ("duration_minutes",),
     "pets": ("max_pets_per_person_cabin", "max_pets_per_trip"),
@@ -81,7 +85,8 @@ def _rules() -> list[dict]:
 def test_규정의_수치_필드는_전부_커버리지_목록에_있다() -> None:
     for spec in _rules():
         numeric = {
-            key for key, value in spec.items()
+            key
+            for key, value in spec.items()
             if isinstance(value, (int, Decimal)) and not isinstance(value, bool)
         }
         unknown = numeric - NUMERIC_FIELDS

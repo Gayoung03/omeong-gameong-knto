@@ -44,9 +44,7 @@ def answering(monkeypatch: pytest.MonkeyPatch) -> Callable[..., list[list[dict]]
     ) -> list[list[dict]]:
         seen_history: list[list[dict]] = []
 
-        def fake(
-            db: Session, history: list[dict], question: str
-        ) -> Iterator[AnswerDelta | Answer]:
+        def fake(db: Session, history: list[dict], question: str) -> Iterator[AnswerDelta | Answer]:
             seen_history.append(history)
             if error is not None:
                 raise error
@@ -290,9 +288,7 @@ def test_빈_질문은_거부한다(client: TestClient) -> None:
 
     assert _ask(client, conversation_id, "").status_code == 422
     assert (
-        client.post(
-            f"/api/v1/chat/conversations/{conversation_id}/messages", json={}
-        ).status_code
+        client.post(f"/api/v1/chat/conversations/{conversation_id}/messages", json={}).status_code
         == 422
     )
 

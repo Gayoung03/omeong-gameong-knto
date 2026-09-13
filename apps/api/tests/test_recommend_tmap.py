@@ -219,26 +219,31 @@ def test_근접_좌표는_같은_캐시에_적중한다(db: Session, monkeypatch
     now = datetime(2026, 8, 27, tzinfo=UTC)
 
     tmap.get_route(
-        db, (33.499612, 126.531234), (33.393900, 126.239600),
-        TransportType.RENTAL_CAR, now=now,
+        db,
+        (33.499612, 126.531234),
+        (33.393900, 126.239600),
+        TransportType.RENTAL_CAR,
+        now=now,
     )
     # 근접하지만 다른 좌표 — 4자리 반올림은 동일하다.
     monkeypatch.setattr(
-        tmap, "_request_route",
+        tmap,
+        "_request_route",
         lambda *_a, **_k: pytest.fail("근접 좌표는 기존 캐시에 적중해야 한다"),
     )
     leg = tmap.get_cached_route(
-        db, (33.499648, 126.531199), (33.393861, 126.239640),
-        TransportType.RENTAL_CAR, now=now,
+        db,
+        (33.499648, 126.531199),
+        (33.393861, 126.239640),
+        TransportType.RENTAL_CAR,
+        now=now,
     )
 
     # 캐시에서 읽은 레그는 source="cache" 다(Phase 1b). 나머지 값은 저장한 그대로.
     assert leg == RouteLeg(distance_m=5210, duration_min=19, polyline="[]", source="cache")
 
 
-def test_만료된_캐시행은_새_저장시_정리된다(
-    db: Session, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_만료된_캐시행은_새_저장시_정리된다(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     now = datetime(2026, 8, 27, tzinfo=UTC)
     db.add(
         RouteCalculationCache(
@@ -256,9 +261,7 @@ def test_만료된_캐시행은_새_저장시_정리된다(
     db.flush()
 
     monkeypatch.setattr(tmap, "_request_route", lambda *_a, **_k: RouteLeg(200, 2, None))
-    tmap.get_route(
-        db, (33.4996, 126.5312), (33.3939, 126.2396), TransportType.WALK, now=now
-    )
+    tmap.get_route(db, (33.4996, 126.5312), (33.3939, 126.2396), TransportType.WALK, now=now)
 
     expired = db.scalars(
         select(RouteCalculationCache).where(RouteCalculationCache.expires_at <= now)

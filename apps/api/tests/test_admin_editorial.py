@@ -121,11 +121,14 @@ def test_admin_can_edit_publish_archive_and_restore_story(
     assert restored.status_code == 200
     assert restored.json()["status"] == "draft"
     assert restored.json()["publishedAt"] is None
-    assert db.scalar(
-        select(func.count(AdminEditorialAuditLog.id)).where(
-            AdminEditorialAuditLog.story_id == story.id
+    assert (
+        db.scalar(
+            select(func.count(AdminEditorialAuditLog.id)).where(
+                AdminEditorialAuditLog.story_id == story.id
+            )
         )
-    ) == 4
+        == 4
+    )
 
 
 def test_admin_publish_rejects_invalid_schedule(

@@ -80,10 +80,20 @@ def test_정책_테이블_제안만_pk별로_모은다() -> None:
     scores = collect_scores(
         [
             _payload(
-                {"table": "place_pet_policies", "pk": "a", "column": "caution_note",
-                 "proposed": "목줄", "reliability": 100},
-                {"table": "places", "pk": "b", "column": "check_in_time",
-                 "proposed": "15:00:00", "reliability": 100},
+                {
+                    "table": "place_pet_policies",
+                    "pk": "a",
+                    "column": "caution_note",
+                    "proposed": "목줄",
+                    "reliability": 100,
+                },
+                {
+                    "table": "places",
+                    "pk": "b",
+                    "column": "check_in_time",
+                    "proposed": "15:00:00",
+                    "reliability": 100,
+                },
             )
         ]
     )
@@ -94,23 +104,46 @@ def test_정책_테이블_제안만_pk별로_모은다() -> None:
 def test_정규식과_LLM이_섞이면_낮은_신뢰도를_쓴다() -> None:
     scores = collect_scores(
         [
-            _payload({"table": "place_pet_policies", "pk": "a", "column": "max_weight_kg",
-                      "proposed": 10, "reliability": 100}),
-            _payload({"table": "place_pet_policies", "pk": "a", "column": "caution_note",
-                      "proposed": "주의", "reliability": 70}),
+            _payload(
+                {
+                    "table": "place_pet_policies",
+                    "pk": "a",
+                    "column": "max_weight_kg",
+                    "proposed": 10,
+                    "reliability": 100,
+                }
+            ),
+            _payload(
+                {
+                    "table": "place_pet_policies",
+                    "pk": "a",
+                    "column": "caution_note",
+                    "proposed": "주의",
+                    "reliability": 70,
+                }
+            ),
         ]
     )
     assert scores["a"][0] == 70
     assert ("caution_note", "주의") in scores["a"][1]
+
 
 def test_화이트리스트_밖_컬럼은_즉시_거부된다() -> None:
     import pytest
 
     with pytest.raises(SystemExit, match="허용되지 않은 대상"):
         collect_scores(
-            [_payload({"table": "place_pet_policies", "pk": "a",
-                       "column": "notes; DROP TABLE users", "proposed": "x",
-                       "reliability": 100})]
+            [
+                _payload(
+                    {
+                        "table": "place_pet_policies",
+                        "pk": "a",
+                        "column": "notes; DROP TABLE users",
+                        "proposed": "x",
+                        "reliability": 100,
+                    }
+                )
+            ]
         )
 
 
@@ -139,11 +172,23 @@ def test_정책_반영은_신뢰도를_최저값으로_기록한다(db: Session,
     def run(reliability: int, column: str, value, min_rel: int, tmp_path) -> None:
         staging = tmp_path / f"staging-{reliability}-{column}.json"
         staging.write_text(
-            json.dumps({"proposals": [{
-                "table": "place_pet_policies", "pk": str(policy.id), "column": column,
-                "current": None, "proposed": value, "reliability": reliability,
-                "method": "test", "evidence": "",
-            }]}, ensure_ascii=False),
+            json.dumps(
+                {
+                    "proposals": [
+                        {
+                            "table": "place_pet_policies",
+                            "pk": str(policy.id),
+                            "column": column,
+                            "current": None,
+                            "proposed": value,
+                            "reliability": reliability,
+                            "method": "test",
+                            "evidence": "",
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
         monkeypatch.setattr(apb, "SessionLocal", lambda: db)
@@ -151,8 +196,14 @@ def test_정책_반영은_신뢰도를_최저값으로_기록한다(db: Session,
         monkeypatch.setattr(db, "close", lambda: None)
         monkeypatch.setattr(
             "sys.argv",
-            ["apply_place_batch", "--in", str(staging), "--apply",
-             "--min-reliability", str(min_rel)],
+            [
+                "apply_place_batch",
+                "--in",
+                str(staging),
+                "--apply",
+                "--min-reliability",
+                str(min_rel),
+            ],
         )
         apb.main()
 

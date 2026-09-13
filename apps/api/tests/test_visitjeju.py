@@ -26,9 +26,7 @@ def _item(content_id: str, *, title: str = "성산일출봉") -> dict:
 
 
 def test_parse_contents_reads_official_image_and_source_url() -> None:
-    items, page_count = parse_contents(
-        {"result": "00", "pageCount": 2, "items": [_item("CONT_1")]}
-    )
+    items, page_count = parse_contents({"result": "00", "pageCount": 2, "items": [_item("CONT_1")]})
 
     assert page_count == 2
     assert items[0].content_id == "CONT_1"
@@ -98,11 +96,7 @@ def test_fetch_content_detail_reads_body_and_gallery(monkeypatch: pytest.MonkeyP
                     "result": "200",
                     "item": {
                         "photo": [
-                            {
-                                "photoid": {
-                                    "imgpath": "https://api.cdn.visitjeju.net/gallery.webp"
-                                }
-                            }
+                            {"photoid": {"imgpath": "https://api.cdn.visitjeju.net/gallery.webp"}}
                         ]
                     },
                 },
@@ -111,7 +105,7 @@ def test_fetch_content_detail_reads_body_and_gallery(monkeypatch: pytest.MonkeyP
             200,
             text=(
                 '<section class="detail_contents"><h5>상세정보</h5>'
-                '<p>원문의 긴 첫 번째 문단입니다.</p>'
+                "<p>원문의 긴 첫 번째 문단입니다.</p>"
                 '<img src="//api.cdn.visitjeju.net/body.webp">'
                 "</section>"
             ),
