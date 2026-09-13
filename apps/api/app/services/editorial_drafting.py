@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 
 from openai import OpenAI
 
@@ -19,9 +19,6 @@ class StoryCandidate:
     category: str
     display_order: int
     source: VisitJejuContent
-    source_provider: str = "visitjeju"
-    source_name: str = "제주관광공사 비짓제주"
-    source_published_at: datetime | None = None
 
 
 @dataclass(frozen=True)
