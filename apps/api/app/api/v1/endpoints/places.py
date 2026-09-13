@@ -199,9 +199,7 @@ def list_place_tags(
 
 # /places/{place_id} 보다 먼저 등록한다. 순서가 뒤바뀌면 "me" 를 placeId(UUID)로
 # 읽으려다 422 가 난다.
-@router.get(
-    "/users/me/places", response_model=PlaceListResponse, summary="내가 등록한 장소"
-)
+@router.get("/users/me/places", response_model=PlaceListResponse, summary="내가 등록한 장소")
 def list_my_places(
     current_user: CurrentUser,
     db: DbSession,
@@ -335,9 +333,7 @@ def get_place(place_id: uuid.UUID, current_user: OptionalUser, db: DbSession) ->
     status_code=status.HTTP_201_CREATED,
     summary="나만의 장소 등록",
 )
-def create_place(
-    payload: PlaceCreate, current_user: CurrentUser, db: DbSession
-) -> PlaceDetail:
+def create_place(payload: PlaceCreate, current_user: CurrentUser, db: DbSession) -> PlaceDetail:
     place = Place(
         name=payload.name,
         category=payload.category,
@@ -442,11 +438,14 @@ def _to_detail(db: Session, place: Place, user: User | None) -> PlaceDetail:
         phone=place.phone,
         homepage_url=place.homepage_url,
         primary_image_url=place.primary_image_url,
+        image_urls=place.image_urls,
         description=place.description,
         description_source=place.description_source,
         environment=place.environment,
         amenities=place.amenities,
         average_stay_minutes=place.average_stay_minutes,
+        business_hours_raw=place.business_hours_raw,
+        closed_days_raw=place.closed_days_raw,
         check_in_time=place.check_in_time,
         check_out_time=place.check_out_time,
         reservation_required=place.reservation_required,
@@ -497,6 +496,7 @@ def _to_pet_policy(policy: PlacePetPolicy | None) -> PetPolicyResponse:
             food_area_allowed=None,
             max_pets_per_person=None,
             caution_note=None,
+            required_items=None,
         )
 
     return PetPolicyResponse(
@@ -519,4 +519,5 @@ def _to_pet_policy(policy: PlacePetPolicy | None) -> PetPolicyResponse:
         food_area_allowed=policy.food_area_allowed,
         max_pets_per_person=policy.max_pets_per_person,
         caution_note=policy.caution_note,
+        required_items=policy.required_items,
     )

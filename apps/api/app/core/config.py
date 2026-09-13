@@ -27,7 +27,9 @@ class Settings(BaseSettings):
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://localhost:8081",
+        "http://127.0.0.1:8081",
         "http://localhost:19006",
+        "http://127.0.0.1:19006",
     ]
     aws_region: str = "ap-northeast-2"
     s3_bucket_name: str = ""
@@ -37,9 +39,6 @@ class Settings(BaseSettings):
     weather_api_key: str = ""
     tour_api_key: str = ""
     visitjeju_api_key: str = ""
-    instagram_user_id: str = ""
-    instagram_access_token: str = ""
-    instagram_graph_api_version: str = "v25.0"
     web_push_vapid_public_key: str = ""
     web_push_vapid_private_key: str = ""
     web_push_vapid_subject: str = ""
@@ -146,9 +145,7 @@ def get_settings() -> Settings:
         return Settings()
     except ValidationError as error:
         # 누락(missing)이든 빈 문자열(too_short)이든 SECRET_KEY 문제면 같은 안내로.
-        secret_key_problem = any(
-            entry["loc"] == ("secret_key",) for entry in error.errors()
-        )
+        secret_key_problem = any(entry["loc"] == ("secret_key",) for entry in error.errors())
         if secret_key_problem:
             raise RuntimeError(_MISSING_SECRET_KEY_MESSAGE) from error
         raise

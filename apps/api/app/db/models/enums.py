@@ -95,6 +95,7 @@ class PetPolicyType(StrEnum):
 
 class DataProvider(StrEnum):
     TOUR_API = "tour_api"
+    MFDS = "mfds"
     KCISA = "kcisa"
     VISITJEJU = "visitjeju"
     KAKAO = "kakao"
