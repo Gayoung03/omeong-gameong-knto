@@ -19,11 +19,31 @@ export type PlaceDetail = {
   /** 일정 추가 요청의 itemType 변환에 사용하는 서버 원본 분류 코드 */
   serverCategory: string;
   imageUrl: string | null;
+  imageUrls: string[];
   latitude: number;
   longitude: number;
   description: string | null;
   /** 서버가 정책 행이 없는 장소도 `unknown` 으로 내려주므로 항상 값이 있다. */
   petPolicy: PetPolicy;
+  petPolicyInfo: {
+    allowedSizes: string[];
+    carrierRequired: boolean | null;
+    cautionNote: string | null;
+    extraFeeAmount: number | null;
+    foodAreaAllowed: boolean | null;
+    leashRequired: boolean | null;
+    maxWeightKg: number | null;
+    maxPetsPerPerson: number | null;
+    muzzleRequired: boolean | null;
+    notes: string | null;
+    requiredItems: string[];
+    vaccinationRequired: boolean | null;
+  };
+  amenities: string[];
+  businessHoursRaw: string | null;
+  closedDaysRaw: string | null;
+  phone: string | null;
+  homepageUrl: string | null;
   rating: number | null;
   reviewCount: number | null;
   savedCount: number | null;

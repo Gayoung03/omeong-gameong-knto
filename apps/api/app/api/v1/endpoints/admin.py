@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import asc, desc, func, select
+from sqlalchemy import asc, desc, func, select, text
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentAdmin
@@ -273,12 +273,44 @@ def publish_admin_editorial_story(
     db: DbSession,
     current_admin: CurrentAdmin,
 ) -> AdminEditorialStoryDetail:
+    """draft 를 즉시 게시하고, 같은 종류로 게시 중인 글은 같은 트랜잭션에서 보관한다.
+
+    종류별 게시 글이 최대 1건이라는 규칙은 여기서 지킨다. published 를 만드는 경로는
+    이 API 뿐이고(배치는 draft 만 만든다), 같은 종류 승인은 advisory lock 으로 직렬화해
+    동시에 승인해도 게시 글이 둘이 되지 않는다.
+    """
     story = _story_or_404(db, story_id, lock=True)
     if story.status != EditorialStoryStatus.DRAFT:
         raise HTTPException(status_code=409, detail="초안만 게시할 수 있습니다")
 
-    published_at = payload.published_at or story.published_at or datetime.now(UTC)
+    db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+        {"key": f"editorial_publish:{story.kind.value}"},
+    )
+    published_at = datetime.now(UTC)
     _validate_schedule(published_at=published_at, expires_at=story.expires_at)
+
+    replaced = db.scalars(
+        select(EditorialStory)
+        .where(
+            EditorialStory.kind == story.kind,
+            EditorialStory.status == EditorialStoryStatus.PUBLISHED,
+            EditorialStory.id != story.id,
+        )
+        .with_for_update()
+    ).all()
+    for old in replaced:
+        old.status = EditorialStoryStatus.ARCHIVED
+        _audit(
+            db,
+            story=old,
+            actor_id=current_admin.id,
+            action="archived",
+            previous_status=EditorialStoryStatus.PUBLISHED,
+            next_status=EditorialStoryStatus.ARCHIVED,
+            changes={"replaced_by": {"after": str(story.id)}},
+        )
+
     previous_status = story.status
     story.status = EditorialStoryStatus.PUBLISHED
     story.published_at = published_at

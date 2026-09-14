@@ -59,9 +59,7 @@ def test_남이_등록한_장소는_목록에_안_나온다(
     assert "남의 단골 카페" not in names
 
 
-def test_남이_등록한_장소는_상세도_404(
-    client: TestClient, db: Session, stranger: User
-) -> None:
+def test_남이_등록한_장소는_상세도_404(client: TestClient, db: Session, stranger: User) -> None:
     hidden = _make_place(db, "남의 단골 카페", owner=stranger)
 
     response = client.get(f"/api/v1/places/{hidden.id}")
@@ -103,11 +101,11 @@ def test_정책이_없는_장소도_unknown_으로_내려온다(client: TestClie
     assert body["petPolicy"]["foodAreaAllowed"] is None
     assert body["petPolicy"]["maxPetsPerPerson"] is None
     assert body["petPolicy"]["cautionNote"] is None
+    assert body["petPolicy"]["requiredItems"] is None
+    assert body["imageUrls"] is None
 
 
-def test_AI_입출력_컬럼은_상세_응답에_그대로_내려온다(
-    client: TestClient, db: Session
-) -> None:
+def test_AI_입출력_컬럼은_상세_응답에_그대로_내려온다(client: TestClient, db: Session) -> None:
     place = _make_place(db, "입마개 카페")
     db.add(
         PlacePetPolicy(
@@ -118,6 +116,7 @@ def test_AI_입출력_컬럼은_상세_응답에_그대로_내려온다(
             food_area_allowed=False,
             max_pets_per_person=2,
             caution_note="대형견은 입마개를 착용해 주세요.",
+            required_items=["목줄", "배변봉투"],
         )
     )
     db.flush()
@@ -129,6 +128,7 @@ def test_AI_입출력_컬럼은_상세_응답에_그대로_내려온다(
     assert policy["foodAreaAllowed"] is False
     assert policy["maxPetsPerPerson"] == 2
     assert policy["cautionNote"] == "대형견은 입마개를 착용해 주세요."
+    assert policy["requiredItems"] == ["목줄", "배변봉투"]
 
 
 def test_unknown_필터는_정책_행이_없는_장소도_잡는다(
@@ -162,9 +162,7 @@ def test_unknown_필터는_정책_행이_없는_장소도_잡는다(
 # ---------------------------------------------------------------------------
 
 
-def test_동반_불가인_장소는_목록에_안_나온다(
-    client: TestClient, db: Session, place: Place
-) -> None:
+def test_동반_불가인_장소는_목록에_안_나온다(client: TestClient, db: Session, place: Place) -> None:
     _make_not_allowed_place(db)
 
     body = client.get("/api/v1/places").json()
@@ -262,8 +260,10 @@ def test_category_detail_은_상세에_그대로_내려온다(client: TestClient
     assert client.get(f"/api/v1/places/{detailed.id}").json()["categoryDetail"] == "동물약국"
 
 
-def test_숙박_체크인아웃은_상세에_내려온다(client: TestClient, db: Session) -> None:
+def test_영업_휴무_체크인아웃은_상세에_내려온다(client: TestClient, db: Session) -> None:
     stay = _make_place(db, "반려견 동반 펜션")
+    stay.business_hours_raw = "10:00~22:00"
+    stay.closed_days_raw = "연중무휴"
     stay.check_in_time = time(15, 0)
     stay.check_out_time = time(11, 0)
     db.flush()
@@ -272,8 +272,8 @@ def test_숙박_체크인아웃은_상세에_내려온다(client: TestClient, db
 
     assert body["checkInTime"] == "15:00:00"
     assert body["checkOutTime"] == "11:00:00"
-    # business_hours_raw 는 아직 응답에 노출하지 않는다(게이트 뒤).
-    assert "businessHoursRaw" not in body
+    assert body["businessHoursRaw"] == "10:00~22:00"
+    assert body["closedDaysRaw"] == "연중무휴"
 
 
 # ---------------------------------------------------------------------------

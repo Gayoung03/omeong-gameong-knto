@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import AdminEditorialAuditLog, EditorialStory, EditorialStorySource, User
@@ -140,3 +140,96 @@ def test_admin_publish_rejects_invalid_schedule(
 
     assert response.status_code == 422
     assert response.json()["detail"] == "만료 시각은 게시 시각보다 늦어야 합니다"
+
+
+def test_publish_replaces_previous_story_of_same_kind(
+    client: TestClient, db: Session, owner: User
+) -> None:
+    _make_admin(db, owner)
+    old = _draft(db)
+    other_kind = _draft(db)
+    other_kind.kind = EditorialStoryKind.GUIDE
+    db.flush()
+    assert client.post(
+        f"/api/v1/admin/editorial-stories/{old.id}/publish", json={}
+    ).status_code == 200
+    assert client.post(
+        f"/api/v1/admin/editorial-stories/{other_kind.id}/publish", json={}
+    ).status_code == 200
+    new = _draft(db)
+
+    response = client.post(f"/api/v1/admin/editorial-stories/{new.id}/publish", json={})
+
+    assert response.status_code == 200
+    db.refresh(old)
+    db.refresh(other_kind)
+    assert old.status == EditorialStoryStatus.ARCHIVED
+    assert other_kind.status == EditorialStoryStatus.PUBLISHED
+    replaced_log = db.scalar(
+        select(AdminEditorialAuditLog).where(
+            AdminEditorialAuditLog.story_id == old.id,
+            AdminEditorialAuditLog.action == "archived",
+        )
+    )
+    assert replaced_log is not None
+    assert replaced_log.changes == {"replaced_by": {"after": str(new.id)}}
+    assert db.scalar(
+        select(func.count(EditorialStory.id)).where(
+            EditorialStory.kind == EditorialStoryKind.EVENT,
+            EditorialStory.status == EditorialStoryStatus.PUBLISHED,
+        )
+    ) == 1
+
+
+def test_publish_is_immediate_and_ignores_requested_time(
+    client: TestClient, db: Session, owner: User
+) -> None:
+    _make_admin(db, owner)
+    story = _draft(db)
+    story.published_at = datetime.now(UTC) + timedelta(days=3)
+    db.flush()
+    before = datetime.now(UTC)
+
+    response = client.post(
+        f"/api/v1/admin/editorial-stories/{story.id}/publish",
+        json={"publishedAt": "2099-01-01T00:00:00Z"},
+    )
+
+    assert response.status_code == 200
+    published_at = datetime.fromisoformat(response.json()["publishedAt"])
+    assert before - timedelta(seconds=5) <= published_at <= datetime.now(UTC) + timedelta(seconds=5)
+    assert [item["id"] for item in client.get("/api/v1/editorial-stories").json()["items"]] == [
+        str(story.id)
+    ]
+
+
+def test_publish_serializes_same_kind_with_advisory_lock(
+    client: TestClient, db: Session, owner: User
+) -> None:
+    _make_admin(db, owner)
+    story = _draft(db)
+    statements: list[str] = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany) -> None:
+        statements.append(statement)
+
+    connection = db.connection()
+    event.listen(connection, "before_cursor_execute", capture)
+    try:
+        response = client.post(f"/api/v1/admin/editorial-stories/{story.id}/publish", json={})
+    finally:
+        event.remove(connection, "before_cursor_execute", capture)
+
+    assert response.status_code == 200
+    assert any("pg_advisory_xact_lock" in statement for statement in statements)
+
+
+def test_publish_rejects_non_draft(client: TestClient, db: Session, owner: User) -> None:
+    _make_admin(db, owner)
+    story = _draft(db)
+    story.status = EditorialStoryStatus.ARCHIVED
+    db.flush()
+
+    response = client.post(f"/api/v1/admin/editorial-stories/{story.id}/publish", json={})
+
+    assert response.status_code == 409
