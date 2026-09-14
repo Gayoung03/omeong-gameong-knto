@@ -139,6 +139,13 @@ export type TravelLogGenerationStatusResponse = {
   generationStatus: ServerGenerationStatus;
   /** 완료됐을 때만 채워진다 */
   generatedImageUrl: string | null;
+  /**
+   * 실패했을 때만 채워진다. **그대로 화면에 띄울 수 있는 한국어**다.
+   *
+   * 사유가 필요한 이유는 사용자가 할 행동이 갈리기 때문이다 — 사진이 걸린 것이면
+   * 다시 눌러도 또 걸리므로 다른 사진을 골라야 한다.
+   */
+  generationMessage: string | null;
 };
 
 /** PATCH /travel-logs/{logId} 로 보내는 것. 보낸 필드만 수정된다 */
