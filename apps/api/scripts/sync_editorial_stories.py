@@ -1,12 +1,12 @@
-"""비짓제주 공식 데이터 → AI 초안 → DB 적재 (Railway Cron 일일 배치).
+"""비짓제주 공식 데이터 → AI 초안 → DB 적재 (Railway Cron 주간 배치, 매주 월요일 09:00 KST).
 
 **초안(draft)만 만든다.** 게시는 관리자 publish API에서만 한다.
 
-같은 KST 날짜에 다시 실행해도 안전하다. 날짜+종류(kind)별로 하루 1건만 만들고,
+같은 주(KST 월요일 기준)에 다시 실행해도 안전하다. 주+종류(kind)별로 1건만 만들고,
 이미 있는 종류는 비짓제주 상세 조회·OpenAI 호출 전에 건너뛴다. 이미 저장된 행은
 어떤 필드도 수정하지 않는다.
 
-    .venv/bin/python -m scripts.sync_editorial_stories   # Railway Cron (0 0 * * * UTC)
+    .venv/bin/python -m scripts.sync_editorial_stories   # Railway Cron (0 0 * * 1 UTC)
     uv run python -m scripts.sync_editorial_stories      # 로컬
 """
 
@@ -44,13 +44,18 @@ def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9-]+", "-", value.lower()).strip("-")[:160]
 
 
+def week_start(today: date) -> date:
+    """그 주의 월요일. 주중 어느 날 실행해도 같은 주는 같은 날짜를 기준으로 삼는다."""
+    return today - timedelta(days=today.weekday())
+
+
 def _kind_prefix(day: date, kind: EditorialStoryKind) -> str:
-    """slug 는 `{KST날짜}-{kind}-{원문id}` 형식이다. 앞 두 부분이 하루 1건의 기준."""
+    """slug 는 `{주 시작 월요일}-{kind}-{원문id}` 형식이다. 앞 두 부분이 주 1건의 기준."""
     return f"{day.isoformat()}-{kind.value}-"
 
 
 def _existing_kinds(db: Session, day: date) -> set[EditorialStoryKind]:
-    """그날 이미 만든 종류. 상태(draft/published/archived)와 무관하게 '있음'으로 본다."""
+    """그 주에 이미 만든 종류. 상태(draft/published/archived)와 무관하게 '있음'으로 본다."""
     return {
         kind
         for kind in EditorialStoryKind
@@ -93,8 +98,11 @@ def _insert_draft(db: Session, candidate, draft, *, day: date) -> EditorialStory
         generation_model=draft.model,
         status=EditorialStoryStatus.DRAFT,
         published_at=None,
+        # 날씨 카드는 실제로 만든 날의 KST 자정까지만 유효하다(주 기준일이 아니라).
         expires_at=(
-            datetime.combine(day + timedelta(days=1), time.min, tzinfo=KST).astimezone(UTC)
+            datetime.combine(
+                datetime.now(KST).date() + timedelta(days=1), time.min, tzinfo=KST
+            ).astimezone(UTC)
             if candidate.kind == EditorialStoryKind.WEATHER
             else None
         ),
@@ -116,7 +124,8 @@ def _insert_draft(db: Session, candidate, draft, *, day: date) -> EditorialStory
     return story
 
 
-def sync_daily_stories(db: Session, *, day: date, max_pages: int = 100) -> SyncResult:
+def sync_weekly_stories(db: Session, *, day: date, max_pages: int = 100) -> SyncResult:
+    """`day` 는 주 시작 월요일(`week_start`)이다."""
     result = SyncResult()
     existing = _existing_kinds(db, day)
     result.skipped = [kind for kind in EditorialStoryKind if kind in existing]
@@ -156,14 +165,14 @@ def sync_daily_stories(db: Session, *, day: date, max_pages: int = 100) -> SyncR
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="오늘(KST)의 제주 여행 이야기 초안 생성")
+    parser = argparse.ArgumentParser(description="이번 주(KST)의 제주 여행 이야기 초안 생성")
     parser.add_argument("--max-pages", type=int, default=100)
     args = parser.parse_args()
-    day = datetime.now(KST).date()
+    day = week_start(datetime.now(KST).date())
 
     with SessionLocal() as db:
         try:
-            result = sync_daily_stories(db, day=day, max_pages=args.max_pages)
+            result = sync_weekly_stories(db, day=day, max_pages=args.max_pages)
         except VisitJejuAPIError as error:
             raise SystemExit(str(error)) from None
 

@@ -1,13 +1,13 @@
 # 제주 여행 이야기
 
-홈의 `제주 여행 이야기`는 비짓제주 공식 Open API 콘텐츠를 매일 골라 AI 초안으로
+홈의 `제주 여행 이야기`는 비짓제주 공식 Open API 콘텐츠를 매주 월요일 골라 AI 초안으로
 바꾼 뒤 `editorial_stories`에 저장한다. 비짓제주 대표사진 URL과 원문 링크만 보관하며
 수집한 원문 전체는 DB에 저장하지 않는다.
 
 ## 운영 흐름
 
 ```text
-Railway Cron (매일 09:00 KST)
+Railway Cron (매주 월요일 09:00 KST)
 → scripts.sync_editorial_stories
 → 비짓제주 API 조회 → OpenAI로 4종(행사·날씨·이야기·가이드) 초안 생성
 → editorial_stories 에 draft 저장
@@ -20,7 +20,7 @@ Railway Cron (매일 09:00 KST)
 
 ## 휴먼 인 더 루프
 
-- AI(OpenAI)는 **매일 초안을 쓰는 단계에만** 쓴다.
+- AI(OpenAI)는 **주간 초안을 쓰는 단계에만** 쓴다.
 - 검증·수정·승인은 운영자가 관리자 웹에서 직접 한다. 수정 화면과 수정 API
   (`PATCH /admin/editorial-stories/{id}`)에는 LLM 호출이 없다(AI 다시 쓰기·자동 교정 없음).
   운영자가 저장한 값이 그대로 게시된다.
@@ -41,7 +41,7 @@ EDITORIAL_OPENAI_MODEL=gpt-4o-mini
 WEATHER_API_KEY=
 ```
 
-## 일일 배치
+## 주간 배치 (매주 월요일)
 
 ```bash
 cd apps/api
@@ -50,18 +50,19 @@ uv run python -m scripts.sync_editorial_stories        # 로컬
 ```
 
 - **draft만 만든다.** 배치에는 게시(`published`)를 만드는 옵션·코드 경로가 없다.
-- **같은 날 재실행에 안전하다.** slug `{KST날짜}-{kind}-{원문id}`의 앞부분
-  (`{KST날짜}-{kind}-`)으로 그날 종류별 존재 여부를 본다.
+- **같은 주 재실행에 안전하다.** 기준일은 실행한 날이 속한 주의 **KST 월요일**이다.
+  slug `{월요일}-{kind}-{원문id}`의 앞부분(`{월요일}-{kind}-`)으로 그 주 종류별 존재 여부를 본다.
   - 이미 있는 종류는 비짓제주 상세 조회·OpenAI 호출 **전에** 건너뛴다. 4종이 모두 있으면
     비짓제주 목록 조회도 하지 않는다.
   - 상태(draft/published/archived)와 무관하게 "이미 있음"으로 본다. 원문 후보나 날씨가
-    바뀌어도 같은 날 같은 종류는 추가되지 않는다.
+    바뀌어도 같은 주 같은 종류는 추가되지 않는다.
   - 기존 행은 어떤 필드도 수정하지 않는다. 관리자 수정·승인 내용이 유지된다.
 - 종류마다 저장 후 commit한다. 한 종류의 OpenAI 호출이 실패해도 다른 종류는 남고,
-  같은 날 다시 실행하면 빠진 종류만 생성한다.
+  같은 주 안에 다시 실행하면(수요일이어도) 빠진 종류만 생성한다.
 - 결과 로그: `YYYY-MM-DD 생성 N · 건너뜀 M · 실패 K`. 실패가 있으면 종료 코드 1,
   없으면 0으로 정상 종료한다.
-- 날씨 카드는 다음 날 KST 자정에 만료된다.
+- 날씨 카드는 **초안을 만든 날**의 다음 KST 자정에 만료된다. 월요일에 만든 날씨 초안은
+  월요일 안에 승인해야 하며, 넘기면 만료 시각을 늦춰 저장한 뒤 승인한다.
 
 ## 관리자 승인 규칙
 
@@ -104,15 +105,16 @@ draft·archived는 절대 노출하지 않는다. 종류별 게시 글이 최대
 ## Railway Cron 서비스 등록
 
 API 서비스 안의 스케줄러가 아니라 **별도 Cron 서비스**에서 실행한다. 등록하지 않으면
-매일 자동 생성되지 않는다.
+매주 자동 생성되지 않는다.
 
 1. Railway 프로젝트에서 **New → GitHub Repo** → 같은 저장소 선택.
 2. 새 서비스 **Settings → Source → Root Directory**: `apps/api` (기존 Dockerfile로 빌드).
 3. **Settings → Deploy → Custom Start Command**:
    `.venv/bin/python -m scripts.sync_editorial_stories`
    (컨테이너의 bare `python`에는 의존성이 없다.)
-4. **Settings → Cron Schedule**: `0 0 * * *`
-   Railway Cron은 **UTC 기준** → 매일 **09:00 KST**. 실행 시각은 몇 분 늦어질 수 있다.
+4. **Settings → Cron Schedule**: `0 0 * * 1`
+   Railway Cron은 **UTC 기준** → UTC 월요일 00:00 = 매주 **월요일 09:00 KST**.
+   실행 시각은 몇 분 늦어질 수 있다.
 5. **Networking**: 공개 도메인을 만들지 않는다.
 6. **Variables** — API 서비스 값을 참조로 공유한다(서비스 이름이 다르면 바꿔 적는다).
 
@@ -136,7 +138,7 @@ railway ssh            # API 서비스 선택
 .venv/bin/python -m scripts.sync_editorial_stories
 ```
 
-같은 날이면 빠진 종류만 생성하고 나머지는 건너뛴다.
+같은 주(월~일)면 빠진 종류만 생성하고 나머지는 건너뛴다.
 
 ### 성공 확인
 
