@@ -14,7 +14,7 @@ from app.integrations.visitjeju import VisitJejuContent
 from app.services.editorial_drafting import StoryDraft
 from scripts import sync_editorial_stories as sync
 
-# 다른 테스트 데이터와 slug 접두사가 겹치지 않는 먼 날짜
+# 다른 테스트 데이터와 slug 접두사가 겹치지 않는 먼 주의 월요일
 DAY = date(2031, 5, 5)
 
 
@@ -107,7 +107,7 @@ def test_public_api_hides_draft_archived_future_and_expired(
 
 
 # ---------------------------------------------------------------------------
-# 일일 배치 — 외부 호출은 전부 가짜
+# 주간 배치 — 외부 호출은 전부 가짜
 # ---------------------------------------------------------------------------
 
 
@@ -183,8 +183,16 @@ def _day_stories(db: Session) -> list[EditorialStory]:
     )
 
 
+def test_week_start_is_monday_of_same_week() -> None:
+    assert DAY.weekday() == 0
+    # 월요일~일요일 어느 날 실행해도 같은 주 월요일을 기준으로 삼는다.
+    for offset in range(7):
+        assert sync.week_start(DAY + timedelta(days=offset)) == DAY
+    assert sync.week_start(DAY + timedelta(days=7)) == DAY + timedelta(days=7)
+
+
 def test_batch_creates_one_draft_per_kind(db: Session, external: FakeExternal) -> None:
-    result = sync.sync_daily_stories(db, day=DAY)
+    result = sync.sync_weekly_stories(db, day=DAY)
 
     stories = _day_stories(db)
     assert sorted(result.created) == sorted(EditorialStoryKind)
@@ -197,14 +205,14 @@ def test_batch_creates_one_draft_per_kind(db: Session, external: FakeExternal) -
 def test_same_day_rerun_skips_before_external_calls(
     db: Session, external: FakeExternal
 ) -> None:
-    sync.sync_daily_stories(db, day=DAY)
+    sync.sync_weekly_stories(db, day=DAY)
     external.fetch_calls = 0
     external.drafted.clear()
 
-    # 원문 후보와 날씨가 바뀌어도 같은 날 같은 종류는 추가되지 않는다.
+    # 원문 후보와 날씨가 바뀌어도 같은 주 같은 종류는 추가되지 않는다.
     external.contents = CONTENTS_B
     external.condition = "sunny"
-    result = sync.sync_daily_stories(db, day=DAY)
+    result = sync.sync_weekly_stories(db, day=DAY)
 
     assert len(_day_stories(db)) == 4
     assert result.created == []
@@ -218,7 +226,7 @@ def test_rerun_keeps_admin_edits_and_published_state(
 ) -> None:
     owner.is_admin = True
     db.flush()
-    sync.sync_daily_stories(db, day=DAY)
+    sync.sync_weekly_stories(db, day=DAY)
     event = next(story for story in _day_stories(db) if story.kind == EditorialStoryKind.EVENT)
 
     assert client.patch(
@@ -231,7 +239,7 @@ def test_rerun_keeps_admin_edits_and_published_state(
     published_at = event.published_at
 
     external.contents = CONTENTS_B
-    sync.sync_daily_stories(db, day=DAY)
+    sync.sync_weekly_stories(db, day=DAY)
     db.refresh(event)
 
     assert event.title == "관리자가 고친 제목"
@@ -245,7 +253,7 @@ def test_batch_only_drafts_missing_kinds(db: Session, external: FakeExternal) ->
     existing.slug = f"{DAY.isoformat()}-event-legacy"
     db.flush()
 
-    result = sync.sync_daily_stories(db, day=DAY)
+    result = sync.sync_weekly_stories(db, day=DAY)
 
     assert EditorialStoryKind.EVENT not in external.drafted
     assert sorted(external.drafted) == sorted(
@@ -262,7 +270,7 @@ def test_batch_only_drafts_missing_kinds(db: Session, external: FakeExternal) ->
 def test_one_failed_kind_keeps_other_drafts(db: Session, external: FakeExternal) -> None:
     external.fail_kinds = {EditorialStoryKind.WEATHER}
 
-    result = sync.sync_daily_stories(db, day=DAY)
+    result = sync.sync_weekly_stories(db, day=DAY)
 
     assert result.failed == [EditorialStoryKind.WEATHER]
     assert {story.kind for story in _day_stories(db)} == set(EditorialStoryKind) - {
@@ -286,7 +294,7 @@ def test_home_shows_story_only_after_admin_approval(
 ) -> None:
     owner.is_admin = True
     db.flush()
-    sync.sync_daily_stories(db, day=DAY)
+    sync.sync_weekly_stories(db, day=DAY)
     stories = _day_stories(db)
 
     assert _ids(client) == []

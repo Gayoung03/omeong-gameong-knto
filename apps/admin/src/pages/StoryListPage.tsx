@@ -34,7 +34,7 @@ export function StoryListPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const rawStatus = params.get('status');
-  // 매일 쓰는 검수함 — 첫 진입은 검수 대기(draft). '전체'는 status=all 로 명시한다.
+  // 검수함 — 첫 진입은 검수 대기(draft). '전체'는 status=all 로 명시한다.
   const status = STATUS_FILTERS.some((item) => item.value === rawStatus) ? rawStatus! : 'draft';
   const sortBy = params.get('sortBy') === 'published_at' ? 'published_at' : 'collected_at';
   const [data, setData] = useState<StoryListResponse | null>(null);
@@ -86,7 +86,7 @@ export function StoryListPage() {
         <div>
           <p className="eyebrow">콘텐츠 운영</p>
           <h1>여행 이야기</h1>
-          <p>매일 09:00(KST) 비짓제주 원문으로 만든 초안을 검수하고 승인합니다.</p>
+          <p>매주 월요일 09:00(KST) 비짓제주 원문으로 만든 초안을 검수하고 승인합니다.</p>
         </div>
         <div className="summary-card">
           {status === 'draft' ? (
@@ -145,7 +145,7 @@ export function StoryListPage() {
             {status === 'draft' && !search.trim() ? (
               <>
                 <strong>검수할 초안이 없어요.</strong>
-                <span>매일 09:00(KST)에 새 초안이 만들어져요.</span>
+                <span>매주 월요일 09:00(KST)에 새 초안이 만들어져요.</span>
               </>
             ) : (
               <>
