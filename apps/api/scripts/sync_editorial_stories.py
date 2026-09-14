@@ -1,20 +1,23 @@
-"""비짓제주 공식 데이터 → AI 초안 → DB 적재.
+"""비짓제주 공식 데이터 → AI 초안 → DB 적재 (Railway Cron 주간 배치, 매주 월요일 09:00 KST).
 
-기본 실행은 검수 대기 초안만 만든다. 관리 페이지가 붙기 전 임시 승인이 필요할 때만
-`--publish`를 명시한다. cron/Railway Scheduled Job에서 하루 한 번 실행해도 같은 날
-같은 원문은 같은 slug로 갱신된다.
+**초안(draft)만 만든다.** 게시는 관리자 publish API에서만 한다.
 
-    uv run python -m scripts.sync_editorial_stories
-    uv run python -m scripts.sync_editorial_stories --publish
+같은 주(KST 월요일 기준)에 다시 실행해도 안전하다. 주+종류(kind)별로 1건만 만들고,
+이미 있는 종류는 비짓제주 상세 조회·OpenAI 호출 전에 건너뛴다. 이미 저장된 행은
+어떤 필드도 수정하지 않는다.
+
+    .venv/bin/python -m scripts.sync_editorial_stories   # Railway Cron (0 0 * * 1 UTC)
+    uv run python -m scripts.sync_editorial_stories      # 로컬
 """
 
 import argparse
 import re
 import uuid
-from dataclasses import replace
-from datetime import UTC, datetime, time, timedelta, timezone
+from dataclasses import dataclass, field, replace
+from datetime import UTC, date, datetime, time, timedelta, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.db.models import EditorialStory, EditorialStorySource
 from app.db.models.enums import EditorialStoryKind, EditorialStoryStatus
@@ -30,8 +33,39 @@ from app.services.editorial_drafting import create_story_draft, select_daily_can
 KST = timezone(timedelta(hours=9))
 
 
+@dataclass
+class SyncResult:
+    created: list[EditorialStoryKind] = field(default_factory=list)
+    skipped: list[EditorialStoryKind] = field(default_factory=list)
+    failed: list[EditorialStoryKind] = field(default_factory=list)
+
+
 def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9-]+", "-", value.lower()).strip("-")[:160]
+
+
+def week_start(today: date) -> date:
+    """그 주의 월요일. 주중 어느 날 실행해도 같은 주는 같은 날짜를 기준으로 삼는다."""
+    return today - timedelta(days=today.weekday())
+
+
+def _kind_prefix(day: date, kind: EditorialStoryKind) -> str:
+    """slug 는 `{주 시작 월요일}-{kind}-{원문id}` 형식이다. 앞 두 부분이 주 1건의 기준."""
+    return f"{day.isoformat()}-{kind.value}-"
+
+
+def _existing_kinds(db: Session, day: date) -> set[EditorialStoryKind]:
+    """그 주에 이미 만든 종류. 상태(draft/published/archived)와 무관하게 '있음'으로 본다."""
+    return {
+        kind
+        for kind in EditorialStoryKind
+        if db.scalar(
+            select(EditorialStory.id)
+            .where(EditorialStory.slug.startswith(_kind_prefix(day, kind)))
+            .limit(1)
+        )
+        is not None
+    }
 
 
 def _weather() -> tuple[str, str]:
@@ -45,97 +79,109 @@ def _weather() -> tuple[str, str]:
         return "cloudy", "실시간 날씨를 확인하지 못했으므로 방문 직전 기상정보 확인 필요"
 
 
-def _save_story(db, candidate, draft, *, day, publish: bool) -> EditorialStory:
-    slug = _slug(f"{day.isoformat()}-{candidate.kind.value}-{candidate.source.content_id}")
-    story = db.scalar(select(EditorialStory).where(EditorialStory.slug == slug))
-    if story is None:
-        story = EditorialStory(id=uuid.uuid4(), slug=slug)
-        db.add(story)
-    story.kind = candidate.kind
-    story.category = candidate.category
-    story.card_title = draft.card_title
-    story.title = draft.title
-    story.summary = draft.summary
-    story.hero_image_url = candidate.source.image_url
-    story.sections = draft.sections
-    story.tips = draft.tips
-    story.tags = draft.tags
-    story.display_order = candidate.display_order
-    story.generated_by_ai = True
-    story.generation_model = draft.model
-    story.status = EditorialStoryStatus.PUBLISHED if publish else EditorialStoryStatus.DRAFT
-    story.published_at = datetime.now(UTC) if publish else None
-    story.expires_at = (
-        datetime.combine(day + timedelta(days=1), time.min, tzinfo=KST).astimezone(UTC)
-        if candidate.kind == EditorialStoryKind.WEATHER
-        else None
+def _insert_draft(db: Session, candidate, draft, *, day: date) -> EditorialStory:
+    """새 초안 행만 만든다. 기존 행을 조회·갱신하는 경로는 두지 않는다."""
+    story = EditorialStory(
+        id=uuid.uuid4(),
+        slug=_slug(f"{_kind_prefix(day, candidate.kind)}{candidate.source.content_id}"),
+        kind=candidate.kind,
+        category=candidate.category,
+        card_title=draft.card_title,
+        title=draft.title,
+        summary=draft.summary,
+        hero_image_url=candidate.source.image_url,
+        sections=draft.sections,
+        tips=draft.tips,
+        tags=draft.tags,
+        display_order=candidate.display_order,
+        generated_by_ai=True,
+        generation_model=draft.model,
+        status=EditorialStoryStatus.DRAFT,
+        published_at=None,
+        # 날씨 카드는 실제로 만든 날의 KST 자정까지만 유효하다(주 기준일이 아니라).
+        expires_at=(
+            datetime.combine(
+                datetime.now(KST).date() + timedelta(days=1), time.min, tzinfo=KST
+            ).astimezone(UTC)
+            if candidate.kind == EditorialStoryKind.WEATHER
+            else None
+        ),
     )
+    db.add(story)
     db.flush()
-
-    source = db.scalar(
-        select(EditorialStorySource).where(
-            EditorialStorySource.story_id == story.id,
-            EditorialStorySource.provider == "visitjeju",
-            EditorialStorySource.external_id == candidate.source.content_id,
+    db.add(
+        EditorialStorySource(
+            id=uuid.uuid4(),
+            story_id=story.id,
+            provider="visitjeju",
+            external_id=candidate.source.content_id,
+            source_name="제주관광공사 비짓제주",
+            source_title=candidate.source.title,
+            source_url=candidate.source.source_url,
+            source_image_url=candidate.source.image_url,
         )
     )
-    if source is None:
-        db.add(
-            EditorialStorySource(
-                id=uuid.uuid4(),
-                story_id=story.id,
-                provider="visitjeju",
-                external_id=candidate.source.content_id,
-                source_name="제주관광공사 비짓제주",
-                source_title=candidate.source.title,
-                source_url=candidate.source.source_url,
-                source_image_url=candidate.source.image_url,
-            )
-        )
     return story
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--publish", action="store_true", help="이번 결과를 즉시 게시")
-    parser.add_argument("--max-pages", type=int, default=100)
-    args = parser.parse_args()
-    now = datetime.now(KST)
+def sync_weekly_stories(db: Session, *, day: date, max_pages: int = 100) -> SyncResult:
+    """`day` 는 주 시작 월요일(`week_start`)이다."""
+    result = SyncResult()
+    existing = _existing_kinds(db, day)
+    result.skipped = [kind for kind in EditorialStoryKind if kind in existing]
+    if len(existing) == len(EditorialStoryKind):
+        return result
+
     condition, weather_summary = _weather()
-    try:
-        contents = fetch_all_contents(max_pages=max(1, args.max_pages))
-    except VisitJejuAPIError as error:
-        raise SystemExit(str(error)) from None
-    candidates = select_daily_candidates(contents, day=now.date(), weather_condition=condition)
-    if len(candidates) < 4:
-        raise SystemExit(f"공식 이미지와 소개가 있는 콘텐츠가 부족합니다({len(candidates)}/4)")
-    enriched_candidates = []
+    contents = fetch_all_contents(max_pages=max(1, max_pages))
+    candidates = select_daily_candidates(contents, day=day, weather_condition=condition)
+    found = {candidate.kind for candidate in candidates}
+    result.failed = [
+        kind for kind in EditorialStoryKind if kind not in existing and kind not in found
+    ]
+
     for candidate in candidates:
+        if candidate.kind in existing:
+            continue
         try:
             candidate = replace(candidate, source=fetch_content_detail(candidate.source))
         except VisitJejuAPIError as error:
             print(f"상세 정보 생략: {candidate.source.title} ({error})")
-        enriched_candidates.append(candidate)
-    candidates = enriched_candidates
+        try:
+            draft = create_story_draft(candidate, weather_summary=weather_summary)
+        except Exception as error:  # noqa: BLE001 - 한 종류 실패가 나머지를 막지 않게
+            print(f"초안 생성 실패: {candidate.kind.value} ({error})")
+            result.failed.append(candidate.kind)
+            continue
+        # OpenAI 호출 사이에 다른 실행이 같은 종류를 저장했을 수 있다.
+        if candidate.kind in _existing_kinds(db, day):
+            result.skipped.append(candidate.kind)
+            continue
+        story = _insert_draft(db, candidate, draft, day=day)
+        db.commit()
+        result.created.append(candidate.kind)
+        print(f"draft: {story.title}")
+    return result
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="이번 주(KST)의 제주 여행 이야기 초안 생성")
+    parser.add_argument("--max-pages", type=int, default=100)
+    args = parser.parse_args()
+    day = week_start(datetime.now(KST).date())
 
     with SessionLocal() as db:
-        for candidate in candidates:
-            draft = create_story_draft(candidate, weather_summary=weather_summary)
-            if args.publish:
-                db.execute(
-                    update(EditorialStory)
-                    .where(
-                        EditorialStory.kind == candidate.kind,
-                        EditorialStory.status == EditorialStoryStatus.PUBLISHED,
-                    )
-                    .values(status=EditorialStoryStatus.ARCHIVED)
-                )
-            story = _save_story(
-                db, candidate, draft, day=now.date(), publish=args.publish
-            )
-            print(f"{story.status.value}: {story.title}")
-        db.commit()
-    print(f"완료: {len(candidates)}건 ({'게시' if args.publish else '검수 대기'})")
+        try:
+            result = sync_weekly_stories(db, day=day, max_pages=args.max_pages)
+        except VisitJejuAPIError as error:
+            raise SystemExit(str(error)) from None
+
+    print(
+        f"{day.isoformat()} 생성 {len(result.created)} · 건너뜀 {len(result.skipped)}"
+        f" · 실패 {len(result.failed)}"
+    )
+    if result.failed:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
