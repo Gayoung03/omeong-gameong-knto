@@ -1043,7 +1043,9 @@ export function RouteInputScreen({ mode = 'recommendation' }: { mode?: RouteInpu
                     </View>
                     <View style={styles.inputGroup}>
                       <View style={styles.formGroupTitleRow}>
-                        <Text style={styles.formGroupTitle}>도착 시간</Text>
+                        <Text style={styles.formGroupTitle}>
+                          첫날 도착 시간 · {formatShortDate(draft.trip.startAt)}
+                        </Text>
                         <InlineFieldError error={fieldError} field="tripTimes" />
                       </View>
                       <Animated.View style={{ transform: [{ translateX: fieldShake }] }}>
@@ -1058,7 +1060,9 @@ export function RouteInputScreen({ mode = 'recommendation' }: { mode?: RouteInpu
                       </Animated.View>
                     </View>
                     <View style={styles.inputGroup}>
-                      <Text style={styles.formGroupTitle}>출발 시간</Text>
+                      <Text style={styles.formGroupTitle}>
+                        마지막날 출발 시간 · {formatShortDate(draft.trip.endAt)}
+                      </Text>
                       <Animated.View style={{ transform: [{ translateX: fieldShake }] }}>
                         <TimeNumberInput
                           error={fieldError?.field === 'tripTimes'}

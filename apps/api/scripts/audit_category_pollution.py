@@ -1,8 +1,8 @@
-"""자연·해변 카테고리에 섞인 숙소·카페를 찾아 리포트하고, 검수 확정분을 정정한다.
+"""추천 대상 카테고리에 섞인 비관광 업체(숙소·카페·렌터카)를 리포트하고, 확정분을 정정한다.
 
-`beach`·`oreum`·`walking_trail` 은 관광 후보로 쓰이는데, 이름에 펜션·스테이·하우스·
-게스트·리조트·숙소·카페가 들어간 행이 섞이면(예: "…해변펜션"이 beach 로) 추천 다양성과
-동선이 망가진다.
+`beach`·`oreum`·`walking_trail`·`rental_experience` 는 관광 후보로 쓰이는데, 이름에 펜션·스테이·
+하우스·게스트·리조트·숙소·카페·렌터카가 들어간 행이 섞이면(예: "…해변펜션"이 beach 로, 렌트카
+업체가 rental_experience 로) 추천 다양성과 동선이 망가진다.
 
 두 가지를 한다:
 1. **이름 규칙 스캔** — 후보를 리포트만 한다(사람 검수용, DB 미변경).
@@ -31,10 +31,11 @@ from app.db.session import SessionLocal
 from scripts.activate_kakao_places import confirm, describe_target, is_shared_db
 from scripts.repair_place_data import CategoryCorrection, apply_category_corrections
 
-#: 점검 대상 — 자연/해변 계열. 이 카테고리에 숙소·카페 이름이 섞이면 오분류다.
-SCANNED_CATEGORIES = ("beach", "oreum", "walking_trail")
+#: 점검 대상 — 자연/해변 + 대여·체험 계열. 이 카테고리에 숙소·카페·렌터카 이름이 섞이면 오분류다.
+SCANNED_CATEGORIES = ("beach", "oreum", "walking_trail", "rental_experience")
 
 #: 이름 키워드 → 올바른 카테고리. 앞에서부터 먼저 맞는 것을 쓴다(숙소 계열 우선).
+#: 렌터카·렌트카는 방문 대상이 아니므로 비추천 카테고리 etc 로 뺀다.
 KEYWORD_TARGETS: tuple[tuple[str, str], ...] = (
     ("펜션", "accommodation"),
     ("스테이", "accommodation"),
@@ -43,18 +44,22 @@ KEYWORD_TARGETS: tuple[tuple[str, str], ...] = (
     ("리조트", "accommodation"),
     ("숙소", "accommodation"),
     ("카페", "cafe"),
+    ("렌터카", "etc"),
+    ("렌트카", "etc"),
 )
 
 #: 카카오 로컬·KCISA 로 검수 확정한 정정 (이름, 올바른 카테고리).
 #: - 성산풀하우스: 카카오 여행>숙박>펜션 / 이리로스테이: 이름 규칙
 #: - 바다스케치: 카카오 여행>숙박>콘도,리조트 / 제주에코스위츠: KCISA 반려동반여행>펜션
 #: - 심바카레: 카카오 음식점>퓨전요리>퓨전일식
+#: - 더세이프렌트카: 렌터카 업체(이름 자명) → 방문 대상 아님, 비추천 etc
 CONFIRMED_CORRECTIONS: tuple[tuple[str, str], ...] = (
     ("성산풀하우스", "accommodation"),
     ("이리로스테이", "accommodation"),
     ("바다스케치", "accommodation"),
     ("제주에코스위츠", "accommodation"),
     ("심바카레", "restaurant"),
+    ("더세이프렌트카", "etc"),
 )
 
 
