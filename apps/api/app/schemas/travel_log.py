@@ -96,16 +96,20 @@ class TravelLogRegenerate(APISchema):
 
 
 class TravelLogGenerationStatus(APISchema):
-    """생성 진행 상태만.
+    """생성 진행 상태와, 실패했다면 그 사유.
 
-    `travel_logs` 에 실패 사유 컬럼이 없어 사유는 내려주지 않는다.
-    앱은 `failed` 일 때 재생성 버튼만 보여준다.
+    사유를 내려주는 이유는 **사용자가 할 행동이 갈리기 때문이다** — 안전 판정에
+    걸린 사진은 다시 눌러도 또 걸리므로 다른 사진을 골라야 하고, 네트워크 실패는
+    같은 사진으로 다시 누르면 된다. 재시도 한 번마다 카드 한 장 값이 나간다.
     """
 
     id: uuid.UUID
     generation_status: GenerationStatus
     #: 완료 시에만 채워진다.
     generated_image_url: str | None = None
+    #: `failed` 일 때만 채워진다. **그대로 화면에 띄울 수 있는 한국어**다 —
+    #: 서버 사유·예외 메시지는 여기에 담지 않는다(로그로만 남긴다).
+    generation_message: str | None = None
 
 
 class TravelLogUpdate(APISchema):

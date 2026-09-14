@@ -17,7 +17,10 @@ import {
 } from './components/PhotoChangeBottomSheet';
 import { useLogDraftStore } from './stores/useLogDraftStore';
 
-const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
+// 서버 상한과 같은 값이어야 한다 — `endpoints/uploads.py` 의 MAX_FILE_SIZE 와
+// `travel_card/config.py` 의 MAX_IMAGE_BYTES 가 둘 다 10MB 다. 앱만 크게 두면
+// 10~15MB 사진이 화면은 통과하고 업로드에서 413 으로 떨어진다.
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 
 function showPermissionAlert(kind: '카메라' | '사진 앨범') {
   Alert.alert(
@@ -113,7 +116,7 @@ export function NewMomentPhotoStepScreen() {
 
   const saveAsset = (asset: ImagePicker.ImagePickerAsset) => {
     if (asset.fileSize && asset.fileSize > MAX_PHOTO_BYTES) {
-      setErrorMessage('사진 용량이 너무 커요. 15MB 이하의 사진을 선택해 주세요.');
+      setErrorMessage('사진 용량이 너무 커요. 10MB 이하의 사진을 선택해 주세요.');
       return;
     }
     setErrorMessage(undefined);
