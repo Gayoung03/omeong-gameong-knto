@@ -185,7 +185,7 @@ class AdminEditorialStoryUpdate(APISchema):
 
 
 class AdminEditorialPublishRequest(APISchema):
-    published_at: AwareDatetime | None = None
+    """승인은 즉시 게시다. 게시 시각은 서버가 정하므로 받는 필드가 없다."""
 
 
 AdminEditorialSort = Literal["collected_at", "published_at"]

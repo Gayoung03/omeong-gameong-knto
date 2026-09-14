@@ -23,6 +23,12 @@ DbSession = Annotated[Session, Depends(get_db)]
 
 
 def _visible_now(now: datetime):
+    """승인 경계. draft·archived·게시 전·만료 글은 목록과 상세 모두에서 숨긴다.
+
+    종류별 게시 글은 최대 1건이다 — 관리자 승인 API 가 같은 종류의 기존 게시 글을
+    보관한 뒤 게시하므로(admin.publish_admin_editorial_story), 여기서 따로 중복을
+    거르지 않아도 홈 `limit=4` 가 과거 같은 종류 글로 채워지지 않는다.
+    """
     return (
         EditorialStory.status == EditorialStoryStatus.PUBLISHED,
         EditorialStory.published_at.isnot(None),
