@@ -19,6 +19,12 @@ def test_cafe_keyword_maps_to_cafe() -> None:
     assert proposed_target("해변뷰카페") == ("cafe", "카페")
 
 
+def test_rental_car_keyword_maps_to_etc() -> None:
+    # 렌터카·렌트카 업체는 방문 대상이 아니므로 비추천 etc 로 뺀다.
+    assert proposed_target("더세이프렌트카") == ("etc", "렌트카")
+    assert proposed_target("SK렌터카")[0] == "etc"
+
+
 def test_accommodation_keyword_wins_over_cafe() -> None:
     # 앞선 키워드(숙소 계열)를 먼저 잡는다.
     assert proposed_target("펜션카페")[0] == "accommodation"
@@ -31,6 +37,13 @@ def test_plain_name_has_no_proposal() -> None:
 
 def test_confirmed_corrections_targets_are_valid() -> None:
     names = [name for name, _ in CONFIRMED_CORRECTIONS]
-    assert names == ["성산풀하우스", "이리로스테이", "바다스케치", "제주에코스위츠", "심바카레"]
-    valid = {"accommodation", "cafe", "restaurant"}
+    assert names == [
+        "성산풀하우스",
+        "이리로스테이",
+        "바다스케치",
+        "제주에코스위츠",
+        "심바카레",
+        "더세이프렌트카",
+    ]
+    valid = {"accommodation", "cafe", "restaurant", "etc"}
     assert all(target in valid for _, target in CONFIRMED_CORRECTIONS)
