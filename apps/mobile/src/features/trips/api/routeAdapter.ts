@@ -10,6 +10,7 @@
  */
 
 import type {
+  NearbyAnimalHospitalResponse,
   PlaceSummaryResponse,
   RouteDayResponse,
   RouteDetailResponse,
@@ -23,16 +24,17 @@ import type {
 import { toPetPolicy } from '@/src/types/place';
 
 import type {
+  AnimalHospital,
   PlaceCategory,
   Schedule,
   ScheduleItem,
   SchedulePlace,
+  TransportType,
   Trip,
   TripDistanceSummary,
   TripListItem,
   TripPet,
   TripTransport,
-  TransportType,
 } from '../types/trip';
 
 /**
@@ -268,5 +270,19 @@ export function toTrip(route: RouteDetailResponse): Trip {
     memo: route.memo ?? '',
     distanceSummary,
     schedules: route.routeDays.map(toSchedule),
+    nearbyAnimalHospitals: route.nearbyAnimalHospitals.map(toAnimalHospital),
+  };
+}
+
+export function toAnimalHospital(hospital: NearbyAnimalHospitalResponse): AnimalHospital {
+  return {
+    id: hospital.id,
+    name: hospital.name,
+    address: hospital.address ?? '',
+    phone: hospital.phone,
+    latitude: hospital.latitude,
+    longitude: hospital.longitude,
+    distanceMeters: hospital.distanceMeters,
+    is24Hours: hospital.is24Hours,
   };
 }

@@ -20,6 +20,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { clearPendingRoute, loadPendingRoute, savePendingRoute } from '../services/pendingRoute';
 import { searchAccommodations, searchPlaces } from '@/src/features/places/api/placesApi';
 import type { Place } from '@/src/features/places/types/place';
+import { toAnimalHospital } from '@/src/features/trips/api/routeAdapter';
+import { AnimalHospitalSection } from '@/src/features/trips/components/AnimalHospitalSection';
 import {
   addRouteItem,
   createRouteRecommendation,
@@ -673,6 +675,10 @@ export function RouteRecommendationScreen() {
           <Ionicons color={colors.seaDeep} name="add-circle-outline" size={20} />
           <Text style={styles.addButtonText}>장소 추가</Text>
         </Pressable>
+        <AnimalHospitalSection
+          hospitals={route.nearbyAnimalHospitals.map(toAnimalHospital)}
+          inset={false}
+        />
         {route.tourApiPlaces.length ? (
           <View style={styles.tourApiSection}>
             <Text style={styles.tourApiSectionTitle}>함께 둘러보기 좋은 곳</Text>
