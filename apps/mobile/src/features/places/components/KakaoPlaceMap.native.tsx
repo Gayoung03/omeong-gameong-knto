@@ -6,7 +6,7 @@ import { buildKakaoMapDocument } from './buildKakaoMapDocument';
 
 import { colors } from '@/src/theme';
 
-export function KakaoPlaceMap({ appKey, places }: KakaoPlaceMapProps) {
+export function KakaoPlaceMap({ appKey, focusedPlaceId, places }: KakaoPlaceMapProps) {
   return (
     <WebView
       bounces={false}
@@ -19,7 +19,7 @@ export function KakaoPlaceMap({ appKey, places }: KakaoPlaceMapProps) {
       // 출처를 아예 보내지 않으면 카카오가 허용하므로 개발 중에는 이 상태로 둔다.
       // 배포 도메인이 정해지면 trips 의 KAKAO_MAP_BASE_URL 과 같은 값을 여기에도 넣는다.
       source={{
-        html: buildKakaoMapDocument(appKey, places),
+        html: buildKakaoMapDocument(appKey, places, focusedPlaceId),
       }}
       style={styles.map}
     />
