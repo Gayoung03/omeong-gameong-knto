@@ -44,6 +44,10 @@ def test_confirmed_corrections_targets_are_valid() -> None:
         "제주에코스위츠",
         "심바카레",
         "더세이프렌트카",
+        "제주대학교 야생동물구조센터",
+        "제주대학교 말전문동물병원",
+        "한국마사회 제주육성목장 동물병원",
+        "씨엔에프 팜테크",
     ]
     valid = {"accommodation", "cafe", "restaurant", "etc"}
     assert all(target in valid for _, target in CONFIRMED_CORRECTIONS)

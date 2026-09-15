@@ -6,6 +6,8 @@ export type SavedPlace = {
   name: string;
   address: string;
   category: string;
+  /** 장소 탐색의 실내·야외 카테고리 필터에 사용한다. */
+  environment?: '실내' | '야외';
   /**
    * 지역 칩이 이걸로 거른다.
    *
