@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 
 import { RemoteImage } from '@/src/components/ui/RemoteImage';
 import { colors, radius, spacing, typography } from '@/src/theme';
@@ -7,13 +7,25 @@ import { colors, radius, spacing, typography } from '@/src/theme';
 import type { SavedPlace } from '../types/saved';
 
 type SavedPlaceCardProps = {
+  onPress: () => void;
   onPressRemove: () => void;
   place: SavedPlace;
 };
 
-export function SavedPlaceCard({ onPressRemove, place }: SavedPlaceCardProps) {
+export function SavedPlaceCard({ onPress, onPressRemove, place }: SavedPlaceCardProps) {
+  const handlePressRemove = (event: GestureResponderEvent) => {
+    // 하트를 누른 경우 카드의 상세 이동까지 연속으로 실행되지 않게 한다.
+    event.stopPropagation();
+    onPressRemove();
+  };
+
   return (
-    <View style={styles.card}>
+    <Pressable
+      accessibilityLabel={`${place.name} 상세 보기`}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+    >
       <RemoteImage style={styles.thumbnail} uri={place.imageUrl ?? undefined} />
 
       <View style={styles.info}>
@@ -30,12 +42,12 @@ export function SavedPlaceCard({ onPressRemove, place }: SavedPlaceCardProps) {
         accessibilityLabel="저장 해제"
         accessibilityRole="button"
         hitSlop={10}
-        onPress={onPressRemove}
+        onPress={handlePressRemove}
         style={({ pressed }) => pressed && styles.pressed}
       >
         <Ionicons color={colors.primary} name="heart" size={20} />
       </Pressable>
-    </View>
+    </Pressable>
   );
 }
 
@@ -54,6 +66,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm + 2,
     padding: spacing.sm + 2,
+  },
+  cardPressed: {
+    opacity: 0.68,
   },
   category: {
     color: colors.leaf,
