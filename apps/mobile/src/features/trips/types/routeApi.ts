@@ -37,6 +37,14 @@ export type ServerPetSize = 'small' | 'medium' | 'large';
 export type ServerScheduleItemType =
   'attraction' | 'restaurant' | 'cafe' | 'accommodation' | 'custom';
 
+/**
+ * 슬롯 상태 **[재설계 2026-09-07]**.
+ * `unfilled` 면 `place`·시각이 null 이고 `candidates` 에 확인 필요 후보가 붙는다.
+ * `needs_verification` 이면 장소는 있지만 동반 여부가 미확인이라 "확인 필요" 라벨과
+ * `place.phone` 을 같이 보여준다.
+ */
+export type ServerRouteItemSlotStatus = 'filled' | 'needs_verification' | 'unfilled';
+
 /** GET /routes 의 한 줄 */
 export type RouteListItemResponse = {
   id: string;
@@ -86,6 +94,47 @@ export type PlaceSummaryResponse = {
   rating: number | null;
   reviewCount: number;
   petPolicyType: ServerPetPolicy;
+  /** 확인 필요 슬롯의 확인 전화용. 2026-09-09 부터 내려온다 */
+  phone: string | null;
+};
+
+/**
+ * 슬롯별 대안 후보 (`route_item_candidates`, 최대 3개).
+ * `edit-suggestions` 의 항목 모양에 `requiresVerification`·`phone` 이 붙었다.
+ * 같은 날짜의 항목이 편집되면 그 날짜의 후보는 모두 지워져 빈 배열이 된다.
+ */
+export type RouteItemCandidateResponse = {
+  placeId: string;
+  name: string;
+  category: string;
+  address: string | null;
+  primaryImageUrl: string | null;
+  phone: string | null;
+  recommendationScore: number | null;
+  recommendationReason: string | null;
+  /** 동반 여부가 미확인인 후보. 담으면 슬롯이 `needs_verification` 이 된다 */
+  requiresVerification: boolean;
+};
+
+/** `slotStatus` 집계(계산값). 출발지·숙소 앵커는 빼고 방문 슬롯만 센다 */
+export type RouteSlotSummaryResponse = {
+  total: number;
+  filled: number;
+  needsVerification: number;
+  unfilled: number;
+};
+
+/** 동선·숙소 근처 동물병원 안전망(계산값, 저장 안 함). `id` 는 `places.id` */
+export type NearbyAnimalHospitalResponse = {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  latitude: number;
+  longitude: number;
+  distanceMeters: number;
+  /** 이름의 "24시" 로만 판정한다 (영업시간 데이터 없음) */
+  is24Hours: boolean;
 };
 
 /** 하루 안의 방문 한 건 */
@@ -94,6 +143,7 @@ export type RouteItemResponse = {
   /** 0 부터 시작한다. 앱의 `order` 는 1 부터라 어댑터에서 다시 매긴다 */
   sortOrder: number;
   itemType: ServerScheduleItemType;
+  slotStatus: ServerRouteItemSlotStatus;
   /** ISO 8601 `+09:00`. 시각을 안 정했으면 null */
   startsAt: string | null;
   endsAt: string | null;
@@ -108,10 +158,13 @@ export type RouteItemResponse = {
   latitude: number | null;
   longitude: number | null;
   place: PlaceSummaryResponse | null;
+  candidates: RouteItemCandidateResponse[];
   moveToNext: {
     transport: ServerTransportType;
     distanceMeters: number;
     durationMinutes: number;
+    /** TMAP 캐시가 없어 추정식으로 채운 구간 */
+    isEstimated: boolean;
   } | null;
 };
 
@@ -165,6 +218,8 @@ export type RouteDetailResponse = RouteListItemResponse & {
     imageUrl: string | null;
   }[];
   routeDays: RouteDayResponse[];
+  slotSummary: RouteSlotSummaryResponse;
+  nearbyAnimalHospitals: NearbyAnimalHospitalResponse[];
 };
 
 /**
@@ -266,6 +321,8 @@ export type RouteGenerationStatusResponse = {
   status: ServerRouteStatus;
   version: number;
   failureReason: string | null;
+  /** 생성 완료 시에만 채운다. 그 외 null */
+  slotSummary: RouteSlotSummaryResponse | null;
 };
 
 export type RouteReplacementSuggestionResponse = {

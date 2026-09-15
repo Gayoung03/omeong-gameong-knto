@@ -123,6 +123,21 @@ export type Trip = {
   coverEmoji: string;
   distanceSummary: TripDistanceSummary;
   schedules: Schedule[];
+  /** 숙소·동선 근처 동물병원 안전망. 서버 계산값이라 저장되지 않는다. 최대 3곳 */
+  nearbyAnimalHospitals: AnimalHospital[];
+};
+
+/** 동선·숙소 근처 동물병원 (응답 계산값) */
+export type AnimalHospital = {
+  id: string;
+  name: string;
+  address: string;
+  phone: string | null;
+  latitude: number;
+  longitude: number;
+  distanceMeters: number;
+  /** 이름의 "24시" 로만 판정한다 — 영업시간 데이터가 없어 상징적이다 */
+  is24Hours: boolean;
 };
 
 /** 체크리스트 항목 분류 */

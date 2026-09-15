@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Image,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -19,6 +20,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { clearPendingRoute, loadPendingRoute, savePendingRoute } from '../services/pendingRoute';
 import { searchAccommodations, searchPlaces } from '@/src/features/places/api/placesApi';
 import type { Place } from '@/src/features/places/types/place';
+import { toAnimalHospital } from '@/src/features/trips/api/routeAdapter';
+import { AnimalHospitalSection } from '@/src/features/trips/components/AnimalHospitalSection';
 import {
   addRouteItem,
   createRouteRecommendation,
@@ -31,6 +34,7 @@ import {
 } from '@/src/features/trips/api/tripsApi';
 import type {
   RouteEditSuggestionResponse,
+  RouteItemCandidateResponse,
   RouteItemResponse,
   RouteRequestCreateRequest,
   ServerScheduleItemType,
@@ -95,74 +99,168 @@ function timePart(value: string | null): string {
   return value?.slice(11, 16) ?? '';
 }
 
+/** 빈 슬롯 카드 제목에 쓰는 자리 이름. 서버는 못 채운 슬롯의 `itemType` 만 남긴다. */
+const SLOT_LABELS: Record<ServerScheduleItemType, string> = {
+  restaurant: '식당',
+  cafe: '카페',
+  attraction: '관광지',
+  accommodation: '숙소',
+  custom: '장소',
+};
+
+function callPhone(phone: string) {
+  void Linking.openURL(`tel:${phone.replace(/[^0-9+]/g, '')}`);
+}
+
+function CandidateRow({
+  candidate,
+  onPick,
+}: {
+  candidate: RouteItemCandidateResponse;
+  onPick: () => void;
+}) {
+  const phone = candidate.phone;
+  return (
+    <View style={styles.candidateRow}>
+      <View style={styles.itemCopy}>
+        <View style={styles.candidateTitleRow}>
+          <Text numberOfLines={1} style={styles.candidateName}>
+            {candidate.name}
+          </Text>
+          {candidate.requiresVerification ? (
+            <Text style={styles.verifyChip}>확인 필요</Text>
+          ) : null}
+        </View>
+        <Text numberOfLines={2} style={styles.itemReason}>
+          {candidate.recommendationReason
+            ? publicRecommendationCopy(candidate.recommendationReason)
+            : (candidate.address ?? '')}
+        </Text>
+      </View>
+      {phone ? (
+        <Pressable
+          accessibilityLabel={`${candidate.name} 전화`}
+          hitSlop={8}
+          onPress={() => callPhone(phone)}
+        >
+          <Ionicons color={colors.textSecondary} name="call-outline" size={19} />
+        </Pressable>
+      ) : null}
+      <Pressable accessibilityLabel={`${candidate.name} 담기`} hitSlop={8} onPress={onPick}>
+        <Text style={styles.replaceText}>담기</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function RouteItemCard({
   item,
   onOpen,
+  onPickCandidate,
   onReplace,
   onTime,
   onToggle,
 }: {
   item: RouteItemResponse;
   onOpen: () => void;
+  onPickCandidate: (candidate: RouteItemCandidateResponse) => void;
   onReplace: () => void;
   onTime: () => void;
   onToggle: () => void;
 }) {
-  const name = item.place?.name ?? item.customPlaceName ?? '일정';
-  const canReplace = Boolean(item.place) && item.itemType !== 'custom';
+  const isUnfilled = item.slotStatus === 'unfilled';
+  const needsVerification = item.slotStatus === 'needs_verification';
+  const slotLabel = SLOT_LABELS[item.itemType];
+  const name = item.place?.name ?? item.customPlaceName ?? (isUnfilled ? `${slotLabel} 자리` : '일정');
+  // 빈 슬롯도 교체 API 로 채운다 (PUT /route-items/{id}/place).
+  const canReplace = (Boolean(item.place) || isUnfilled) && item.itemType !== 'custom';
+  const phone = item.place?.phone ?? null;
   return (
-    <View style={styles.itemCard}>
-      <Pressable
-        accessibilityHint={item.place ? '장소 상세 정보를 확인할 수 있어요' : undefined}
-        accessibilityRole={item.place ? 'button' : undefined}
-        disabled={!item.place}
-        onPress={onOpen}
-        style={({ pressed }) => [styles.itemMain, pressed && styles.itemMainPressed]}
-      >
-        {item.place?.primaryImageUrl ? (
-          <Image source={{ uri: item.place.primaryImageUrl }} style={styles.thumbnail} />
-        ) : (
-          <View style={[styles.thumbnail, styles.thumbnailPlaceholder]}>
-            <Ionicons color={colors.textTertiary} name="image-outline" size={24} />
-          </View>
-        )}
-        <View style={styles.itemCopy}>
-          <Text style={styles.itemTime}>{formatTime(item.startsAt)}</Text>
-          <Text numberOfLines={1} style={styles.itemName}>
-            {name}
-          </Text>
-          <Text numberOfLines={2} style={styles.itemReason}>
-            {item.recommendationReason
-              ? publicRecommendationCopy(item.recommendationReason)
-              : (item.place?.address ?? '상세 정보를 확인해주세요.')}
-          </Text>
-          {item.recommendationScore !== null ? (
-            <Text style={styles.scoreText}>추천 점수 {Math.round(item.recommendationScore)}점</Text>
-          ) : null}
-        </View>
-      </Pressable>
-      {item.recommendationScore !== null || canReplace || item.startsAt !== null ? (
-        <View style={styles.itemActions}>
-          {item.recommendationScore !== null ? (
-            <Pressable accessibilityLabel={`${name} 선택`} onPress={onToggle}>
+    <>
+      <View style={[styles.itemCard, isUnfilled && styles.itemCardUnfilled]}>
+        <Pressable
+          accessibilityHint={item.place ? '장소 상세 정보를 확인할 수 있어요' : undefined}
+          accessibilityRole={item.place ? 'button' : undefined}
+          disabled={!item.place}
+          onPress={onOpen}
+          style={({ pressed }) => [styles.itemMain, pressed && styles.itemMainPressed]}
+        >
+          {item.place?.primaryImageUrl ? (
+            <Image source={{ uri: item.place.primaryImageUrl }} style={styles.thumbnail} />
+          ) : (
+            <View style={[styles.thumbnail, styles.thumbnailPlaceholder]}>
               <Ionicons
-                color={item.isSelected ? colors.seaDeep : colors.textTertiary}
-                name={item.isSelected ? 'checkmark-circle' : 'ellipse-outline'}
-                size={23}
+                color={colors.textTertiary}
+                name={isUnfilled ? 'help-circle-outline' : 'image-outline'}
+                size={24}
               />
+            </View>
+          )}
+          <View style={styles.itemCopy}>
+            <Text style={styles.itemTime}>{formatTime(item.startsAt)}</Text>
+            <View style={styles.candidateTitleRow}>
+              <Text numberOfLines={1} style={[styles.itemName, isUnfilled && styles.itemNameMuted]}>
+                {isUnfilled ? `${slotLabel} 자리가 비어 있어요` : name}
+              </Text>
+              {needsVerification ? <Text style={styles.verifyChip}>확인 필요</Text> : null}
+            </View>
+            <Text numberOfLines={2} style={styles.itemReason}>
+              {isUnfilled
+                ? '조건에 맞는 곳을 찾지 못했어요. 아래 후보에서 고르거나 직접 찾아보세요.'
+                : item.recommendationReason
+                  ? publicRecommendationCopy(item.recommendationReason)
+                  : (item.place?.address ?? '상세 정보를 확인해주세요.')}
+            </Text>
+            {item.recommendationScore !== null ? (
+              <Text style={styles.scoreText}>추천 점수 {Math.round(item.recommendationScore)}점</Text>
+            ) : null}
+          </View>
+        </Pressable>
+        {item.recommendationScore !== null || canReplace || item.startsAt !== null || phone ? (
+          <View style={styles.itemActions}>
+            {item.recommendationScore !== null ? (
+              <Pressable accessibilityLabel={`${name} 선택`} onPress={onToggle}>
+                <Ionicons
+                  color={item.isSelected ? colors.seaDeep : colors.textTertiary}
+                  name={item.isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={23}
+                />
+              </Pressable>
+            ) : null}
+            {needsVerification && phone ? (
+              <Pressable accessibilityLabel={`${name} 전화로 확인`} onPress={() => callPhone(phone)}>
+                <Ionicons color={colors.textSecondary} name="call-outline" size={21} />
+              </Pressable>
+            ) : null}
+            {canReplace ? (
+              <Pressable
+                accessibilityLabel={isUnfilled ? `${name} 채우기` : `${name} 장소 변경`}
+                onPress={onReplace}
+              >
+                <Ionicons color={colors.primary} name="swap-horizontal" size={22} />
+              </Pressable>
+            ) : null}
+            <Pressable accessibilityLabel={`${name} 시간 변경`} onPress={onTime}>
+              <Ionicons color={colors.textSecondary} name="time-outline" size={21} />
             </Pressable>
-          ) : null}
-          {canReplace ? (
-            <Pressable accessibilityLabel={`${name} 장소 변경`} onPress={onReplace}>
-              <Ionicons color={colors.primary} name="swap-horizontal" size={22} />
-            </Pressable>
-          ) : null}
-          <Pressable accessibilityLabel={`${name} 시간 변경`} onPress={onTime}>
-            <Ionicons color={colors.textSecondary} name="time-outline" size={21} />
-          </Pressable>
+          </View>
+        ) : null}
+      </View>
+      {item.candidates.length ? (
+        <View style={styles.candidateBox}>
+          <Text style={styles.candidateHeader}>
+            {isUnfilled ? '이 자리에 넣을 만한 곳' : '대신 갈 만한 곳'}
+          </Text>
+          {item.candidates.map((candidate) => (
+            <CandidateRow
+              key={candidate.placeId}
+              candidate={candidate}
+              onPick={() => onPickCandidate(candidate)}
+            />
+          ))}
         </View>
       ) : null}
-    </View>
+    </>
   );
 }
 
@@ -258,7 +356,7 @@ export function RouteRecommendationScreen() {
     const text = route.routeDays
       .map(
         (day) =>
-          `${day.dayNumber}일차\n${day.items.map((item) => `${formatTime(item.startsAt)} ${item.place?.name ?? item.customPlaceName}`).join('\n')}`,
+          `${day.dayNumber}일차\n${day.items.map((item) => `${formatTime(item.startsAt)} ${item.place?.name ?? item.customPlaceName ?? `(${SLOT_LABELS[item.itemType]} 자리 비어 있음)`}`).join('\n')}`,
       )
       .join('\n\n');
     await Share.share({ title: route.title, message: `${route.title}\n\n${text}` });
@@ -317,7 +415,11 @@ export function RouteRecommendationScreen() {
       setActionLoading(false);
     }
   };
-  const replacePlace = async (placeId: string, targetItemId = editingItem?.id) => {
+  const replacePlace = async (
+    placeId: string,
+    targetItemId = editingItem?.id,
+    message = '일정의 장소를 변경했어요.',
+  ) => {
     if (!targetItemId) return;
     setActionLoading(true);
     setActionError('');
@@ -325,13 +427,23 @@ export function RouteRecommendationScreen() {
       await replaceRouteItemPlace(targetItemId, placeId);
       await refreshRoute();
       closeEditor();
-      setFeedback('일정의 장소를 변경했어요.');
+      setFeedback(message);
     } catch (error) {
-      setActionError(errorMessage(error));
+      // 카드의 후보 담기는 시트 밖이라 시트 오류 대신 화면 피드백으로 보여준다.
+      if (editingItem || addingPlace) setActionError(errorMessage(error));
+      else setFeedback(errorMessage(error));
     } finally {
       setActionLoading(false);
     }
   };
+  const pickCandidate = (item: RouteItemResponse, candidate: RouteItemCandidateResponse) =>
+    replacePlace(
+      candidate.placeId,
+      item.id,
+      item.slotStatus === 'unfilled'
+        ? `${candidate.name}(으)로 빈 일정을 채웠어요.`
+        : `${candidate.name}(으)로 바꿨어요.`,
+    );
   const saveTime = async () => {
     if (!editingItem || !activeDay || !/^([01]\d|2[0-3]):[0-5]\d$/.test(timeValue)) {
       setActionError('시간을 HH:MM 형식으로 입력해주세요.');
@@ -501,6 +613,23 @@ export function RouteRecommendationScreen() {
               <Text style={styles.tourApiBadgeText}>최신 추천 정보 반영</Text>
             </View>
           ) : null}
+          {route.slotSummary.unfilled + route.slotSummary.needsVerification > 0 ? (
+            <View style={styles.slotBadge}>
+              <Ionicons color={colors.primaryDeep} name="alert-circle-outline" size={14} />
+              <Text style={styles.slotBadgeText}>
+                {[
+                  route.slotSummary.needsVerification > 0
+                    ? `확인 필요 ${route.slotSummary.needsVerification}곳`
+                    : null,
+                  route.slotSummary.unfilled > 0
+                    ? `비어 있는 자리 ${route.slotSummary.unfilled}곳`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Text>
+            </View>
+          ) : null}
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayScroller}>
           {route.routeDays.map((day, index) => (
@@ -533,6 +662,7 @@ export function RouteRecommendationScreen() {
                   params: { placeId: item.place.id },
                 })
               }
+              onPickCandidate={(candidate) => void pickCandidate(item, candidate)}
               onReplace={() => openEditor(item)}
               onTime={() => openEditor(item, 'time')}
               onToggle={() => void toggleItem(item)}
@@ -545,6 +675,10 @@ export function RouteRecommendationScreen() {
           <Ionicons color={colors.seaDeep} name="add-circle-outline" size={20} />
           <Text style={styles.addButtonText}>장소 추가</Text>
         </Pressable>
+        <AnimalHospitalSection
+          hospitals={route.nearbyAnimalHospitals.map(toAnimalHospital)}
+          inset={false}
+        />
         {route.tourApiPlaces.length ? (
           <View style={styles.tourApiSection}>
             <Text style={styles.tourApiSectionTitle}>함께 둘러보기 좋은 곳</Text>
@@ -597,7 +731,9 @@ export function RouteRecommendationScreen() {
                   ? '일정에 장소 추가'
                   : editMode === 'time'
                     ? '일정 시간 변경'
-                    : '일정 장소 변경'}
+                    : editingItem?.slotStatus === 'unfilled'
+                      ? '빈 일정 채우기'
+                      : '일정 장소 변경'}
               </Text>
               <Pressable onPress={closeEditor}>
                 <Ionicons color={colors.textSecondary} name="close" size={24} />
@@ -850,6 +986,49 @@ const styles = StyleSheet.create({
   itemReason: { color: colors.textSecondary, fontSize: 11, lineHeight: 16, marginTop: 4 },
   scoreText: { color: colors.seaDeep, fontSize: 10, fontWeight: '700', marginTop: 5 },
   itemActions: { alignItems: 'center', gap: 18 },
+  itemCardUnfilled: { borderStyle: 'dashed' },
+  itemNameMuted: { color: colors.textSecondary },
+  verifyChip: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: 7,
+    color: colors.primaryDeep,
+    fontSize: 10,
+    fontWeight: '800',
+    overflow: 'hidden',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  candidateBox: {
+    borderColor: colors.divider,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 10,
+    marginLeft: 14,
+    marginTop: -4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  candidateHeader: { color: colors.textTertiary, fontSize: 11, fontWeight: '800', marginBottom: 2 },
+  candidateRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    paddingVertical: 7,
+  },
+  candidateTitleRow: { alignItems: 'center', flexDirection: 'row', gap: 6 },
+  candidateName: { color: colors.textPrimary, flexShrink: 1, fontSize: 13, fontWeight: '800' },
+  slotBadge: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: 5,
+    marginTop: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
+  slotBadgeText: { color: colors.primaryDeep, fontSize: 11, fontWeight: '800' },
   emptyText: { color: colors.textSecondary, paddingVertical: 30, textAlign: 'center' },
   addButton: {
     alignItems: 'center',
