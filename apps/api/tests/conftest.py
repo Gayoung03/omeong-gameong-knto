@@ -35,6 +35,7 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_optional_user
+from app.api.v1.endpoints import travel_logs as travel_logs_endpoint
 from app.core.config import settings
 from app.db.models import Place, Route, RouteDay, RouteItem, User
 from app.db.models.enums import (
@@ -82,6 +83,43 @@ def _disable_outgoing_mail(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "smtp_password", "")
     # Brevo 경로도 막는다 — 키가 있으면 SMTP 보다 우선해 진짜 HTTP 발송을 시도한다.
     monkeypatch.setattr(settings, "brevo_api_key", "")
+
+
+#: 테스트에서 카드 생성이 성공했을 때 돌려줄 가짜 결과물 주소.
+FAKE_CARD_URL = "https://example.test/travel-log-card/card.png"
+
+
+@pytest.fixture(autouse=True)
+def _fake_travel_log_card(monkeypatch: pytest.MonkeyPatch) -> None:
+    """여행기록 카드 생성을 대역으로 바꾼다.
+
+    진짜 파이프라인은 **한 장에 약 66원**이 나가고 OpenAI 를 세 번 부른다. 여행기록
+    테스트 대부분은 목록·필터·대표 지정처럼 카드와 무관한 것을 보므로, 여기서
+    막지 않으면 그 테스트들이 전부 돈과 시간을 쓴다.
+
+    **`_disable_openai` 로는 막히지 않는다.** 카드 쪽은 `core/config.py` 의 settings
+    가 아니라 `travel_card/config.py` 의 별도 Settings 를 읽기 때문이다(그 파일의
+    설명 참고). 그래서 함수 자체를 갈아끼운다 — 키를 비우는 것보다 확실하고,
+    실패가 아니라 성공으로 만들어 기존 테스트의 전제를 지킨다.
+
+    파이프라인 자체는 `test_travel_card_*.py` 가 단계별로 확인한다. 실패 경로를
+    보려는 테스트는 이 대역을 다시 갈아끼운다(`test_travel_logs.py`).
+    """
+
+    def fake_generate(*args: object, **kwargs: object) -> str:
+        return FAKE_CARD_URL
+
+    monkeypatch.setattr(travel_logs_endpoint, "generate_log_image", fake_generate)
+
+
+@pytest.fixture
+def fake_card_url() -> str:
+    """대역이 돌려주는 카드 주소. 테스트가 상수를 import 하지 않게 픽스처로 준다.
+
+    `tests/` 는 패키지가 아니라(`__init__.py` 없음) `from .conftest import ...` 가
+    동작하지 않는다.
+    """
+    return FAKE_CARD_URL
 
 
 @pytest.fixture(autouse=True)

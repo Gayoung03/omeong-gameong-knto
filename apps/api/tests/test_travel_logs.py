@@ -25,7 +25,10 @@ from app.db.models.enums import (
     TransportType,
     TripPace,
 )
-from app.integrations.llm.travel_log_image import ImageGenerationError
+from app.integrations.llm.travel_log_image import (
+    DEFAULT_FAILURE_MESSAGE,
+    ImageGenerationError,
+)
 
 KST = timezone(timedelta(hours=9))
 
@@ -420,7 +423,9 @@ def test_생성하면_202_와_생성중_상태를_준다(client: TestClient) -> 
     assert response.json()["generationStatus"] == "generating"
 
 
-def test_생성이_끝나면_completed_가_되고_목록에_뜬다(client: TestClient) -> None:
+def test_생성이_끝나면_completed_가_되고_목록에_뜬다(
+    client: TestClient, fake_card_url: str
+) -> None:
     """TestClient 는 응답을 돌려준 뒤 뒷작업을 **동기로** 돌린다.
 
     그래서 실제 서비스처럼 기다리지 않아도 다음 요청에서 결과를 볼 수 있다.
@@ -430,8 +435,8 @@ def test_생성이_끝나면_completed_가_되고_목록에_뜬다(client: TestC
     status_body = client.get(f"/api/v1/travel-logs/{created['id']}/status").json()
 
     assert status_body["generationStatus"] == "completed"
-    # 임시 생성기라 원본이 그대로 결과물이 된다.
-    assert status_body["generatedImageUrl"] == "https://example.test/upload.jpg"
+    # 카드 생성은 conftest 의 `_fake_travel_log_card` 가 대역으로 바꿔 둔다.
+    assert status_body["generatedImageUrl"] == fake_card_url
     assert client.get("/api/v1/travel-logs").json()["total"] == 1
 
 
@@ -560,20 +565,98 @@ def test_그림을_못_만들면_failed_로_남고_알림은_없다(
 
 
 def test_재생성하면_실패한_기록도_되살아난다(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, fake_card_url: str
 ) -> None:
+    """**`monkeypatch.undo()` 를 쓰지 않는다.** 되돌리면 conftest 의 autouse 대역
+    (`_fake_travel_log_card`)까지 함께 풀려 진짜 파이프라인이 불린다 — 돈이 나가거나
+    설정이 없어 실패한다. 성공 대역을 명시적으로 다시 끼우는 편이 안전하다.
+    """
+
     def boom(*args: object, **kwargs: object) -> str:
         raise ImageGenerationError("생성기 고장")
 
     monkeypatch.setattr(travel_logs_endpoint, "generate_log_image", boom)
     created = client.post("/api/v1/travel-logs", json=_create_body()).json()
-    monkeypatch.undo()
+
+    def works(*args: object, **kwargs: object) -> str:
+        return fake_card_url
+
+    monkeypatch.setattr(travel_logs_endpoint, "generate_log_image", works)
 
     response = client.post(f"/api/v1/travel-logs/{created['id']}/regenerate", json={})
 
     assert response.status_code == 202
     body = client.get(f"/api/v1/travel-logs/{created['id']}/status").json()
     assert body["generationStatus"] == "completed"
+
+
+def test_실패_사유가_상태_응답에_실린다(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """사유를 내려주는 이유는 사용자가 할 행동이 갈리기 때문이다.
+
+    안전 판정에 걸린 사진은 다시 눌러도 또 걸린다 — 재시도가 아니라 다른 사진이
+    답이고, 재시도는 한 번마다 카드 한 장 값이 나간다.
+    """
+
+    def blocked(*args: object, **kwargs: object) -> str:
+        raise ImageGenerationError(
+            "카드 생성 실패(blocked_input)",
+            user_message="이 사진으로는 카드를 만들기 어려웠어요. 다른 사진으로 해보시겠어요?",
+        )
+
+    monkeypatch.setattr(travel_logs_endpoint, "generate_log_image", blocked)
+
+    created = client.post("/api/v1/travel-logs", json=_create_body()).json()
+
+    body = client.get(f"/api/v1/travel-logs/{created['id']}/status").json()
+    assert body["generationStatus"] == "failed"
+    assert body["generationMessage"] == (
+        "이 사진으로는 카드를 만들기 어려웠어요. 다른 사진으로 해보시겠어요?"
+    )
+
+
+def test_예상_못_한_예외도_failed_로_남고_기본_문구가_실린다(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """뒷작업에서 예외가 새면 상태가 `generating` 으로 영원히 멈춘다.
+
+    앱은 폴링 제한 시간까지 기다린 뒤에야 실패를 알고, 그때 화면에 "왜"가 없다.
+    """
+
+    def kaboom(*args: object, **kwargs: object) -> str:
+        raise RuntimeError("아무도 예상하지 못한 것")
+
+    monkeypatch.setattr(travel_logs_endpoint, "generate_log_image", kaboom)
+
+    created = client.post("/api/v1/travel-logs", json=_create_body()).json()
+
+    body = client.get(f"/api/v1/travel-logs/{created['id']}/status").json()
+    assert body["generationStatus"] == "failed"
+    assert body["generationMessage"] == DEFAULT_FAILURE_MESSAGE
+
+
+def test_재생성하면_지난_실패_문구가_지워진다(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, fake_card_url: str
+) -> None:
+    """남겨두면 완성된 기록 화면에 지난 실패 안내가 붙는다."""
+
+    def boom(*args: object, **kwargs: object) -> str:
+        raise ImageGenerationError("생성기 고장", user_message="다른 사진으로 해보시겠어요?")
+
+    monkeypatch.setattr(travel_logs_endpoint, "generate_log_image", boom)
+    created = client.post("/api/v1/travel-logs", json=_create_body()).json()
+    assert client.get(f"/api/v1/travel-logs/{created['id']}/status").json()["generationMessage"]
+
+    def works(*args: object, **kwargs: object) -> str:
+        return fake_card_url
+
+    monkeypatch.setattr(travel_logs_endpoint, "generate_log_image", works)
+    client.post(f"/api/v1/travel-logs/{created['id']}/regenerate", json={})
+
+    body = client.get(f"/api/v1/travel-logs/{created['id']}/status").json()
+    assert body["generationStatus"] == "completed"
+    assert body["generationMessage"] is None
 
 
 def test_재생성으로_말투를_바꿀_수_있다(client: TestClient) -> None:

@@ -18,7 +18,13 @@ from . import caption, card_render, image_edit, prompts, vision
 from .image_io import UnreadableImage, fit_canvas, load_image, normalize, read_png_size
 from .types import CardOutcome, CardResult, WritingStyle
 
-_MESSAGES = {
+#: 결말별 사용자 안내 문구. **공개 이름이다** — 라우트 쪽(`travel_log_image.py`)이
+#: 같은 문구를 써야 하고, 복사해 두면 한쪽만 고쳐진다.
+#:
+#: `CardResult.message` 는 여기에 기술적 사유를 괄호로 덧붙인 것이라 **화면에 그대로
+#: 쓰면 안 된다**(타임아웃 메시지·HTTP 코드가 사용자에게 보인다). 화면에는 이 표를,
+#: 서버 로그에는 `CardResult.message` 를 쓴다.
+MESSAGES = {
     CardOutcome.BLOCKED_INPUT: (
         "이 사진으로는 카드를 만들기 어려웠어요. 다른 사진으로 해보시겠어요?"
     ),
@@ -70,7 +76,7 @@ def build_card(
     except UnreadableImage as error:
         return CardResult(
             outcome=CardOutcome.UNREADABLE_IMAGE,
-            message=f"{_MESSAGES[CardOutcome.UNREADABLE_IMAGE]} ({error})",
+            message=f"{MESSAGES[CardOutcome.UNREADABLE_IMAGE]} ({error})",
             timings=timings,
         )
 
@@ -80,7 +86,7 @@ def build_card(
     except vision.VisionError as error:
         return CardResult(
             outcome=CardOutcome.FAILED,
-            message=f"{_MESSAGES[CardOutcome.FAILED]} ({error})",
+            message=f"{MESSAGES[CardOutcome.FAILED]} ({error})",
             timings=timings,
         )
 
@@ -88,7 +94,7 @@ def build_card(
     if not analysis.safe:
         return CardResult(
             outcome=CardOutcome.BLOCKED_INPUT,
-            message=_MESSAGES[CardOutcome.BLOCKED_INPUT],
+            message=MESSAGES[CardOutcome.BLOCKED_INPUT],
             analysis=analysis,
             timings=timings,
         )
@@ -109,7 +115,7 @@ def build_card(
     except caption.CaptionError as error:
         return CardResult(
             outcome=CardOutcome.FAILED,
-            message=f"{_MESSAGES[CardOutcome.FAILED]} ({error})",
+            message=f"{MESSAGES[CardOutcome.FAILED]} ({error})",
             analysis=analysis,
             timings=timings,
         )
@@ -123,6 +129,8 @@ def build_card(
         date_text=date_text,
         ink_plate=ink_plate,
         loose=loose,
+        # 단계 1 이 찾은 머리 칸. 비어 있으면 프롬프트에서 블록째 빠진다.
+        head_zones=analysis.head_zones,
     )
 
     # --- 4. 이미지 편집 ---------------------------------------------------
@@ -131,7 +139,7 @@ def build_card(
     except image_edit.ImageRefused:
         return CardResult(
             outcome=CardOutcome.BLOCKED_OUTPUT,
-            message=_MESSAGES[CardOutcome.BLOCKED_OUTPUT],
+            message=MESSAGES[CardOutcome.BLOCKED_OUTPUT],
             analysis=analysis,
             title=text.title,
             memos=[m.text for m in text.memos],
@@ -141,7 +149,7 @@ def build_card(
     except image_edit.ImageEditError as error:
         return CardResult(
             outcome=CardOutcome.FAILED,
-            message=f"{_MESSAGES[CardOutcome.FAILED]} ({error})",
+            message=f"{MESSAGES[CardOutcome.FAILED]} ({error})",
             analysis=analysis,
             title=text.title,
             memos=[m.text for m in text.memos],
@@ -157,7 +165,7 @@ def build_card(
     except card_render.RenderError as error:
         return CardResult(
             outcome=CardOutcome.FAILED,
-            message=f"{_MESSAGES[CardOutcome.FAILED]} ({error})",
+            message=f"{MESSAGES[CardOutcome.FAILED]} ({error})",
             analysis=analysis,
             title=text.title,
             memos=[m.text for m in text.memos],

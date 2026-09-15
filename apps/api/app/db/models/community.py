@@ -141,6 +141,14 @@ class TravelLog(Base):
     generation_status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="idle"
     )
+    #: 생성이 실패한 이유를 **사용자에게 보일 한국어 한 줄**로 담는다.
+    #:
+    #: 상태만으로는 "다른 사진을 고르라"와 "잠시 후 다시 하라"가 구분되지 않는다.
+    #: 앞엣것은 같은 사진으로 다시 눌러도 또 실패하는데, 재시도 한 번에 카드 한 장
+    #: 값이 나간다(약 66원). 사유별 문구는 `travel_card/agent.py` 의 `MESSAGES` 다.
+    #:
+    #: 성공하면 비운다 — 지난 실패 문구가 남아 있으면 완료 화면에 섞인다.
+    generation_message: Mapped[str | None] = mapped_column(Text)
     personal_message: Mapped[str | None] = mapped_column(Text)
     is_representative: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")

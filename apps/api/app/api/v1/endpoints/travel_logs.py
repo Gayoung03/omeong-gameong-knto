@@ -16,6 +16,7 @@ S3 가 일시적으로 실패했을 때 "DB 는 지워졌는데 요청은 500" �
 앱의 "다시 만들기"(`regenerate`)로 복구한다.
 """
 
+import logging
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
@@ -36,7 +37,11 @@ from app.api.dependencies import CurrentUser
 from app.db.models import Pet, Route, TravelLog, TravelLogPet, User
 from app.db.models.enums import GenerationStatus, MomentMood, WritingStyle
 from app.db.session import BackgroundSessionFactory, get_background_session, get_db
-from app.integrations.llm.travel_log_image import generate_log_image
+from app.integrations.llm.travel_log_image import (
+    DEFAULT_FAILURE_MESSAGE,
+    ImageGenerationError,
+    generate_log_image,
+)
 from app.schemas.travel_log import (
     TravelLogCompanion,
     TravelLogCreate,
@@ -54,6 +59,8 @@ from app.schemas.travel_log import (
 from app.services.notifications import add_notification, send_pushes
 from app.services.place_access import load_visible_place
 from app.services.route_access import load_owned_route, pets_of
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/travel-logs")
 
@@ -284,6 +291,7 @@ def get_generation_status(
         id=log.id,
         generation_status=log.generation_status,
         generated_image_url=log.generated_image_url,
+        generation_message=log.generation_message,
     )
 
 
@@ -313,6 +321,8 @@ def regenerate_travel_log(
     if payload.mood is not None:
         log.mood = payload.mood
     log.generation_status = GenerationStatus.GENERATING
+    # 지난 실패 문구를 먼저 지운다. 남겨두면 다시 만드는 동안 앱이 옛 사유를 보여준다.
+    log.generation_message = None
     db.commit()
 
     background_tasks.add_task(run_image_generation, log.id, open_session)
@@ -393,6 +403,18 @@ def delete_travel_log(log_id: uuid.UUID, current_user: CurrentUser, db: DbSessio
 # ---------------------------------------------------------------------------
 
 
+def _solo_pet_name(log: TravelLog) -> str | None:
+    """카드 문구에 쓸 반려동물 이름. **한 마리일 때만** 돌려준다.
+
+    `build_card` 는 이름을 하나만 받는다. 두 마리와 함께 찍은 사진에 한 마리 이름만
+    넘기면 메모가 **엉뚱한 쪽을 부른다** — 둘 다 안 부르는 편이 덜 틀린다.
+    이름이 없으면 파이프라인이 종 이름(강아지)으로 쓴다.
+    """
+    if len(log.companions) != 1:
+        return None
+    return log.companions[0].pet_name_snapshot or None
+
+
 def run_image_generation(
     log_id: uuid.UUID, open_session: BackgroundSessionFactory
 ) -> None:
@@ -402,9 +424,13 @@ def run_image_generation(
     쓸 수 없고, `SessionLocal` 을 곧장 부르면 테스트가 공유 RDS 를 건드린다
     (app/db/session.py 의 `get_background_session` 설명 참고).
 
-    성공하면 `completed` 로 바꾸고 알림을 남긴다. 실패하면 `failed` 로만 바꾸고
+    성공하면 `completed` 로 바꾸고 알림을 남긴다. 실패하면 `failed` 로 바꾸고
     **행은 지우지 않는다** — 지우면 사용자가 "다시 만들기"를 누를 대상이 없어진다.
-    실패 사유를 담을 컬럼이 없어 사유는 남기지 않는다(docs/api/travel-logs.md).
+    실패 사유는 `generation_message` 에 사용자에게 보일 한 줄로 남긴다.
+
+    **예상 못 한 예외까지 전부 잡는다.** 뒷작업에서 예외가 새면 상태가 `generating`
+    으로 영원히 멈추고, 앱은 폴링 제한 시간까지 기다린 뒤에야 실패를 알게 된다.
+    그때 화면에는 "왜"가 없다.
     """
     with open_session() as db:
         log = db.get(TravelLog, log_id)
@@ -418,14 +444,27 @@ def run_image_generation(
                 WritingStyle(log.writing_style),
                 MomentMood(log.mood) if log.mood else None,
                 log.place_name_snapshot,
+                pet_name=_solo_pet_name(log),
+                date_text=f"{log.recorded_date:%Y.%m.%d}",
             )
-        except Exception:
-            # 어떤 이유로 실패했든 앱에는 "다시 만들기" 하나만 보여준다.
+        except ImageGenerationError as error:
             log.generation_status = GenerationStatus.FAILED
+            log.generation_message = error.user_message
+            logger.warning("여행기록 %s 이미지 생성 실패: %s", log.id, error)
+            db.commit()
+            return
+        except Exception:
+            # 여기까지 온 것은 우리가 예상하지 못한 실패다. 사용자에게는 같은 말을
+            # 하되, 로그에는 추적을 남겨야 원인을 찾을 수 있다.
+            log.generation_status = GenerationStatus.FAILED
+            log.generation_message = DEFAULT_FAILURE_MESSAGE
+            logger.exception("여행기록 %s 이미지 생성 중 예상 못 한 오류", log.id)
             db.commit()
             return
 
         log.generation_status = GenerationStatus.COMPLETED
+        # 지난 실패 문구를 지운다. 남겨두면 완료된 기록에 실패 안내가 붙는다.
+        log.generation_message = None
         db.commit()
 
         notification = add_notification(

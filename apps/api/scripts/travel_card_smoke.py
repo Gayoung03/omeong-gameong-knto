@@ -58,6 +58,11 @@ def _print_analysis(result) -> None:
     print(f"   분류(kind) : {a.kind.value}   반려동물 있음: {a.kind.has_pet}")
     print(f"   안전(safe) : {a.safe}" + (f"   flags={a.flags}" if a.flags else ""))
     print(f"   보이는 것  : {', '.join(a.items) if a.items else '(없음)'}")
+    # **이 줄이 없으면 금지 구역이 나갔는지 알 수 없다.** 09-15 에 머리 칸을 붙이고
+    # 카드 두 장을 뽑았는데, 사람이 뒷모습이라 vision 이 빈 배열을 돌려주는 바람에
+    # 금지 구역이 프롬프트에 통째로 빠져 있었다 — 그걸 모르고 결과만 보고 있었다.
+    zones = ", ".join(a.head_zones) if a.head_zones else "(없음 — 금지 구역이 나가지 않는다)"
+    print(f"   머리 칸    : {zones}")
 
 
 def _print_memos(result) -> None:
@@ -79,6 +84,17 @@ def run_one(path: Path, style: WritingStyle, args, attempt: int = 1) -> bool:
     stem = f"{path.stem}-{style.value}-{'loose' if args.loose else 'strict'}"
     if args.repeat > 1:
         stem += f"-{attempt}"
+
+    # **지난 회차 파일을 먼저 지운다.** 이번 회차가 실패하면 그 자리에 예전 카드가
+    # 그대로 남아, 폴더만 보고는 이번 결과인지 지난 결과인지 알 수 없다. 09-15 에
+    # 실제로 겪었다 — 1번이 실패했는데 전날 1번이 남아 있어 그걸 새 결과로 보고
+    # "이게 제일 낫다" 는 판단까지 내렸다. 결과 파일은 이번 실행만 담아야 한다.
+    for stale in OUT_DIR.glob(f"{stem}.*"):
+        stale.unlink()
+    for stale in OUT_DIR.glob(f"{stem}-레이어.png"):
+        stale.unlink()
+    for stale in OUT_DIR.glob(f"{stem}-생성원판.png"):
+        stale.unlink()
 
     print()
     print("=" * 72)
@@ -209,7 +225,17 @@ def main() -> int:
     print()
     print("=" * 72)
     print(f"완료: {made}/{total_cards}장 생성")
-    print(f"예상 총비용: 약 ${usd * total_cards:.3f} (~{krw * total_cards}원)")
+    # **시도 횟수가 아니라 만든 장수로 센다.** 전에는 0장을 만들고도 "198원" 을
+    # 찍었다 — 실패가 실패로 안 보이면 비용 감각이 어긋난다.
+    # 실패해도 사진 분석·문구 비용은 나가므로 그만큼은 따로 더한다.
+    failed = total_cards - made
+    spent = usd * made + _TEXT_COST_PER_CALL * failed
+    print(f"예상 총비용: 약 ${spent:.3f} (~{round(spent * _KRW)}원)")
+    if failed:
+        print(
+            f"           실패 {failed}건도 사진 분석·문구 비용은 나갔습니다"
+            " (이미지 편집 전에 멈춤)."
+        )
     if made:
         print(f"\n결과를 눈으로 확인하세요 — {OUT_DIR}/")
         print("특히 볼 것:")
