@@ -245,13 +245,21 @@ tbody tr:hover { background: #fffaf6; }
 .hero-preview { width: 100%; max-height: 340px; margin-top: 14px; border-radius: 11px; object-fit: cover; background: #f2f0ec; }
 .text-button { padding: 5px 8px; border: 0; color: var(--orange-dark); background: transparent; font-size: 11px; font-weight: 700; }
 .text-button:hover { text-decoration: underline; }
-.sections-editor { display: grid; gap: 15px; }
-.section-editor { display: grid; gap: 16px; padding: 19px; border: 1px solid #e7e2db; border-radius: 12px; background: #fdfcfb; }
-.section-editor-head { display: flex; align-items: center; justify-content: space-between; }
-.section-editor-head strong { font-size: 12px; }
-.section-editor-head button, .remove-inline { padding: 0; border: 0; color: #a07870; background: transparent; font-size: 10px; }
-.paragraph-list { display: grid; gap: 12px; }
-.remove-inline { justify-self: end; margin-top: -4px; }
+.story-blocks { display: grid; gap: 14px; }
+.story-block { display: grid; gap: 10px; padding: 14px 16px 16px; border-left: 3px solid var(--orange-soft); border-radius: 0 12px 12px 0; background: #fdfcfb; }
+.story-block:focus-within { border-left-color: var(--orange); }
+.block-head { display: flex; align-items: center; gap: 8px; }
+.form-section .block-heading { flex: 1; min-width: 0; height: 40px; font-size: 15px; font-weight: 700; }
+.block-tools { display: flex; gap: 4px; }
+.block-tools button { min-width: 30px; height: 30px; padding: 0 8px; border: 1px solid #e7e2db; border-radius: 8px; color: #7a736b; background: #fff; font-size: 11px; }
+.block-tools button:disabled { opacity: 0.35; }
+.form-section .block-body { min-height: 130px; field-sizing: content; }
+.block-image { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 10px; }
+.block-image img, .block-image-empty { width: 84px; height: 84px; border-radius: 9px; object-fit: cover; background: #f2f0ec; }
+.block-image-empty { display: grid; place-items: center; color: #aaa49d; font-size: 10px; }
+.block-image-fields { display: grid; gap: 8px; }
+.form-section .block-image-fields input { height: 38px; }
+.add-block { margin-top: 12px; }
 .repeat-list { display: grid; gap: 9px; margin-bottom: 18px; }
 .field-label { color: #4f4a44; font-size: 13px; font-weight: 600; }
 .repeat-row { display: flex; gap: 7px; }

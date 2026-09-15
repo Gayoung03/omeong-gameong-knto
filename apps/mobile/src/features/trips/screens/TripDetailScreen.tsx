@@ -13,6 +13,7 @@ import { ChecklistTab } from '../components/ChecklistTab';
 import { DayChips } from '../components/DayChips';
 import { MapTab } from '../components/MapTab';
 import { MemoTab } from '../components/MemoTab';
+import { NearbyPlacesSection } from '../components/NearbyPlacesSection';
 import { ScheduleTimeline } from '../components/ScheduleTimeline';
 import { TripDistanceSummary } from '../components/TripDistanceSummary';
 import { TripImagePreviewModal } from '../components/TripImagePreviewModal';
@@ -252,6 +253,15 @@ export function TripDetailScreen({ tripId }: { tripId: string }) {
                 savedPlaceIds={savedPlaceIds}
                 schedule={selectedSchedule}
               />
+
+              {selectedSchedule.items.length > 0 && (
+                <NearbyPlacesSection
+                  key={selectedSchedule.id}
+                  onPressPlace={handlePressPlace}
+                  schedule={selectedSchedule}
+                  tripId={trip.id}
+                />
+              )}
             </>
           )}
 
