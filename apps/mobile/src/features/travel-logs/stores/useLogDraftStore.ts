@@ -9,6 +9,7 @@ import {
 } from '@/src/types/logDraft';
 
 import {
+  GenerationFailedError,
   createTravelLog,
   regenerateTravelLog,
   waitForGeneration,
@@ -26,6 +27,19 @@ type LogDraftState = {
 };
 
 const FAILURE_MESSAGE = '여행 기록을 만들지 못했어요. 잠시 후 다시 시도해 주세요.';
+const INCOMPLETE_MESSAGE = '빠진 항목이 있어요. 이전 단계에서 다시 확인해 주세요.';
+
+/**
+ * 화면에 띄울 실패 문구를 고른다.
+ *
+ * 서버가 사유를 준 경우에는 **그것을 그대로 쓴다.** 사유마다 사용자가 할 행동이
+ * 다르기 때문이다 — 사진이 걸린 것이면 다시 눌러도 또 걸리므로 "잠시 후 다시"는
+ * 틀린 안내이고, 재시도 한 번마다 카드 한 장 값이 나간다.
+ */
+function describeFailure(error: unknown): string {
+  if (error instanceof GenerationFailedError && error.userMessage) return error.userMessage;
+  return FAILURE_MESSAGE;
+}
 
 function isIncomplete(draft: LogDraft): boolean {
   return (
@@ -65,7 +79,8 @@ export const useLogDraftStore = create<LogDraftState>((set, get) => ({
     set({ generationStatus: 'uploading', generatedLog: null, errorMessage: null });
 
     if (isIncomplete(draft)) {
-      set({ errorMessage: FAILURE_MESSAGE, generationStatus: 'failed' });
+      // 서버에 가보지도 않은 경우다. "잠시 후 다시"는 아무것도 고쳐주지 않는다.
+      set({ errorMessage: INCOMPLETE_MESSAGE, generationStatus: 'failed' });
       return;
     }
 
@@ -89,8 +104,8 @@ export const useLogDraftStore = create<LogDraftState>((set, get) => ({
         set({ generationStatus: status }),
       );
       set({ generatedLog, generationStatus: 'completed' });
-    } catch {
-      set({ errorMessage: FAILURE_MESSAGE, generationStatus: 'failed' });
+    } catch (error) {
+      set({ errorMessage: describeFailure(error), generationStatus: 'failed' });
     }
   },
 
@@ -112,8 +127,8 @@ export const useLogDraftStore = create<LogDraftState>((set, get) => ({
         set({ generationStatus: status }),
       );
       set({ generatedLog: updated, generationStatus: 'completed' });
-    } catch {
-      set({ errorMessage: FAILURE_MESSAGE, generationStatus: 'failed' });
+    } catch (error) {
+      set({ errorMessage: describeFailure(error), generationStatus: 'failed' });
     }
   },
 }));
