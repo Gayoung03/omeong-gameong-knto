@@ -27,6 +27,7 @@ import {
   createRouteRecommendation,
   getRouteGenerationStatus,
   getTripRaw,
+  regenerateRoute,
   replaceRouteItemPlace,
   requestRouteEditSuggestions,
   updateRouteItem,
@@ -283,6 +284,7 @@ export function RouteRecommendationScreen() {
   const [searchResults, setSearchResults] = useState<Place[]>([]);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [regenerating, setRegenerating] = useState(false);
 
   useEffect(() => {
     void loadPendingRoute().then((pending) => {
@@ -502,6 +504,31 @@ export function RouteRecommendationScreen() {
     }
   };
 
+  const regenerate = async () => {
+    if (!routeId || regenerating) return;
+    setRegenerating(true);
+    setFeedback('');
+    try {
+      const accepted = await regenerateRoute(routeId);
+      // 새 routeId 로 같은 화면을 다시 열면 대기 저장·폴링·타임아웃을 그대로 탄다.
+      await savePendingRoute({
+        routeId: accepted.routeId,
+        startedAt: Date.now(),
+        request: pendingRequest ?? undefined,
+      });
+      setTimedOut(false);
+      setSelectedDay(0);
+      router.replace({
+        pathname: '/routes/result',
+        params: { routeId: accepted.routeId, petName },
+      });
+    } catch (error) {
+      setFeedback(errorMessage(error));
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   const retryGeneration = async () => {
     if (!pendingRequest) {
       router.replace('/routes');
@@ -715,6 +742,18 @@ export function RouteRecommendationScreen() {
           style={[styles.primaryButton, selectedCount === 0 && styles.disabled]}
         >
           <Text style={styles.primaryText}>선택한 코스 저장하기</Text>
+        </Pressable>
+        <Pressable
+          accessibilityHint="같은 조건으로 새 코스를 만들어요. 지금 결과도 남아요"
+          accessibilityRole="button"
+          disabled={regenerating}
+          onPress={() => void regenerate()}
+          style={[styles.secondaryButton, regenerating && styles.disabled]}
+        >
+          <Ionicons color={colors.primary} name="refresh" size={18} />
+          <Text style={styles.secondaryText}>
+            {regenerating ? '새 코스를 만드는 중...' : '다시 추천받기'}
+          </Text>
         </Pressable>
       </ScrollView>
       <Modal
@@ -1079,6 +1118,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   primaryText: { color: colors.surface, fontSize: 14, fontWeight: '900' },
+  secondaryButton: {
+    alignItems: 'center',
+    borderColor: colors.primary,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+    marginTop: 10,
+    minHeight: 48,
+  },
+  secondaryText: { color: colors.primary, fontSize: 15, fontWeight: '800' },
   disabled: { opacity: 0.4 },
   modalBackdrop: { backgroundColor: overlayColors.scrim, flex: 1, justifyContent: 'flex-end' },
   sheet: {
