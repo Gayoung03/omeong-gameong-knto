@@ -63,7 +63,11 @@ def test_patch_edits_without_fanout(client: TestClient, db: Session, owner: User
     assert patched.status_code == 200
     assert patched.json()["title"] == "제목 수정"
     assert patched.json()["isPinned"] is True
-    assert patched.json()["auditLogs"][0]["action"] == "updated"
+    logs = patched.json()["auditLogs"]
+    assert [log["action"] for log in logs] == ["updated", "created"]
+    # DB now() 는 트랜잭션 시작 시각이라 한 트랜잭션 안의 두 로그가 동률이 되면
+    # created_at 정렬이 비결정이 된다(#282). 파이썬 측 기본값으로 항상 구분돼야 한다.
+    assert logs[0]["createdAt"] > logs[1]["createdAt"]
     assert _notice_count(db, notice_id) == 0
 
 
