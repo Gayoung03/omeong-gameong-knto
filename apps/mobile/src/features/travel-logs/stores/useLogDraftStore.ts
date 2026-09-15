@@ -46,7 +46,9 @@ function isIncomplete(draft: LogDraft): boolean {
     !draft.localPhotoUri ||
     !draft.recordedDate ||
     !draft.placeName ||
-    draft.petIds.length === 0 ||
+    // 반려동물은 **필수가 아니다.** 사람만 찍힌 사진으로 기록을 만드는 사용자가 있고,
+    // 서버도 `pet_ids` 를 빈 목록으로 받는다(`schemas/travel_log.py`).
+    // 카드 문구는 이름이 없으면 종 이름으로 쓰고, 사진에 동물이 없으면 지어내지 않는다.
     !draft.writingStyle ||
     !draft.mood
   );

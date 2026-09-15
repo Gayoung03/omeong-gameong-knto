@@ -4,15 +4,22 @@ import { StyleSheet, Text, View } from 'react-native';
 import { colors, overlayColors } from '@/src/theme';
 
 import type { Place } from '../types/place';
+import type { PlaceDetail } from '../types/placeDetail';
 import { KakaoPlaceMap } from './KakaoPlaceMap';
 
 type InteractivePlaceMapProps = {
+  focusedPlace?: PlaceDetail | null;
+  focusedPlaceId?: string;
   places: Place[];
 };
 
 const kakaoJavaScriptKey = process.env.EXPO_PUBLIC_KAKAO_JS_KEY?.trim();
 
-export function InteractivePlaceMap({ places }: InteractivePlaceMapProps) {
+export function InteractivePlaceMap({
+  focusedPlace,
+  focusedPlaceId,
+  places,
+}: InteractivePlaceMapProps) {
   if (!kakaoJavaScriptKey) {
     return <MapConfigurationNotice />;
   }
@@ -25,13 +32,34 @@ export function InteractivePlaceMap({ places }: InteractivePlaceMapProps) {
     latitude: place.latitude,
     longitude: place.longitude,
   }));
+  if (focusedPlace && !mapPlaces.some((place) => place.id === focusedPlace.id)) {
+    mapPlaces.push({
+      address: focusedPlace.address,
+      category: focusedPlace.categoryLabel,
+      id: focusedPlace.id,
+      latitude: focusedPlace.latitude,
+      longitude: focusedPlace.longitude,
+      name: focusedPlace.name,
+    });
+  }
+  const selectedPlace = mapPlaces.find((place) => place.id === focusedPlaceId);
 
   return (
     <View style={styles.container}>
-      <KakaoPlaceMap appKey={kakaoJavaScriptKey} places={mapPlaces} />
+      <KakaoPlaceMap
+        appKey={kakaoJavaScriptKey}
+        focusedPlaceId={selectedPlace?.id}
+        places={mapPlaces}
+      />
       <View pointerEvents="none" style={styles.summary}>
-        <Text style={styles.summaryTitle}>추천 장소 {places.length}곳</Text>
-        <Text style={styles.summaryDescription}>마커를 누르면 장소 정보를 볼 수 있어요</Text>
+        <Text style={styles.summaryTitle}>
+          {selectedPlace ? `${selectedPlace.name} 위치` : `추천 장소 ${places.length}곳`}
+        </Text>
+        <Text style={styles.summaryDescription}>
+          {selectedPlace
+            ? '선택한 장소를 지도 중앙에 표시했어요'
+            : '마커를 누르면 장소 정보를 볼 수 있어요'}
+        </Text>
       </View>
     </View>
   );
