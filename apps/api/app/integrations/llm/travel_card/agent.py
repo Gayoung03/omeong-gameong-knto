@@ -129,6 +129,8 @@ def build_card(
         date_text=date_text,
         ink_plate=ink_plate,
         loose=loose,
+        # 단계 1 이 찾은 머리 칸. 비어 있으면 프롬프트에서 블록째 빠진다.
+        head_zones=analysis.head_zones,
     )
 
     # --- 4. 이미지 편집 ---------------------------------------------------
