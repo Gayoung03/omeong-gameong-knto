@@ -53,6 +53,11 @@ KEYWORD_TARGETS: tuple[tuple[str, str], ...] = (
 #: - 바다스케치: 카카오 여행>숙박>콘도,리조트 / 제주에코스위츠: KCISA 반려동반여행>펜션
 #: - 심바카레: 카카오 음식점>퓨전요리>퓨전일식
 #: - 더세이프렌트카: 렌터카 업체(이름 자명) → 방문 대상 아님, 비추천 etc
+#: - 동물병원 비워크인 4곳(#319): `veterinary_hospital` 은 루트 추천 동물병원 안전망
+#:   (`services/animal_hospital.py`)의 조회 기준이라, 반려동물 워크인 진료가 아닌 곳은
+#:   etc 로 뺀다. 야생동물구조센터(야생동물 전문)·말전문동물병원·마사회 육성목장(말)·
+#:   씨엔에프 팜테크(농장 서비스 업체). 제주대학교 수의과대학 부설동물병원은 반려동물
+#:   진료 공개 병원이라 유지.
 CONFIRMED_CORRECTIONS: tuple[tuple[str, str], ...] = (
     ("성산풀하우스", "accommodation"),
     ("이리로스테이", "accommodation"),
@@ -60,6 +65,10 @@ CONFIRMED_CORRECTIONS: tuple[tuple[str, str], ...] = (
     ("제주에코스위츠", "accommodation"),
     ("심바카레", "restaurant"),
     ("더세이프렌트카", "etc"),
+    ("제주대학교 야생동물구조센터", "etc"),
+    ("제주대학교 말전문동물병원", "etc"),
+    ("한국마사회 제주육성목장 동물병원", "etc"),
+    ("씨엔에프 팜테크", "etc"),
 )
 
 
