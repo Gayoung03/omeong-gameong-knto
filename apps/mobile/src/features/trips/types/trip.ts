@@ -49,6 +49,8 @@ export type ScheduleItem = {
     transport: TransportType;
     distanceMeters: number;
     durationMinutes: number;
+    /** TMAP 캐시가 없어 서버가 추정식으로 채운 구간. 실측과 구분해 "(예상)" 을 붙인다 */
+    isEstimated: boolean;
   } | null;
 };
 

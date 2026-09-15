@@ -177,6 +177,7 @@ function toScheduleItem(
           transport: toMoveTransport(item.moveToNext.transport),
           distanceMeters: item.moveToNext.distanceMeters,
           durationMinutes: item.moveToNext.durationMinutes,
+          isEstimated: item.moveToNext.isEstimated,
         }
       : null,
   };
