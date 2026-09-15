@@ -126,6 +126,17 @@ export async function createRouteRecommendation(
   return data;
 }
 
+/**
+ * 같은 조건으로 다시 추천 — POST /routes/{routeId}/regenerate (202).
+ * 기존 결과는 남고 새 `version`·새 `routeId` 가 생긴다. 수동 여행은 422, 동시 재생성 충돌은 409.
+ */
+export async function regenerateRoute(routeId: string): Promise<RouteRequestAcceptedResponse> {
+  const { data } = await apiClient.post<RouteRequestAcceptedResponse>(
+    `/routes/${routeId}/regenerate`,
+  );
+  return data;
+}
+
 export async function getRouteGenerationStatus(
   routeId: string,
 ): Promise<RouteGenerationStatusResponse> {
