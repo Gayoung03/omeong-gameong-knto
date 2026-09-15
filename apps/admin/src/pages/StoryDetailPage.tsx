@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { StatusBadge } from '../components/StatusBadge';
 import { apiRequest } from '../lib/api';
+import { STORIES_CHANGED_EVENT } from '../lib/usePendingStoryCount';
 import type {
   EditorialSection,
   StoryDetail,
@@ -20,12 +21,20 @@ interface StoryForm {
   title: string;
   summary: string;
   heroImageUrl: string;
-  sections: EditorialSection[];
+  sections: SectionDraft[];
   tips: string[];
   tags: string[];
   displayOrder: number;
-  publishedAt: string;
   expiresAt: string;
+}
+
+/** 편집용 본문 묶음. 문단 배열 대신 빈 줄로 문단을 나눈 본문 한 칸으로 다룬다. */
+interface SectionDraft {
+  id: string;
+  heading: string;
+  body: string;
+  imageUrl: string;
+  imageCaption: string;
 }
 
 const KIND_LABEL: Record<StoryKind, string> = {
@@ -41,7 +50,7 @@ const ACTION_COPY: Record<
 > = {
   publish: {
     title: '이 이야기를 게시할까요?',
-    description: '승인하면 게시 시각부터 사용자 앱에 노출됩니다.',
+    description: '승인하면 즉시 앱 홈에 노출되고, 같은 종류로 게시 중인 이야기는 자동으로 보관돼요.',
     label: '승인하고 게시',
     tone: 'primary',
   },
@@ -92,17 +101,26 @@ function storyToForm(story: StoryDetail): StoryForm {
     title: story.title,
     summary: story.summary,
     heroImageUrl: story.heroImageUrl,
-    sections: story.sections,
+    sections: story.sections.map((section) => ({
+      id: section.id,
+      heading: section.heading,
+      body: section.paragraphs.join('\n\n'),
+      imageUrl: section.imageUrl ?? '',
+      imageCaption: section.imageCaption ?? '',
+    })),
     tips: story.tips,
     tags: story.tags,
     displayOrder: story.displayOrder,
-    publishedAt: toLocalDateTime(story.publishedAt),
     expiresAt: toLocalDateTime(story.expiresAt),
   };
 }
 
 function cleanList(values: string[]): string[] {
   return values.map((value) => value.trim()).filter(Boolean);
+}
+
+function splitParagraphs(body: string): string[] {
+  return cleanList(body.split(/\n\s*\n/));
 }
 
 function validationMessages(form: StoryForm): string[] {
@@ -112,17 +130,14 @@ function validationMessages(form: StoryForm): string[] {
   }
   if (!form.heroImageUrl.trim()) messages.push('대표 이미지 URL을 확인해 주세요.');
   if (form.sections.length === 0) messages.push('본문 섹션은 하나 이상 필요해요.');
-  if (form.sections.some((section) => !section.heading.trim() || cleanList(section.paragraphs).length === 0)) {
-    messages.push('본문 소제목과 문단에 빈 곳이 있어요.');
+  if (form.sections.some((section) => !section.heading.trim() || splitParagraphs(section.body).length === 0)) {
+    messages.push('소제목이나 본문이 비어 있는 묶음이 있어요.');
   }
   if (/(?:하개|해멍|이개)[.!?]?(?:\s|$)/.test(form.summary)) {
     messages.push('요약은 강아지 말투보다 자연스러운 존댓말을 권장해요.');
   }
-  if (form.expiresAt && form.publishedAt && new Date(form.expiresAt) <= new Date(form.publishedAt)) {
-    messages.push('만료 시각은 게시 시각보다 늦어야 해요.');
-  }
-  if (form.expiresAt && !form.publishedAt && new Date(form.expiresAt) <= new Date()) {
-    messages.push('만료 시각은 현재 시각보다 늦어야 해요.');
+  if (form.expiresAt && new Date(form.expiresAt) <= new Date()) {
+    messages.push('만료 시각이 지나 승인할 수 없어요. 만료 시각을 늦춰 저장해 주세요.');
   }
   return messages;
 }
@@ -132,13 +147,11 @@ function hasBlockingValidation(form: StoryForm): boolean {
   if (!form.heroImageUrl.trim() || form.sections.length === 0) return true;
   if (
     form.sections.some(
-      (section) => !section.heading.trim() || cleanList(section.paragraphs).length === 0,
+      (section) => !section.heading.trim() || splitParagraphs(section.body).length === 0,
     )
   ) return true;
-  if (form.expiresAt) {
-    const effectivePublishedAt = form.publishedAt ? new Date(form.publishedAt) : new Date();
-    if (new Date(form.expiresAt) <= effectivePublishedAt) return true;
-  }
+  // 승인은 즉시 게시라 만료 시각은 지금보다 늦어야 한다.
+  if (form.expiresAt && new Date(form.expiresAt) <= new Date()) return true;
   return false;
 }
 
@@ -187,7 +200,7 @@ export function StoryDetailPage() {
     setNotice('');
   };
 
-  const updateSection = (index: number, values: Partial<EditorialSection>) => {
+  const updateSection = (index: number, values: Partial<SectionDraft>) => {
     if (!form) return;
     updateField(
       'sections',
@@ -197,15 +210,15 @@ export function StoryDetailPage() {
     );
   };
 
-  const updateParagraph = (sectionIndex: number, paragraphIndex: number, value: string) => {
+  const moveSection = (index: number, offset: -1 | 1) => {
     if (!form) return;
-    const section = form.sections[sectionIndex];
-    if (!section) return;
-    updateSection(sectionIndex, {
-      paragraphs: section.paragraphs.map((paragraph, index) =>
-        index === paragraphIndex ? value : paragraph,
-      ),
-    });
+    const target = index + offset;
+    if (target < 0 || target >= form.sections.length) return;
+    const next = [...form.sections];
+    const [moved] = next.splice(index, 1);
+    if (!moved) return;
+    next.splice(target, 0, moved);
+    updateField('sections', next);
   };
 
   const handleSave = async () => {
@@ -220,16 +233,15 @@ export function StoryDetailPage() {
       title: form.title.trim(),
       summary: form.summary.trim(),
       heroImageUrl: form.heroImageUrl.trim(),
-      sections: form.sections.map((section) => ({
-        ...section,
+      sections: form.sections.map((section): EditorialSection => ({
+        id: section.id,
         heading: section.heading.trim(),
-        paragraphs: cleanList(section.paragraphs),
-        imageUrl: section.imageUrl?.trim() || null,
-        imageCaption: section.imageCaption?.trim() || null,
+        paragraphs: splitParagraphs(section.body),
+        imageUrl: section.imageUrl.trim() || null,
+        imageCaption: section.imageCaption.trim() || null,
       })),
       tips: cleanList(form.tips),
       tags: cleanList(form.tags),
-      publishedAt: toApiDateTime(form.publishedAt),
       expiresAt: toApiDateTime(form.expiresAt),
     };
     try {
@@ -256,15 +268,13 @@ export function StoryDetailPage() {
       const updated = await apiRequest<StoryDetail>(
         `/admin/editorial-stories/${story.id}/${action}`,
         action === 'publish'
-          ? {
-              method: 'POST',
-              body: JSON.stringify({ publishedAt: toApiDateTime(form.publishedAt) }),
-            }
+          ? { method: 'POST', body: JSON.stringify({}) }
           : { method: 'POST' },
       );
       setStory(updated);
       setForm(storyToForm(updated));
       setPendingAction(null);
+      window.dispatchEvent(new Event(STORIES_CHANGED_EVENT));
       setNotice(
         action === 'publish'
           ? '사용자 앱에 게시했어요.'
@@ -297,9 +307,9 @@ export function StoryDetailPage() {
       {
         id: `section-${crypto.randomUUID()}`,
         heading: '',
-        paragraphs: [''],
-        imageUrl: null,
-        imageCaption: null,
+        body: '',
+        imageUrl: '',
+        imageCaption: '',
       },
     ]);
   };
@@ -396,44 +406,56 @@ export function StoryDetailPage() {
 
           <section className="content-card form-section">
             <div className="section-heading">
-              <div><span>03</span><h2>본문 구성</h2></div>
-              {editable && <button className="text-button" type="button" onClick={addSection}>+ 섹션 추가</button>}
+              <div><span>03</span><h2>본문</h2></div>
+              <small>앱에서는 소제목 → 본문 → 사진 순서로 이어져 보여요. 문단은 빈 줄로 나눠요.</small>
             </div>
-            <div className="sections-editor">
+            <div className="story-blocks">
               {form.sections.map((section, sectionIndex) => (
-                <div className="section-editor" key={section.id}>
-                  <div className="section-editor-head">
-                    <strong>섹션 {sectionIndex + 1}</strong>
-                    {editable && form.sections.length > 1 && (
-                      <button type="button" onClick={() => updateField('sections', form.sections.filter((_, index) => index !== sectionIndex))}>섹션 삭제</button>
+                <div className="story-block" key={section.id}>
+                  <div className="block-head">
+                    <input
+                      className="block-heading"
+                      value={section.heading}
+                      placeholder="소제목"
+                      aria-label={`${sectionIndex + 1}번째 소제목`}
+                      onChange={(event) => updateSection(sectionIndex, { heading: event.target.value })}
+                      disabled={!editable}
+                      maxLength={200}
+                    />
+                    {editable && (
+                      <div className="block-tools">
+                        <button type="button" onClick={() => moveSection(sectionIndex, -1)} disabled={sectionIndex === 0} aria-label="위로 옮기기">↑</button>
+                        <button type="button" onClick={() => moveSection(sectionIndex, 1)} disabled={sectionIndex === form.sections.length - 1} aria-label="아래로 옮기기">↓</button>
+                        {form.sections.length > 1 && (
+                          <button type="button" onClick={() => updateField('sections', form.sections.filter((_, index) => index !== sectionIndex))}>삭제</button>
+                        )}
+                      </div>
                     )}
                   </div>
-                  <label>본문 소제목
-                    <input value={section.heading} onChange={(event) => updateSection(sectionIndex, { heading: event.target.value })} disabled={!editable} />
-                  </label>
-                  <div className="paragraph-list">
-                    {section.paragraphs.map((paragraph, paragraphIndex) => (
-                      <label key={`${section.id}-paragraph-${paragraphIndex}`}>
-                        문단 {paragraphIndex + 1}
-                        <textarea rows={5} value={paragraph} onChange={(event) => updateParagraph(sectionIndex, paragraphIndex, event.target.value)} disabled={!editable} />
-                        {editable && section.paragraphs.length > 1 && (
-                          <button className="remove-inline" type="button" onClick={() => updateSection(sectionIndex, { paragraphs: section.paragraphs.filter((_, index) => index !== paragraphIndex) })}>문단 삭제</button>
-                        )}
-                      </label>
-                    ))}
-                    {editable && <button className="text-button" type="button" onClick={() => updateSection(sectionIndex, { paragraphs: [...section.paragraphs, ''] })}>+ 문단 추가</button>}
-                  </div>
-                  <div className="form-grid two-columns">
-                    <label>본문 이미지 URL
-                      <input type="url" value={section.imageUrl ?? ''} onChange={(event) => updateSection(sectionIndex, { imageUrl: event.target.value || null })} disabled={!editable} />
-                    </label>
-                    <label>이미지 설명
-                      <input value={section.imageCaption ?? ''} onChange={(event) => updateSection(sectionIndex, { imageCaption: event.target.value || null })} disabled={!editable} maxLength={300} />
-                    </label>
-                  </div>
+                  <textarea
+                    className="block-body"
+                    rows={5}
+                    value={section.body}
+                    placeholder="본문을 입력하세요. 빈 줄을 넣으면 문단이 나뉘어요."
+                    aria-label={`${sectionIndex + 1}번째 본문`}
+                    onChange={(event) => updateSection(sectionIndex, { body: event.target.value })}
+                    disabled={!editable}
+                  />
+                  {(editable || section.imageUrl) && (
+                    <div className="block-image">
+                      {section.imageUrl
+                        ? <img src={section.imageUrl} alt="" />
+                        : <span className="block-image-empty" aria-hidden="true">사진 없음</span>}
+                      <div className="block-image-fields">
+                        <input type="url" value={section.imageUrl} placeholder="사진 URL (선택)" aria-label={`${sectionIndex + 1}번째 사진 URL`} onChange={(event) => updateSection(sectionIndex, { imageUrl: event.target.value })} disabled={!editable} />
+                        <input value={section.imageCaption} placeholder="사진 설명 (선택)" aria-label={`${sectionIndex + 1}번째 사진 설명`} onChange={(event) => updateSection(sectionIndex, { imageCaption: event.target.value })} disabled={!editable} maxLength={300} />
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
+            {editable && <button className="text-button add-block" type="button" onClick={addSection}>+ 소제목·본문·사진 묶음 추가</button>}
           </section>
 
           <section className="content-card form-section">
@@ -455,12 +477,9 @@ export function StoryDetailPage() {
 
           <section className="content-card form-section">
             <div className="section-heading"><div><span>05</span><h2>노출 설정</h2></div></div>
-            <div className="form-grid three-columns">
+            <div className="form-grid two-columns">
               <label>노출 순서
                 <input type="number" value={form.displayOrder} onChange={(event) => updateField('displayOrder', Number(event.target.value))} disabled={!editable} min={-32768} max={32767} />
-              </label>
-              <label>게시 시각 <small>비우면 승인 시각</small>
-                <input type="datetime-local" value={form.publishedAt} onChange={(event) => updateField('publishedAt', event.target.value)} disabled={!editable} />
               </label>
               <label>만료 시각 <small>비우면 기한 없음</small>
                 <input type="datetime-local" value={form.expiresAt} onChange={(event) => updateField('expiresAt', event.target.value)} disabled={!editable} />
@@ -479,8 +498,8 @@ export function StoryDetailPage() {
                 {form.sections.map((section) => (
                   <section key={`preview-${section.id}`}>
                     <h3>{section.heading || '소제목'}</h3>
-                    {section.paragraphs.map((paragraph, index) => <p key={`${section.id}-${index}`}>{paragraph}</p>)}
-                    {section.imageUrl && <figure><img src={section.imageUrl} alt={section.imageCaption ?? ''} /><figcaption>{section.imageCaption}</figcaption></figure>}
+                    {splitParagraphs(section.body).map((paragraph, index) => <p key={`${section.id}-${index}`}>{paragraph}</p>)}
+                    {section.imageUrl && <figure><img src={section.imageUrl} alt={section.imageCaption} /><figcaption>{section.imageCaption}</figcaption></figure>}
                   </section>
                 ))}
               </div>
@@ -498,6 +517,7 @@ export function StoryDetailPage() {
               <li><strong>혼디의 여행 체크</strong><span>짧고 재치 있는 반말 강아지 말투가 잘 어울려요.</span></li>
             </ul>
             <p className="guide-note">모든 문장에 억지로 ‘~개’를 붙이지 않아요.</p>
+            <p className="guide-note">AI는 초안까지만 써요. 원문 대조·수정·승인은 운영자가 직접 하고, 저장한 내용이 그대로 게시돼요.</p>
           </section>
 
           <section className="content-card aside-card validation-card">
@@ -534,7 +554,7 @@ export function StoryDetailPage() {
               <ol>{story.auditLogs.slice(0, 8).map((log) => (
                 <li key={log.id}>
                   <span className="history-dot" />
-                  <div><strong>{log.action === 'updated' ? '내용 수정' : log.action === 'published' ? '게시 승인' : log.action === 'archived' ? '게시 중단' : '초안 복귀'}</strong><small>{formatDate(log.createdAt)}</small></div>
+                  <div><strong>{log.action === 'updated' ? '내용 수정' : log.action === 'published' ? '게시 승인' : log.action === 'archived' ? ('replaced_by' in log.changes ? '교체되어 보관' : '게시 중단') : '초안 복귀'}</strong><small>{formatDate(log.createdAt)}</small></div>
                 </li>
               ))}</ol>
             )}

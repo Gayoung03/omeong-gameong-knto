@@ -85,7 +85,6 @@ export interface StoryUpdatePayload {
   tips: string[];
   tags: string[];
   displayOrder: number;
-  publishedAt: string | null;
   expiresAt: string | null;
 }
 

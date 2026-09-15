@@ -34,7 +34,8 @@ export function StoryListPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const rawStatus = params.get('status');
-  const status = STATUS_FILTERS.some((item) => item.value === rawStatus) ? rawStatus! : 'all';
+  // 검수함 — 첫 진입은 검수 대기(draft). '전체'는 status=all 로 명시한다.
+  const status = STATUS_FILTERS.some((item) => item.value === rawStatus) ? rawStatus! : 'draft';
   const sortBy = params.get('sortBy') === 'published_at' ? 'published_at' : 'collected_at';
   const [data, setData] = useState<StoryListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,8 +76,7 @@ export function StoryListPage() {
     setLoading(true);
     setError('');
     const next = new URLSearchParams(params);
-    if (value === 'all' && key === 'status') next.delete(key);
-    else next.set(key, value);
+    next.set(key, value);
     setParams(next);
   };
 
@@ -86,12 +86,24 @@ export function StoryListPage() {
         <div>
           <p className="eyebrow">콘텐츠 운영</p>
           <h1>여행 이야기</h1>
-          <p>비짓제주에서 수집한 초안을 확인하고 승인합니다.</p>
+          <p>매주 월요일 09:00(KST) 비짓제주 원문으로 만든 초안을 검수하고 승인합니다.</p>
         </div>
         <div className="summary-card">
-          <span>현재 조건</span>
-          <strong>{data?.total ?? 0}</strong>
-          <small>개의 이야기</small>
+          {status === 'draft' ? (
+            <>
+              <span>검수 대기</span>
+              <strong className={(data?.total ?? 0) > 0 ? 'count-attention' : undefined}>
+                {data?.total ?? 0}
+              </strong>
+              <small>건</small>
+            </>
+          ) : (
+            <>
+              <span>현재 조건</span>
+              <strong>{data?.total ?? 0}</strong>
+              <small>개의 이야기</small>
+            </>
+          )}
         </div>
       </div>
 
@@ -130,8 +142,17 @@ export function StoryListPage() {
           <div className="table-state"><span className="spinner" />목록을 불러오는 중이에요.</div>
         ) : items.length === 0 ? (
           <div className="table-state empty">
-            <strong>조건에 맞는 이야기가 없어요.</strong>
-            <span>다른 상태나 검색어를 확인해 보세요.</span>
+            {status === 'draft' && !search.trim() ? (
+              <>
+                <strong>검수할 초안이 없어요.</strong>
+                <span>매주 월요일 09:00(KST)에 새 초안이 만들어져요.</span>
+              </>
+            ) : (
+              <>
+                <strong>조건에 맞는 이야기가 없어요.</strong>
+                <span>다른 상태나 검색어를 확인해 보세요.</span>
+              </>
+            )}
           </div>
         ) : (
           <div className="table-wrap">

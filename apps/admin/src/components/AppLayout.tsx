@@ -3,10 +3,12 @@ import { NavLink, Outlet } from 'react-router-dom';
 import brandSymbol from '../assets/brand-symbol.png';
 import { useAuth } from '../auth/useAuth';
 import { usePendingInquiryCount } from '../lib/usePendingInquiryCount';
+import { usePendingStoryCount } from '../lib/usePendingStoryCount';
 
 export function AppLayout() {
   const { user, logout } = useAuth();
   const pendingInquiries = usePendingInquiryCount();
+  const pendingStories = usePendingStoryCount();
 
   return (
     <div className="admin-shell">
@@ -23,6 +25,11 @@ export function AppLayout() {
           <NavLink to="/stories" className={({ isActive }) => (isActive ? 'active' : '')}>
             <span className="nav-icon" aria-hidden="true">▦</span>
             여행 이야기
+            {pendingStories !== null && pendingStories > 0 && (
+              <span className="nav-badge" aria-label={`검수 대기 ${pendingStories}건`}>
+                {pendingStories > 99 ? '99+' : pendingStories}
+              </span>
+            )}
           </NavLink>
           <p className="nav-group">고객지원</p>
           <NavLink to="/inquiries" className={({ isActive }) => (isActive ? 'active' : '')}>
