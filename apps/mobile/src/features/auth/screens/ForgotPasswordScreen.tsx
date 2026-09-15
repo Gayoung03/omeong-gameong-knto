@@ -97,10 +97,6 @@ export function ForgotPasswordScreen() {
               />
             </View>
 
-            <Text style={styles.help}>
-              카카오·구글로 가입했다면 비밀번호가 없어요.{'\n'}
-              로그인 화면에서 해당 버튼으로 로그인해주세요.
-            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -128,11 +124,4 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   form: { gap: 13 },
-  help: {
-    color: colors.textTertiary,
-    fontSize: 12,
-    lineHeight: 19,
-    marginTop: 24,
-    textAlign: 'center',
-  },
 });
