@@ -2,7 +2,7 @@ export const PRIORITY_PRESETS = [
   {
     value: 'balanced',
     label: '골고루 추천해주세요',
-    description: '취향, 반려동물, 이동 거리와 날씨를 고르게 살펴봐요.',
+    description: '취향, 반려동물, 이동 거리를 고르게 살펴봐요.',
   },
   {
     value: 'taste',
@@ -21,8 +21,9 @@ export const PRIORITY_PRESETS = [
   },
   {
     value: 'healing',
-    label: '날씨에 맞는 여행',
-    description: '여행 날짜의 날씨와 실내·실외 환경을 고려해 추천해요.',
+    label: '날씨 걱정 없는 여행',
+    description:
+      '비 예보나 한낮 더위가 있는 날은 실내 위주로 하루를 짜요. 예보가 없으면 평소처럼 추천해요.',
   },
 ] as const;
 
@@ -30,7 +31,7 @@ export const USER_CRITERIA_OPTIONS = [
   { value: 'preference', label: '내 취향에 맞는 곳' },
   { value: 'pet', label: '우리 아이가 편한 곳' },
   { value: 'proximity', label: '이동이 편한 코스' },
-  { value: 'weather', label: '날씨에 맞는 장소' },
+  { value: 'weather', label: '비·더위엔 실내 위주로' },
 ] as const;
 
 export type PriorityPreset = (typeof PRIORITY_PRESETS)[number]['value'];
