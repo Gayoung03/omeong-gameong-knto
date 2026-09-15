@@ -18,6 +18,7 @@ from app.integrations.llm.travel_card import (
     image_edit,
     image_io,
     prompts,
+    vision,
 )
 from app.integrations.llm.travel_card.types import (
     CardText,
@@ -68,6 +69,89 @@ def test_blocked_result_always_has_a_flag():
 
 def test_unknown_kind_falls_back_to_other():
     assert parse_analysis('{"kind":"셀카","items":[],"safe":true}').kind is PhotoKind.OTHER
+
+
+# ---------------------------------------------------------------------------
+# 머리 칸 — 프롬프트로 네 번 말해도 안 되던 것을 좌표로 옮겼다
+# ---------------------------------------------------------------------------
+
+
+def test_grid_has_nine_named_zones():
+    """칸 이름이 바뀌면 프롬프트 설명과 파서가 조용히 어긋난다."""
+    assert len(vision.ZONES) == 9
+    assert "왼쪽-중간" in vision.ZONES
+    assert "오른쪽-아래" in vision.ZONES
+
+
+def test_head_zones_are_cleaned_up():
+    """모델이 준 칸 이름을 그대로 믿지 않는다.
+
+    모르는 이름은 버리고, 중복은 한 번만 세고, **3칸까지만** 받는다.
+    9칸을 다 막으면 글씨 놓을 곳이 없어져 배치가 통째로 무너진다.
+    """
+    raw = (
+        '{"kind":"scenery","items":[],"safe":true,'
+        '"headZones":["왼쪽-중간","없는칸","가운데-중간","왼쪽-중간","오른쪽-위","왼쪽-아래"]}'
+    )
+
+    assert parse_analysis(raw).head_zones == ["왼쪽-중간", "가운데-중간", "오른쪽-위"]
+
+
+@pytest.mark.parametrize("value", ['"왼쪽-중간"', "null", "123", "{}"])
+def test_head_zones_survive_a_wrong_shape(value):
+    """리스트가 아니면 빈 목록이다 — 머리 칸 하나 때문에 카드를 못 만들면 안 된다."""
+    raw = f'{{"kind":"scenery","items":[],"safe":true,"headZones":{value}}}'
+
+    assert parse_analysis(raw).head_zones == []
+
+
+def test_back_of_a_head_counts_too():
+    """뒷모습이라고 빼면 금지 구역이 통째로 안 붙는다(2026-09-15 실측).
+
+    처음엔 vision 에게 "얼굴"을 물었고 `뒷모습이면 적지 마` 라고까지 써 뒀다.
+    그런데 실제 사진이 **자전거 탄 뒷모습**이라 빈 배열이 왔고, 블록이 프롬프트에
+    없는 채로 카드가 나왔다 — 붙였다고 생각한 장치가 한 번도 안 돈 것이다.
+    "머리" 로 고친 뒤 같은 사진에서 두 사람을 다 잡았다.
+    """
+    assert "뒷모습" in vision.SYSTEM_PROMPT
+    assert "얼굴이 안 보이면 적지 않는다" not in vision.SYSTEM_PROMPT
+
+
+def test_head_zones_become_a_no_go_block():
+    """`vision` 이 찾은 칸이 프롬프트에 좌표로 박힌다."""
+    prompt = prompts.build(
+        PhotoKind.SCENERY,
+        WritingStyle.JEJU_DIALECT,
+        _text(),
+        loose=True,
+        head_zones=["왼쪽-중간", "가운데-중간"],
+    )
+
+    assert "비워둘 자리" in prompt
+    assert "· 왼쪽-중간" in prompt
+    assert "· 가운데-중간" in prompt
+    # 몸통은 괜찮다 — 전부 막으면 놓을 곳이 없어진다(사장님 기준, 09-14).
+    assert "머리만 피하면 된다" in prompt
+
+
+def test_no_go_block_disappears_without_heads():
+    """가릴 머리가 없는데 금지 구역을 말하면 규칙만 하나 늘어난다."""
+    prompt = prompts.build(PhotoKind.FOOD, WritingStyle.DOG_DIARY, _text(), loose=True)
+
+    assert "비워둘 자리" not in prompt
+
+
+def test_scenery_photo_can_still_carry_heads():
+    """사람만 있고 반려동물이 없는 사진은 `scenery` 로 분류된다(09-14 실측).
+
+    분류 체계에 "사람만" 칸이 없어 `pet_with_human` 힌트에 걸리지 않는다.
+    머리 칸은 **분류와 무관하게** 동작해야 그 구멍이 메워진다.
+    """
+    prompt = prompts.build(
+        PhotoKind.SCENERY, WritingStyle.JEJU_DIALECT, _text(), head_zones=["왼쪽-중간"]
+    )
+
+    assert "비워둘 자리" in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -238,6 +322,44 @@ def test_memo_placement_follows_content():
     prompt = prompts.build(PhotoKind.PET_SOLO, WritingStyle.DOG_DIARY, _text())
     assert "말하는 대상 가까이에 놓는다" in prompt
     assert "하늘" in prompt and "아래쪽" in prompt
+
+
+def test_loose_also_says_where_each_memo_goes():
+    """`--loose` 에도 내용-자리 대응이 있어야 한다(2026-09-14 실측).
+
+    그 전 loose 는 `여백에 고르게` 만 말했다. 그래서 하늘 이야기("푸른 하늘이 참
+    멋지우다")가 갈 곳을 모른 채 빈 곳을 찾다 **화면 한가운데 사람 머리 위**에
+    놓였다.
+
+    얼굴을 가리지 말라는 줄은 loose 에도 이미 있었고 그래도 어겼다. 고친 것은
+    금지를 세게 한 쪽이 아니라 **갈 곳을 알려준 쪽**이다.
+
+    09-10 문장(`여백을 찾아 배치해줘`)은 그대로 두고 조건만 달았다 —
+    `test_loose_layout_restores_the_short_09_10_wording` 이 지키는 선이다.
+    """
+    prompt = prompts.build(
+        PhotoKind.PET_WITH_HUMAN, WritingStyle.JEJU_DIALECT, _text(), loose=True
+    )
+
+    assert "그 메모가 말하는 것과 가까운 여백" in prompt
+    assert "하늘·구름 이야기" in prompt
+    # 얼굴 금지는 그대로 남아 있어야 한다 — 대체가 아니라 추가다.
+    assert "얼굴은 글씨나 화살표로 가리지 마" in prompt
+
+
+def test_loose_stays_shorter_than_strict():
+    """loose 의 존재 이유는 짧다는 것이다 — 규칙을 더하다 strict 가 되면 의미가 없다.
+
+    2026-09-13 에 배운 것: 규칙 하나하나는 실제 문제를 고쳤지만 **누적이 자유를
+    없앴다.** 09-14 에 세 줄을 더하면서 이 선을 테스트로 박아 둔다.
+    """
+    text = _text()
+    loose = prompts.build(PhotoKind.PET_SOLO, WritingStyle.DOG_DIARY, text, loose=True)
+    strict = prompts.build(PhotoKind.PET_SOLO, WritingStyle.DOG_DIARY, text)
+
+    assert len(loose.splitlines()) < len(strict.splitlines())
+    # 화살표 계약(strict 11줄)은 loose 로 넘어오지 않는다.
+    assert "화살표 — 장식이 아니다" not in loose
 
 
 def test_scenery_forbids_drawing_animals():
