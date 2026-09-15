@@ -11,17 +11,20 @@ import { ActiveFilterChips } from './components/ActiveFilterChips';
 import { DateFilterBottomSheet, type FilterSheetHandle } from './components/DateFilterBottomSheet';
 import { PetFilterBottomSheet } from './components/PetFilterBottomSheet';
 import { TravelLogFilterBar } from './components/TravelLogFilterBar';
+import { TravelLogGuideModal } from './components/TravelLogGuideModal';
 import { TravelLogHeader } from './components/TravelLogHeader';
 import { TravelLogSkeleton } from './components/TravelLogSkeleton';
 import { TravelLogEmptyState, TravelLogNoResultsState } from './components/TravelLogStates';
 import { TripCard } from './components/TripCard';
 import { UngroupedLogCard } from './components/UngroupedLogCard';
 import { useTravelLogFilters } from './hooks/useTravelLogFilters';
+import { useTravelLogGuide } from './hooks/useTravelLogGuide';
 import { useTravelLogItems } from './hooks/useTravelLogItems';
 import { buildPetFilterOptions, collectCompanions } from './utils/petFilterOptions';
 
 export function TravelLogScreen() {
   const { data, isPending, isError, refetch } = useTravelLogItems();
+  const guide = useTravelLogGuide();
   const { data: allPets = [] } = useAllPets();
   const dateSheetRef = useRef<FilterSheetHandle>(null);
   const petSheetRef = useRef<FilterSheetHandle>(null);
@@ -87,7 +90,7 @@ export function TravelLogScreen() {
         ListEmptyComponent={renderEmptyContent()}
         ListHeaderComponent={
           <View style={styles.header}>
-            <TravelLogHeader />
+            <TravelLogHeader onHelp={guide.open} />
             <TravelLogFilterBar
               isDateFilterActive={dateRange !== null}
               isPetFilterActive={selectedPetIds.length > 0}
@@ -111,6 +114,8 @@ export function TravelLogScreen() {
         renderItem={renderItem}
         showsVerticalScrollIndicator={false}
       />
+
+      <TravelLogGuideModal onClose={guide.close} visible={guide.visible} />
 
       <DateFilterBottomSheet onApply={setDateRange} ref={dateSheetRef} value={dateRange} />
 
