@@ -115,13 +115,15 @@ const TRANSPORT_LABELS: Record<TransportType, string> = {
   ferry: '배',
 };
 
-/** '3.1km · 차량 9분' */
+/** '3.1km · 차량 9분'. 추정 구간이면 '3.1km · 차량 9분 (예상)' */
 export function formatMoveInfo(
   transport: TransportType,
   distanceMeters: number,
   durationMinutes: number,
+  isEstimated = false,
 ): string {
-  return `${formatDistance(distanceMeters)} · ${TRANSPORT_LABELS[transport]} ${durationMinutes}분`;
+  const base = `${formatDistance(distanceMeters)} · ${TRANSPORT_LABELS[transport]} ${durationMinutes}분`;
+  return isEstimated ? `${base} (예상)` : base;
 }
 
 // 라벨 정본은 `src/types/place.ts` 에 있다. 기존 import 경로를 지키려고 여기서 다시 내보낸다.

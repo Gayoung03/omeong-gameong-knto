@@ -151,6 +151,7 @@ export function ScheduleTimelineItem({
                     item.moveToNext.transport,
                     item.moveToNext.distanceMeters,
                     item.moveToNext.durationMinutes,
+                    item.moveToNext.isEstimated,
                   )}
                 </Text>
               </>

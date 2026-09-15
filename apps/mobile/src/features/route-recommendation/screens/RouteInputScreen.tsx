@@ -41,7 +41,11 @@ import type { Place } from '@/src/features/places/types/place';
 import { usePets } from '@/src/features/profile/hooks/usePets';
 import { createManualTrip, createRouteRecommendation } from '@/src/features/trips/api/tripsApi';
 import { tripQueryKeys } from '@/src/features/trips/hooks/useTrips';
-import type { ServerTransportType, ServerTripPace } from '@/src/features/trips/types/routeApi';
+import type {
+  ServerPetEnergyLevel,
+  ServerTransportType,
+  ServerTripPace,
+} from '@/src/features/trips/types/routeApi';
 import { colors as theme, overlayColors, radius, spacing, typography } from '@/src/theme';
 
 const LEGACY_DRAFT_KEY = 'route-input-draft';
@@ -94,6 +98,8 @@ type RouteDraft = {
   stays: Stay[];
   firstDayStart: FirstDayStart;
   selectedPetIds: string[];
+  /** petId → 이번 여행 컨디션. 없으면 프로필 활동량대로(평소처럼) */
+  petEnergyLevels: Record<string, ServerPetEnergyLevel>;
   departureLocation: string;
   places: string[];
   pace: string;
@@ -101,6 +107,20 @@ type RouteDraft = {
   priorityPreset: PriorityPreset;
   userCriteria: UserCriterion[];
 };
+
+/**
+ * 컨디션 칩. `평소처럼` 은 값을 보내지 않는 것(서버가 프로필 활동량을 씀)이라 value 가 null 이다.
+ * 서버는 `normal` 도 받지만 프로필과 다른 값으로 덮어쓰는 셈이라 앱에서는 쓰지 않는다.
+ */
+const ENERGY_LEVEL_OPTIONS: { value: ServerPetEnergyLevel | null; label: string }[] = [
+  { value: 'low', label: '조금 지쳐요' },
+  { value: null, label: '평소처럼' },
+  { value: 'high', label: '아주 쌩쌩해요' },
+];
+
+function energyLevelLabel(level: ServerPetEnergyLevel | undefined): string | null {
+  return ENERGY_LEVEL_OPTIONS.find((option) => option.value === (level ?? null))?.label ?? null;
+}
 
 const PLACE_TYPE_OPTIONS = [
   '바다·해변',
@@ -140,6 +160,7 @@ const initialDraft: RouteDraft = {
   stays: [],
   firstDayStart: null,
   selectedPetIds: [],
+  petEnergyLevels: {},
   departureLocation: '',
   places: [],
   pace: '여유롭게',
@@ -347,6 +368,12 @@ function restoreDraft(saved: string): { draft: RouteDraft; currentStep: number }
     savedDraft.firstDayStart === 'stay' || savedDraft.firstDayStart === 'other'
       ? savedDraft.firstDayStart
       : null;
+  const petEnergyLevels = Object.fromEntries(
+    Object.entries(savedDraft.petEnergyLevels ?? {}).filter(
+      (entry): entry is [string, ServerPetEnergyLevel] =>
+        entry[1] === 'low' || entry[1] === 'normal' || entry[1] === 'high',
+    ),
+  );
   const requestedStep = 'currentStep' in parsed ? parsed.currentStep : REVIEW_STEP;
   const currentStep =
     typeof requestedStep === 'number'
@@ -359,6 +386,7 @@ function restoreDraft(saved: string): { draft: RouteDraft; currentStep: number }
       ...savedDraft,
       stays,
       firstDayStart,
+      petEnergyLevels,
       transportOptions: SUPPORTED_TRANSPORT_OPTIONS,
       transport: SUPPORTED_TRANSPORT_OPTIONS.includes(savedDraft.transport ?? '')
         ? savedDraft.transport!
@@ -930,6 +958,10 @@ export function RouteInputScreen({ mode = 'recommendation' }: { mode?: RouteInpu
         priorityPreset: personalization.priorityPreset,
         userCriteria: personalization.userCriteria,
         petIds: selectedPets.map((pet) => pet.petId),
+        pets: selectedPets.map((pet) => {
+          const energyLevel = draft.petEnergyLevels[pet.petId];
+          return energyLevel ? { petId: pet.petId, energyLevel } : { petId: pet.petId };
+        }),
         stays: draft.stays.map((stay) => toStayRequest(stay, draft.trip)),
       };
       const accepted = await createRouteRecommendation(request);
@@ -1231,35 +1263,65 @@ export function RouteInputScreen({ mode = 'recommendation' }: { mode?: RouteInpu
                   >
                     {pets.map((pet) => {
                       const selected = draft.selectedPetIds.includes(pet.petId);
+                      const energyLevel = draft.petEnergyLevels[pet.petId] ?? null;
                       return (
-                        <Pressable
-                          key={pet.petId}
-                          onPress={() => {
-                            clearFieldError('pets');
-                            updateDraft(
-                              'selectedPetIds',
-                              selected
-                                ? draft.selectedPetIds.filter((id) => id !== pet.petId)
-                                : [...draft.selectedPetIds, pet.petId],
-                            );
-                          }}
-                          style={[styles.petRow, selected && styles.presetCardSelected]}
-                        >
-                          <View style={styles.petAvatar}>
-                            <Text style={styles.petEmoji}>🐾</Text>
-                          </View>
-                          <View style={styles.flexOne}>
-                            <Text style={styles.petName}>{pet.name}</Text>
-                            <Text style={styles.petDescription}>
-                              {pet.species} · {pet.size ?? '크기 미입력'}
-                            </Text>
-                          </View>
-                          <Ionicons
-                            color={selected ? colors.deepMint : colors.gray}
-                            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-                            size={20}
-                          />
-                        </Pressable>
+                        <View key={pet.petId} style={styles.petBlock}>
+                          <Pressable
+                            onPress={() => {
+                              clearFieldError('pets');
+                              updateDraft(
+                                'selectedPetIds',
+                                selected
+                                  ? draft.selectedPetIds.filter((id) => id !== pet.petId)
+                                  : [...draft.selectedPetIds, pet.petId],
+                              );
+                            }}
+                            style={[styles.petRow, selected && styles.presetCardSelected]}
+                          >
+                            <View style={styles.petAvatar}>
+                              <Text style={styles.petEmoji}>🐾</Text>
+                            </View>
+                            <View style={styles.flexOne}>
+                              <Text style={styles.petName}>{pet.name}</Text>
+                              <Text style={styles.petDescription}>
+                                {pet.species} · {pet.size ?? '크기 미입력'}
+                              </Text>
+                            </View>
+                            <Ionicons
+                              color={selected ? colors.deepMint : colors.gray}
+                              name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                              size={20}
+                            />
+                          </Pressable>
+                          {selected ? (
+                            <View style={styles.energyRow}>
+                              <Text style={styles.energyLabel}>이번 여행 컨디션</Text>
+                              {ENERGY_LEVEL_OPTIONS.map((option) => {
+                                const active = energyLevel === option.value;
+                                return (
+                                  <Pressable
+                                    key={option.label}
+                                    accessibilityRole="button"
+                                    accessibilityState={{ selected: active }}
+                                    onPress={() => {
+                                      const next = { ...draft.petEnergyLevels };
+                                      if (option.value) next[pet.petId] = option.value;
+                                      else delete next[pet.petId];
+                                      updateDraft('petEnergyLevels', next);
+                                    }}
+                                    style={[styles.energyChip, active && styles.paceButtonSelected]}
+                                  >
+                                    <Text
+                                      style={[styles.energyText, active && styles.paceTextSelected]}
+                                    >
+                                      {option.label}
+                                    </Text>
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+                          ) : null}
+                        </View>
                       );
                     })}
                   </Animated.View>
@@ -1410,7 +1472,10 @@ export function RouteInputScreen({ mode = 'recommendation' }: { mode?: RouteInpu
                 <Text style={styles.reviewTitle}>
                   {pets
                     .filter((pet) => draft.selectedPetIds.includes(pet.petId))
-                    .map((pet) => pet.name)
+                    .map((pet) => {
+                      const level = draft.petEnergyLevels[pet.petId];
+                      return level ? `${pet.name}(${energyLevelLabel(level)})` : pet.name;
+                    })
                     .join(', ') || '반려동물'}
                   와 함께하는 {draft.trip.title}
                 </Text>
@@ -1753,9 +1818,7 @@ export function RouteInputScreen({ mode = 'recommendation' }: { mode?: RouteInpu
                         label="주소"
                         name="address"
                         error={
-                          stayFieldErrors.includes('address')
-                            ? '숙소 주소를 입력해주세요.'
-                            : ''
+                          stayFieldErrors.includes('address') ? '숙소 주소를 입력해주세요.' : ''
                         }
                         onChange={() => {
                           setStayFieldErrors((current) =>
@@ -2201,6 +2264,23 @@ const styles = StyleSheet.create({
   petEmoji: { fontSize: 25 },
   petName: { color: colors.ink, fontSize: typography.body.fontSize, fontWeight: '800' },
   petDescription: { color: colors.gray, fontSize: typography.label.fontSize, marginTop: 3 },
+  petBlock: { gap: spacing.xs },
+  energyRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: spacing.xs,
+  },
+  energyLabel: { color: colors.gray, fontSize: typography.label.fontSize, marginRight: 2 },
+  energyChip: {
+    borderColor: theme.divider,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs + 1,
+  },
+  energyText: { color: colors.gray, fontSize: typography.label.fontSize, fontWeight: '700' },
   paceRow: { flexDirection: 'row', gap: 7 },
   paceButton: {
     alignItems: 'center',

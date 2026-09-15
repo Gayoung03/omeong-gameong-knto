@@ -1,8 +1,8 @@
 """동선·숙소 근처 동물병원 안전망 (docs/api/routes.md "nearbyAnimalHospitals 안전망 규칙").
 
 응답 시점 계산값 — 저장하지 않는다. 여행 항목(출발지·숙소 앵커 포함)의 앵커 좌표를
-중심으로 `places.category_detail = '동물병원'` 을 bounding-box 로 좁힌 뒤 haversine 로
-최소 거리를 재고, 이름의 "24시" 판정으로 24시 우선 → 거리순 정렬한다.
+중심으로 `places.category = 'veterinary_hospital'`(동물약국 제외) 을 bounding-box 로
+좁힌 뒤 haversine 로 최소 거리를 재고, 이름의 "24시" 판정으로 24시 우선 → 거리순 정렬한다.
 """
 
 import uuid
@@ -15,7 +15,11 @@ from sqlalchemy.orm import Session
 from app.db.models import Place
 from app.recommend.common.geo import haversine_m
 
-HOSPITAL_CATEGORY_DETAIL = "동물병원"
+#: 안전망에 넣을 장소의 정식 카테고리. `e4a1c7d9b203` 마이그레이션이 카카오 `etc` 중
+#: `category_detail ∈ {동물병원, 동물약국}` 을 이 카테고리로 재분류했다.
+VETERINARY_CATEGORY = "veterinary_hospital"
+#: 같은 카테고리에 섞인 반려동물 약국. 워크인 병원이 아니므로 안전망에서 뺀다.
+PHARMACY_CATEGORY_DETAIL = "동물약국"
 #: 앵커에서 이 반경(m) 안의 병원만 안전망에 넣는다.
 HOSPITAL_SEARCH_RADIUS_M = 5000.0
 #: 응답에 담는 최대 병원 수.
@@ -116,7 +120,10 @@ def nearby_animal_hospitals(db: Session, anchors: list[Coordinate]) -> list[Near
             Place.id, Place.name, Place.address, Place.phone, Place.latitude, Place.longitude
         ).where(
             Place.is_active.is_(True),
-            Place.category_detail == HOSPITAL_CATEGORY_DETAIL,
+            # 정식 카테고리로 좁히고, 같은 카테고리의 약국만 제외한다. IS DISTINCT FROM
+            # 이라 category_detail 이 NULL 인 병원도 포함된다.
+            Place.category == VETERINARY_CATEGORY,
+            Place.category_detail.is_distinct_from(PHARMACY_CATEGORY_DETAIL),
             Place.latitude.between(min_lat, max_lat),
             Place.longitude.between(min_lng, max_lng),
         )

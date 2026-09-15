@@ -1,7 +1,7 @@
 """관리자 검수 전제를 가진 제주 여행 이야기 모델."""
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     ARRAY,
@@ -118,6 +118,12 @@ class AdminEditorialAuditLog(Base):
     previous_status: Mapped[str | None] = mapped_column(String(20))
     next_status: Mapped[str | None] = mapped_column(String(20))
     changes: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    #: 파이썬 측 기본값으로 채운다. DB `now()` 는 트랜잭션 시작 시각이라 한 요청 안에서
+    #: 남긴 로그 두 건이 동률이 되고 created_at 정렬이 비결정이 된다(#282). id 는 uuid4 라
+    #: 보조 정렬 키로 못 쓴다. server_default 는 원시 INSERT 대비 폴백으로 유지.
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
     )
