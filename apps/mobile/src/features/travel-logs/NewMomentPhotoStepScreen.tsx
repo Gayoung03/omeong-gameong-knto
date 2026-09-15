@@ -15,6 +15,8 @@ import {
   PhotoChangeBottomSheet,
   type PhotoChangeBottomSheetHandle,
 } from './components/PhotoChangeBottomSheet';
+import { TravelLogGuideModal } from './components/TravelLogGuideModal';
+import { useTravelLogGuide } from './hooks/useTravelLogGuide';
 import { useLogDraftStore } from './stores/useLogDraftStore';
 
 // 서버 상한과 같은 값이어야 한다 — `endpoints/uploads.py` 의 MAX_FILE_SIZE 와
@@ -42,6 +44,10 @@ export function NewMomentPhotoStepScreen() {
   // 기본 선택값도 활성 프로필에서만 고른다.
   const { data: pets = [] } = usePets();
   const photoChangeSheetRef = useRef<PhotoChangeBottomSheetHandle>(null);
+  // 홈의 'Log 만들기' 는 목록을 건너뛰고 여기로 바로 온다. 목록에만 안내를 두면
+  // **들어온 길에 따라 안내를 본 사람과 못 본 사람이 갈린다.** 같은 훅을 쓰므로
+  // 한쪽에서 한 번 보면 다른 쪽에서 또 뜨지 않는다.
+  const guide = useTravelLogGuide();
   const allowExitRef = useRef(false);
   const exitModalOpenRef = useRef(false);
   const pendingExitRef = useRef<(() => void) | null>(null);
@@ -266,6 +272,7 @@ export function NewMomentPhotoStepScreen() {
         onContinue={continueWriting}
         visible={cancelModalVisible}
       />
+      <TravelLogGuideModal onClose={guide.close} visible={guide.visible} />
     </SafeAreaView>
   );
 }
