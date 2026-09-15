@@ -27,6 +27,7 @@ function toSavedPlace(item: FavoritePlaceResponse): SavedPlace {
   return {
     address: place.address,
     category: place.category,
+    environment: place.environment,
     id: place.id,
     imageUrl: place.imageUrl,
     name: place.name,

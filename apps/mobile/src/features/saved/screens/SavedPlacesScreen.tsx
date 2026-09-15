@@ -1,6 +1,15 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/src/components/feedback/EmptyState';
@@ -36,40 +45,30 @@ export function SavedPlacesScreen() {
   const [selectedRegion, setSelectedRegion] = useState<PlaceRegionFilter>('전체');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>('recent');
-
-  /**
-   * 고른 칩이 목록에서 사라졌으면 '전체' 로 친다.
-   *
-   * 저장 해제로 그 지역·분류의 마지막 한 건이 없어지면 선택은 남아 있는데 거를 대상이
-   * 없어져 빈 화면에 갇힌다. `useEffect` 로 되돌리면 렌더가 한 번 더 도므로 그릴 때 보정한다.
-   */
-  const activeRegion = useMemo<PlaceRegionFilter>(
-    () =>
-      selectedRegion === '전체' || places.some((place) => place.region === selectedRegion)
-        ? selectedRegion
-        : '전체',
-    [places, selectedRegion],
-  );
-  const activeCategory = useMemo(
-    () =>
-      selectedCategory && places.some((place) => place.category === selectedCategory)
-        ? selectedCategory
-        : null,
-    [places, selectedCategory],
-  );
+  const [query, setQuery] = useState('');
 
   const visiblePlaces = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase('ko-KR');
     const filtered = places.filter((place) => {
-      const matchesRegion = activeRegion === '전체' || place.region === activeRegion;
-      const matchesCategory = !activeCategory || place.category === activeCategory;
+      const matchesQuery =
+        !normalizedQuery ||
+        place.name.toLocaleLowerCase('ko-KR').includes(normalizedQuery) ||
+        place.address.toLocaleLowerCase('ko-KR').includes(normalizedQuery);
+      const matchesRegion = selectedRegion === '전체' || place.region === selectedRegion;
+      const matchesCategory = !selectedCategory
+        ? true
+        : selectedCategory === '실내' || selectedCategory === '야외'
+          ? place.environment === selectedCategory
+          : place.category === selectedCategory;
 
-      return matchesRegion && matchesCategory;
+      return matchesQuery && matchesRegion && matchesCategory;
     });
 
     return sortPlaces(filtered, sortBy);
-  }, [activeCategory, activeRegion, places, sortBy]);
+  }, [places, query, selectedCategory, selectedRegion, sortBy]);
 
   const resetFilters = () => {
+    setQuery('');
     setSelectedRegion('전체');
     setSelectedCategory(null);
   };
@@ -92,13 +91,30 @@ export function SavedPlacesScreen() {
         />
       ) : (
         <>
+          <View style={styles.searchBar}>
+            <Ionicons color={colors.iconGray} name="search-outline" size={20} />
+            <TextInput
+              accessibilityLabel="저장한 장소 검색"
+              onChangeText={setQuery}
+              placeholder="저장한 장소를 검색해보세요"
+              placeholderTextColor={colors.textTertiary}
+              returnKeyType="search"
+              style={styles.searchInput}
+              value={query}
+            />
+            {query ? (
+              <Pressable accessibilityLabel="검색어 지우기" hitSlop={8} onPress={() => setQuery('')}>
+                <Ionicons color={colors.iconGray} name="close-circle" size={19} />
+              </Pressable>
+            ) : null}
+          </View>
+
           {/* 칩과 건수는 고정이다. 목록만 스크롤해야 얼마나 좁혀졌는지가 계속 보인다. */}
           <SavedPlaceFilters
             onSelectCategory={setSelectedCategory}
             onSelectRegion={setSelectedRegion}
-            places={places}
-            selectedCategory={activeCategory}
-            selectedRegion={activeRegion}
+            selectedCategory={selectedCategory}
+            selectedRegion={selectedRegion}
           />
 
           {/* 0건일 때는 아래 안내가 이미 말해 주므로 띄우지 않는다. 정렬할 것도 없다. */}
@@ -116,6 +132,7 @@ export function SavedPlacesScreen() {
                       hitSlop={8}
                       key={option.value}
                       onPress={() => setSortBy(option.value)}
+                      style={({ pressed }) => [styles.sortButton, pressed && styles.pressed]}
                     >
                       <Text style={[styles.sortLabel, isSelected && styles.sortLabelSelected]}>
                         {option.label}
@@ -131,8 +148,8 @@ export function SavedPlacesScreen() {
             // 저장해 둔 장소는 있는데 칩이 다 걸러 낸 경우다. 여기서 '장소 탐색으로
             // 가기' 를 띄우면 저장한 것이 하나도 없는 것처럼 읽힌다.
             <EmptyState
-              actionLabel="필터 초기화"
-              description="지역이나 분류를 바꿔 보세요."
+              actionLabel="검색·필터 초기화"
+              description="검색어나 지역, 카테고리를 바꿔 보세요."
               icon="funnel-outline"
               onPressAction={resetFilters}
               title="조건에 맞는 장소가 없어요"
@@ -143,6 +160,9 @@ export function SavedPlacesScreen() {
                 {visiblePlaces.map((place) => (
                   <SavedPlaceCard
                     key={place.id}
+                    onPress={() =>
+                      router.push({ pathname: '/places/[placeId]', params: { placeId: place.id } })
+                    }
                     onPressRemove={() => removePlace.mutate(place.id)}
                     place={place}
                   />
@@ -178,9 +198,36 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     flex: 1,
   },
+  searchBar: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.divider,
+    borderRadius: 13,
+    borderWidth: 1,
+    flexDirection: 'row',
+    flexShrink: 0,
+    gap: 7,
+    height: 40,
+    marginHorizontal: spacing.md,
+    marginTop: 8,
+    paddingHorizontal: 11,
+  },
+  searchInput: {
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: 13,
+    paddingVertical: 0,
+  },
+  sortButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 32,
+    paddingHorizontal: spacing.xs,
+  },
   sortGroup: {
     flexDirection: 'row',
-    gap: spacing.sm + 2,
+    gap: spacing.xs,
+    marginRight: -spacing.xs,
   },
   sortLabel: {
     color: colors.textSecondary,
@@ -191,13 +238,16 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '800',
   },
+  pressed: {
+    opacity: 0.58,
+  },
   summary: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 6,
     marginHorizontal: spacing.md,
-    // 칩 줄이 통째로 숨는 경우(고를 것이 하나뿐일 때)에도 헤더에 붙지 않게 한다.
+    // 카테고리 칩과 정렬 라벨이 붙어 보이지 않게 간격을 둔다.
     marginTop: spacing.xs,
   },
 });
