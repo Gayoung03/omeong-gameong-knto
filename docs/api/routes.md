@@ -201,7 +201,7 @@ DB CHECK 제약(`creation_type_request_consistency`)이 이 조합을 강제합�
 | `transport` | ✅ | `rental_car` `own_car` `taxi` `public_transport` `walk` `ferry` `airplane` |
 | `companionCount` | — | 기본 1. 1 이상 |
 | `petIds` | — | 본인 소유 반려동물 |
-| `pets[]` | — | **[구현 2026-09-08, 앱 팀 확인 필요]** 반려동물별 **이번 여행 컨디션**. `petId`는 본인 소유(타인 `403`, 없음 `404`), `energyLevel`은 `low` `normal` `high` 또는 생략. **`pets`를 보냈으면 `petIds`는 무시**하고, `pets: []`를 명시하면 반려동물 없음. `pets`를 아예 안 보내면 `petIds`를 씀. 중복 `petId`는 `422`. `energyLevel`을 생략하면 `pets.activityLevel` 기본값을 씀. `route_request_pets.energy_level`에 스냅샷 |
+| `pets[]` | — | **[구현 2026-09-08, 앱 연동 2026-09-15 #327]** 반려동물별 **이번 여행 컨디션**. 앱은 `low`·`high`만 보내고 "평소처럼"은 생략(프로필 활동량). `petId`는 본인 소유(타인 `403`, 없음 `404`), `energyLevel`은 `low` `normal` `high` 또는 생략. **`pets`를 보냈으면 `petIds`는 무시**하고, `pets: []`를 명시하면 반려동물 없음. `pets`를 아예 안 보내면 `petIds`를 씀. 중복 `petId`는 `422`. `energyLevel`을 생략하면 `pets.activityLevel` 기본값을 씀. `route_request_pets.energy_level`에 스냅샷 |
 | `preferredTags` | — | 화면 라벨(`바다·해변` `카페` `맛집` …)이나 DB 코드(`sea` `cafe` …) 어느 쪽이든 받고, 서버가 `place_tags.code` 7종(+`category:restaurant`)으로 정규화해 저장 (2026-09-07, [`users.md`](./users.md) 취향 태그 코드 표). 저장값은 항상 코드 |
 | `stays[].checkOutAt` | — | `checkInAt`보다 뒤 |
 | `requestText` | — | 자유 요청문. 202 응답 후 **백그라운드 생성 단계에서** LLM 으로 선호 태그를 추출해 `preferredTags`와 **합쳐서 이번 생성에만** 사용한다(요청 행은 바꾸지 않음). 추출은 표준 태그 어휘로 제한되고, 실패하면 무시하고 원래 값으로 진행한다. `pace` 등 다른 필드는 건드리지 않는다 |
@@ -1025,3 +1025,4 @@ AI 추천 후보 또는 사용자가 직접 고른 DB 장소로 일정 항목을
 | 2026-09-09 | Phase 7 구현 반영 (#281) — `regenerate` 엔드포인트 구현("미구현" 문단 제거). 새 `version = max+1`, UNIQUE 충돌 시 1회 재시도 후 `409`, 원본이 `generating`이어도 허용(열린 질문 기록). 추천 서비스(`route_recommendation`)를 형제 모듈로 분해(동작 불변) |
 | 2026-09-13 | 수동 여행 생성 구현 — 여행 속도 입력 없이 내부 기본값 `normal` 사용. 최종 여행 출발지는 `routes`, 숙소는 `route_stays`에 저장하며 수동 여행은 추천 요청 테이블을 사용하지 않음. 기존 추천 여행 데이터도 새 저장소로 이관 |
 | 2026-09-14 | `nearbyAnimalHospitals` 안전망 조회 기준을 `category_detail = '동물병원'`에서 정식 카테고리 `category = 'veterinary_hospital'`(동물약국 제외)로 정합 — #291 `e4a1c7d9b203`(동물병원 재분류) 반영. 현재 데이터에선 결과 동일(회귀 없음), 신규 병원이 카테고리만으로 잡히도록 함 |
+| 2026-09-15 | 앱 연동 완료 (#321 #323 #325 #327) — 빈 슬롯·확인 필요·`candidates` 담기·`slotSummary` 배지, `nearbyAnimalHospitals` 섹션, `regenerate` 버튼, `isEstimated` "(예상)" 표시, `pets[].energyLevel` 컨디션 입력. 앱 프리셋·기준 문구를 실내 우선 규칙 의미로 조정 |
