@@ -24,17 +24,21 @@ function MessageState({ icon, title, description, children }: MessageStateProps)
   );
 }
 
-/** 기록이 하나도 없는 상태 */
+/**
+ * 기록이 하나도 없는 상태.
+ *
+ * **버튼을 두지 않는다.** 여기에도 '새로운 순간 남기기' 가 있었는데 `onPress` 가
+ * 없어 눌러도 아무 일이 안 났다. 같은 화면 오른쪽 위에 **동작하는 같은 버튼**이
+ * 이미 있어서, 하나를 살리는 것보다 **죽은 쪽을 없애는 편**이 낫다 —
+ * 같은 이름의 버튼 둘 중 하나만 먹히면 사용자는 앱이 고장났다고 읽는다.
+ */
 export function TravelLogEmptyState() {
   return (
     <MessageState
-      description="반려동물과 함께한 소중한 순간을 남겨보세요"
+      description="위 '새로운 순간 남기기' 로 첫 기록을 만들어 보세요"
       icon="camera-outline"
       title="아직 남겨진 여행 기록이 없어요"
-    >
-      {/* TODO: 새로운 로그 생성 화면 연결 */}
-      <Button label="새로운 순간 남기기" variant="primary" />
-    </MessageState>
+    />
   );
 }
 

@@ -188,7 +188,8 @@ export function NewMomentStepTwoScreen() {
   };
   const removePet = (petId: string) => applyPets(selectedPetIds.filter((id) => id !== petId));
   const selectedPets = pets.filter((pet) => selectedPetIds.includes(pet.petId));
-  const canContinue = Boolean(draft.localPhotoUri && selectedPlace && selectedPetIds.length > 0);
+  // 반려동물은 고르지 않아도 넘어간다 — 사람만 찍힌 사진도 기록이 된다.
+  const canContinue = Boolean(draft.localPhotoUri && selectedPlace);
   const openPlaceSearch = () => {
     setSearchQuery('');
     setSearchVisible(true);
@@ -205,9 +206,14 @@ export function NewMomentStepTwoScreen() {
             <Pressable onPress={() => router.back()} style={styles.outlineSmallButton}>
               <Text style={styles.outlineSmallLabel}>사진 변경</Text>
             </Pressable>
-            <Text style={styles.fieldLabel}>함께한 반려동물</Text>
+            <Text style={styles.fieldLabel}>함께한 반려동물 (선택)</Text>
             {pets.length === 0 ? (
-              <Text style={styles.emptyText}>등록된 반려동물이 없어요. 프로필에서 먼저 등록해 주세요.</Text>
+              <View style={styles.emptyPets}>
+                <Text style={styles.emptyText}>등록된 반려동물이 없어요. 없어도 기록은 만들 수 있어요.</Text>
+                <Pressable onPress={() => router.push('/pets/new')} style={styles.outlineSmallButton}>
+                  <Text style={styles.outlineSmallLabel}>반려동물 등록하기</Text>
+                </Pressable>
+              </View>
             ) : (
               <View style={styles.petChips}>
                 {selectedPets.map((pet) => (
@@ -370,6 +376,10 @@ const styles = StyleSheet.create({
   content: { gap: spacing.sm, paddingBottom: spacing.md, paddingHorizontal: spacing.md },
   directPlaceRow: { alignItems: 'center', borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.md },
   emptyCard: { borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
+  emptyPets: {
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+  },
   emptyText: { color: colors.textSecondary, fontSize: 13, lineHeight: 18 },
   fieldLabel: { color: colors.textPrimary, fontSize: 14, fontWeight: '700' },
   footer: { borderTopColor: colors.border, borderTopWidth: 1, padding: spacing.md },

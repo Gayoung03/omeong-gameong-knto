@@ -7,7 +7,12 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { IconButton } from '@/src/components/ui/IconButton';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
-export function TravelLogHeader() {
+type TravelLogHeaderProps = {
+  /** 사용법 안내를 다시 연다. 안내는 처음 한 번만 자동으로 뜨므로 되돌아올 길이 필요하다. */
+  onHelp?: () => void;
+};
+
+export function TravelLogHeader({ onHelp }: TravelLogHeaderProps) {
   const router = useRouter();
   const goBack = useSafeBack('/travel-logs');
 
@@ -17,6 +22,13 @@ export function TravelLogHeader() {
         <View style={styles.titleGroup}>
           <IconButton accessibilityLabel="뒤로 가기" icon="chevron-back" onPress={goBack} />
           <Text style={styles.title}>여행 기록</Text>
+          {onHelp && (
+            <IconButton
+              accessibilityLabel="사용법 안내"
+              icon="help-circle-outline"
+              onPress={onHelp}
+            />
+          )}
         </View>
         {/* 헤더 보조 액션이라 공통 Button 대신 이 화면 전용 pill 스타일을 쓴다. */}
         <Pressable
