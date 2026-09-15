@@ -75,6 +75,18 @@ export function PlaceDetailScreen({ placeId, tripId, scheduleId }: PlaceDetailSc
   const initialScheduleId =
     schedules.find((schedule) => schedule.id === scheduleId)?.id ?? schedules[0]?.id ?? '';
 
+  const openMap = (focusPlaceId: string) => {
+    if (tripId) {
+      router.push({
+        pathname: '/trips/[tripId]/places',
+        params: { focusPlaceId, tripId, scheduleId: scheduleId ?? '', view: 'map' },
+      });
+      return;
+    }
+
+    router.push({ pathname: '/place-explorer', params: { focusPlaceId, view: 'map' } });
+  };
+
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScreenHeader title={tripId ? '일정 장소 상세' : '장소 상세'} />
@@ -99,7 +111,11 @@ export function PlaceDetailScreen({ placeId, tripId, scheduleId }: PlaceDetailSc
         />
       ) : (
         <>
-          <PlaceDetailView hasRegisterAction={Boolean(tripId)} place={place} />
+          <PlaceDetailView
+            hasRegisterAction={Boolean(tripId)}
+            onPressMap={() => openMap(place.id)}
+            place={place}
+          />
           {tripId ? (
             <View style={styles.registerFooter}>
               {addErrorMessage ? (
@@ -143,9 +159,11 @@ export function PlaceDetailScreen({ placeId, tripId, scheduleId }: PlaceDetailSc
 
 function PlaceDetailView({
   hasRegisterAction,
+  onPressMap,
   place,
 }: {
   hasRegisterAction: boolean;
+  onPressMap: () => void;
   place: PlaceDetail;
 }) {
   const chips = [place.region, place.environment].filter((value): value is string =>
@@ -288,10 +306,19 @@ function PlaceDetailView({
 
       <View style={styles.card}>
         <Text style={styles.cardLabel}>주소</Text>
-        <View style={styles.addressRow}>
-          <Ionicons color={colors.textSecondary} name="location-outline" size={16} />
+        <Pressable
+          accessibilityHint="지도에서 이 장소의 위치를 표시합니다"
+          accessibilityRole="link"
+          onPress={onPressMap}
+          style={({ pressed }) => [styles.addressRow, pressed && styles.pressed]}
+        >
+          <Ionicons color={colors.primary} name="location-outline" size={18} />
           <Text style={styles.addressText}>{place.address}</Text>
-        </View>
+          <View style={styles.mapLinkLabel}>
+            <Text style={styles.mapLinkText}>지도 보기</Text>
+            <Ionicons color={colors.primary} name="chevron-forward" size={15} />
+          </View>
+        </Pressable>
 
         {chips.length > 0 && (
           <View style={styles.chipRow}>
@@ -363,11 +390,7 @@ function getCautionItems(place: PlaceDetail): string[] {
       add('목줄을 착용해 주세요.');
       recognized = true;
     }
-    if (
-      compact.includes('케이지') ||
-      compact.includes('이동장') ||
-      compact.includes('켄넬')
-    ) {
+    if (compact.includes('케이지') || compact.includes('이동장') || compact.includes('켄넬')) {
       add('이동장이나 케이지를 사용해 주세요.');
       recognized = true;
     }
@@ -423,7 +446,8 @@ function getPolicyFacts(place: PlaceDetail): { icon: PlaceIconName; label: strin
   if (extraFeeAmount !== null) {
     facts.push({
       icon: 'wallet-outline',
-      label: extraFeeAmount === 0 ? '추가 요금 없음' : `추가 요금 ${extraFeeAmount.toLocaleString()}원`,
+      label:
+        extraFeeAmount === 0 ? '추가 요금 없음' : `추가 요금 ${extraFeeAmount.toLocaleString()}원`,
     });
   }
   return facts;
@@ -434,11 +458,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.xs + 2,
+    minHeight: 44,
   },
   addressText: {
-    color: colors.textPrimary,
+    color: colors.primaryDeep,
     flex: 1,
     fontSize: typography.body.fontSize - 2,
+    textDecorationLine: 'underline',
   },
   card: {
     backgroundColor: colors.surface,
@@ -626,6 +652,16 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     flex: 1,
     fontSize: typography.caption.fontSize,
+  },
+  mapLinkLabel: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 2,
+  },
+  mapLinkText: {
+    color: colors.primary,
+    fontSize: typography.caption.fontSize,
+    fontWeight: '700',
   },
   name: {
     color: colors.basalt,
