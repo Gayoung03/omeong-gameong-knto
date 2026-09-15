@@ -292,6 +292,15 @@ export type RouteStayCreateRequest = {
   checkOutAt?: string;
 };
 
+/** 이번 여행 컨디션. 프로필의 활동량을 이번 여행에 한해 덮어쓴다 (Phase 4, 2026-09-08) */
+export type ServerPetEnergyLevel = 'low' | 'normal' | 'high';
+
+export type RouteRequestPetInput = {
+  petId: string;
+  /** 생략하면 프로필 활동량을 그대로 쓴다 */
+  energyLevel?: ServerPetEnergyLevel;
+};
+
 export type RouteRequestCreateRequest = {
   title?: string;
   startAt: string;
@@ -306,6 +315,11 @@ export type RouteRequestCreateRequest = {
   userCriteria: string[];
   requestText?: string;
   petIds: string[];
+  /**
+   * 반려동물별 컨디션. **보내면 `petIds` 는 무시**되고 `[]` 를 명시하면 반려동물 없음.
+   * 구서버 호환으로 `petIds` 도 같이 보낸다.
+   */
+  pets?: RouteRequestPetInput[];
   stays: RouteStayCreateRequest[];
 };
 
