@@ -609,7 +609,7 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
 | `slotStatus` | **[재설계 2026-09-07]** `filled` \| `needs_verification` \| `unfilled`. `unfilled`면 `place`·시각이 `null`이고 `candidates`에 확인 필요 후보가 붙음. `needs_verification`이면 장소는 있지만 동반 여부가 미확인 — 앱은 "확인 필요" 라벨과 `place.phone`을 함께 보여줌 |
 | `candidates` | **[재설계 2026-09-07]** 슬롯별 대안 후보 최대 3개 (`route_item_candidates`). 모양은 `edit-suggestions`의 `suggestions` 항목과 같고 `requiresVerification`과 `phone`(확인 전화용, `places.phone`)을 추가. 같은 날짜의 항목이 편집되면 그 날짜의 후보는 모두 지워져 빈 배열이 됨 |
 | `slotSummary` | 계산값. `route_items.slot_status` 집계. **출발지·숙소 앵커(체류시간 0인 항목)는 빼고 방문 슬롯만 센다** (2026-09-08 결정). 상태 조회 응답과 같음 |
-| `nearbyAnimalHospitals` | 계산값, 저장 안 함. 숙소와 각 날짜 동선에서 가까운 동물병원(`places.category_detail = '동물병원'`) 최대 3곳. `is24Hours`는 이름의 "24시"로 판정 (영업시간 데이터가 없음). 조립·한계는 아래 [`nearbyAnimalHospitals` 안전망 규칙] |
+| `nearbyAnimalHospitals` | 계산값, 저장 안 함. 숙소와 각 날짜 동선에서 가까운 동물병원(`places.category = 'veterinary_hospital'`, 동물약국 제외) 최대 3곳. `is24Hours`는 이름의 "24시"로 판정 (영업시간 데이터가 없음). 조립·한계는 아래 [`nearbyAnimalHospitals` 안전망 규칙] |
 | `place.petPolicy` | 동반 조건과 근거 출처. [`places.md`](./places.md) 상세의 `petPolicy` 부분집합 |
 | `place.cuisine` `place.phone` | 음식 종류(카카오 로컬 분류로 보강, 없으면 `null`)와 전화번호 |
 | `recommendationReason` | **[의미 변경 2026-09-07]** 내부 점수 나열("반려 편의 80점")이 아니라 **동반 조건 + 근거 출처 문장**. 규칙 템플릿으로 만들며 LLM을 쓰지 않음. 조립 형식은 아래 [`recommendationReason` 조립 규칙] |
@@ -673,7 +673,7 @@ GET /api/v1/routes?status=saved&limit=20&offset=0
 
 ### `nearbyAnimalHospitals` 안전망 규칙 [재설계 Phase 6, 2026-09-09]
 
-- 여행 항목(출발지·숙소 앵커 포함)의 **앵커 좌표**를 중심으로 `places.category_detail = '동물병원'`을 조회한다. 별도 좌표 조회 없이 이미 응답에 있는 좌표를 쓴다.
+- 여행 항목(출발지·숙소 앵커 포함)의 **앵커 좌표**를 중심으로 `places.category = 'veterinary_hospital'`(동물약국 제외)을 조회한다. 별도 좌표 조회 없이 이미 응답에 있는 좌표를 쓴다.
 - 좌표 인덱스로 **bounding-box(반경 5km)** 후 **haversine** 거리 정렬, 최대 **3곳**. 정렬은 `is24Hours` 우선 → 거리순.
 - `is24Hours`는 영업시간 데이터가 없어 **이름에 `24시` 포함** 여부로만 판정한다.
 - 저장하지 않는 계산값이다.
@@ -1024,3 +1024,4 @@ AI 추천 후보 또는 사용자가 직접 고른 DB 장소로 일정 항목을
 | 2026-09-07 | Phase 1 검수 반영 (#263) — `weather` 가중치는 Phase 5 전까지 **0.10 유지**(healing 프리셋 무효화 방지), `preferredTags`는 라벨·코드 모두 받아 **코드로 저장**함을 명시. TMAP 호출은 하루 12회 상한(실제 호출만 카운트, 캐시 적중 제외), 오류 시 여행 단위로 추정 폴백. 추정식을 실측 기반(7분 + 직선÷600m/min)으로 교체하고 상세 응답 `moveToNext`에 `isEstimated` 추가 — 캐시 만료 후 이동 정보가 사라지던 문제 해소 |
 | 2026-09-09 | Phase 7 구현 반영 (#281) — `regenerate` 엔드포인트 구현("미구현" 문단 제거). 새 `version = max+1`, UNIQUE 충돌 시 1회 재시도 후 `409`, 원본이 `generating`이어도 허용(열린 질문 기록). 추천 서비스(`route_recommendation`)를 형제 모듈로 분해(동작 불변) |
 | 2026-09-13 | 수동 여행 생성 구현 — 여행 속도 입력 없이 내부 기본값 `normal` 사용. 최종 여행 출발지는 `routes`, 숙소는 `route_stays`에 저장하며 수동 여행은 추천 요청 테이블을 사용하지 않음. 기존 추천 여행 데이터도 새 저장소로 이관 |
+| 2026-09-14 | `nearbyAnimalHospitals` 안전망 조회 기준을 `category_detail = '동물병원'`에서 정식 카테고리 `category = 'veterinary_hospital'`(동물약국 제외)로 정합 — #291 `e4a1c7d9b203`(동물병원 재분류) 반영. 현재 데이터에선 결과 동일(회귀 없음), 신규 병원이 카테고리만으로 잡히도록 함 |
