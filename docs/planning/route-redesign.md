@@ -1,13 +1,12 @@
 # 루트 추천 재설계 — 정의·리뷰·스키마 변경안
 
-작성일: 2026-09-07 · 갱신: 2026-09-08 · 상태: **Phase 1~5 구현 완료, PR 리뷰·머지 대기** · 작성: viowlet
+작성일: 2026-09-07 · 갱신: 2026-09-15 · 상태: **Phase 1~7 구현·배포 완료 — 데이터 보강 일부·앱 연동 남음** · 작성: viowlet
 
-> **현재 상태 (2026-09-08)**
+> **현재 상태 (2026-09-15)**
 >
-> - 구현: Phase 1·1b(#267) → 2(#272) → 3(#273) → 4(#274) → 5(#275) 모두 로컬 검수 통과, PR 열림. 스택 PR이라 **#266 → #267 → #272 → #273 → #274 → #275 순서로 merge commit**으로 합치고, 앞 PR이 머지되면 뒤 PR의 base를 `dev/viowlet-main`으로 바꾼다.
-> - DB: 마이그레이션 4개(`c1a2b3d4e5f6` cuisine → `d2b3c4e5f6a7` slot_status·후보 → `e3c4d5f6a7b8` pets 특성 → `a1f5c9d3e7b2` weather 백필)와 Phase 2 스크립트(명소 시드·정책 갱신·환경 백필·카테고리 정정·cuisine 추출)는 **어느 DB에도 적용하지 않았다**. 적용 시점·순서는 §6 Phase 2 행과 §3.7 참고.
-> - 보류 중인 판단: **카카오 로컬 데이터 저장 문제** — [`kakao-data-replacement-assessment.md`](./kakao-data-replacement-assessment.md). 카카오 단독 장소 598곳·지오코딩 좌표·`cuisine`이 걸려 있다. 인허가 데이터 실측(파일 확보 필요)과 팀 결정 전까지 DB 데이터 삭제·변경 금지, `cuisine` 추출 미실행, 명소 시드 좌표는 적용 전 공공 지오코더로 재확인.
-> - 남은 단계: Phase 6(근거 문장 템플릿·출처 노출, LLM 여행 설명 1회, 동물병원 안전망), Phase 7(`regenerate`, 시나리오 매트릭스 측정). 앱 팀 통보(`docs/api/README.md` 8장). 명소 전화 확인 8곳(`apps/api/scripts/data/landmarks/README.md`).
+> - 구현: Phase 1~7 전부 main 머지·Railway 배포 완료 (#278 2026-09-09, Phase 6 #280, Phase 7 #283). 마이그레이션 4개(`c1a2b3d4e5f6` cuisine → `d2b3c4e5f6a7` slot_status·후보 → `e3c4d5f6a7b8` pets 특성 → `a1f5c9d3e7b2` weather 백필)는 팀 RDS·Railway 양쪽 적용됨.
+> - 데이터: 카테고리 오염 정정 6건(#298)은 RDS·Railway 적용 완료. **환경 백필·동물병원 비워크인 정정(#319)은 적용 대기.** 명소 큐레이션 28곳·`cuisine` 추출은 카카오 로컬 저장 문제([`kakao-data-replacement-assessment.md`](./kakao-data-replacement-assessment.md)) 결정 전까지 **보류** — 명소 시드 좌표는 카카오 지오코딩이라 적용 전 공공 지오코더로 재확인, 명소 전화 확인 8곳은 하지 않기로 함(2026-09-13). 시나리오 매트릭스는 기준선만 측정([`route-scenario-matrix.md`](./route-scenario-matrix.md)), 데이터 보강 후 재측정.
+> - 앱 연동: 재설계로 추가된 응답·요청 중 앱이 쓰는 것은 `explanation`·`recommendationReason` 뿐. `slotStatus`·`slotSummary`·`candidates`(+`phone`)·`nearbyAnimalHospitals`·`isEstimated`·`regenerate`·`pets[]`(컨디션) 는 **앱 미연동** — 앱 팀 통보([`docs/api/README.md`](../api/README.md) 8장) 필요.
 
 이 문서는 루트 추천 기능을 다시 정의하고, 그 정의에 필요한 DB 스키마 변경을 제안한다.
 API 계약 변경은 추인 후 [`docs/api/routes.md`](../api/routes.md)에, 스키마 변경은
@@ -333,8 +332,8 @@ weather_api, internal`. 후보: `jeju_open_data`. **출처 목록 확정 후 추
 | 3 | 부분 성공 + tier: 후보 3값(`VERIFIED/NEEDS_CHECK/BLOCKED`), 하드 실패 제거, 빈 슬롯 행, 후보 저장, 완성도 응답 — **구현 완료 2026-09-08** (#269, Phase 2 위 스택 브랜치. 식사 슬롯 미충족은 어떤 경로든 빈 슬롯 기록, 후보 응답 `phone`) | ① `slot_status` + `route_item_candidates` |
 | 4 | 반려동물 중심 개인화: `applied_weights` 하위호환, pets 컬럼, `pet_score(candidate, pets, condition)`, 속도 규칙 보정, 이동시간 상한 완화 단계 — **구현 완료 2026-09-08** (#270, 스택. 컨디션이 활동량을 덮어씀, 차멀미 상한은 숙소 복귀 구간 포함, 사회성은 저장만) | ② `pets` + `route_request_pets` |
 | 5 | 하루 구성 규칙: 기상청 날짜별 예보(기온 포함), 슬롯 계획(`plan_day`) 도입, `build` 분해, `weather_snapshot_id` 채움 — **구현 완료 2026-09-08** (#271, 스택. 임계값 60/80%·30℃, `itinerary` 패키지 분해, `SlotSearchContext`·`Rung`) | — |
-| 6 | 근거 문장 템플릿 + 출처 노출, LLM 여행 설명 1회, 동물병원 안전망 모듈 | — |
-| 7 | 여유 시: `regenerate` 엔드포인트(명세만 있고 미구현), `route_recommendation.py` 분해 | — |
+| 6 | 근거 문장 템플릿 + 출처 노출, LLM 여행 설명 1회, 동물병원 안전망 모듈 — **구현 완료 2026-09-09** (#279, PR #280. 안전망 조회는 `category = 'veterinary_hospital'` 기준으로 정합 #312) | — |
+| 7 | 여유 시: `regenerate` 엔드포인트, `route_recommendation.py` 분해, 시나리오 매트릭스 측정 — **구현 완료 2026-09-09** (#281, PR #283. 기준선 측정 [`route-scenario-matrix.md`](./route-scenario-matrix.md)) | — |
 
 시연이 임박하면 Phase 4~5를 자른다. **자를 수 없는 것은 1(지연), 2(데이터), 3(부분 성공)**이다.
 

@@ -633,7 +633,7 @@ NOT NULL이라 업로드 없이는 여행기록 기능 자체가 성립하지 �
 - [x] 동물병원 안전망 — 응답 계산값 `nearbyAnimalHospitals`, 저장 안 함
 - [x] 관광공사 TourAPI — **저장 금지 유지**(실시간만). 카카오 로컬 — 음식 종류(`places.cuisine`) 저장 가능
 - [ ] 펫 맡김(펫호텔) 추천 — **보류**
-- [ ] `POST /route-requests`의 반려동물별 컨디션 입력 형태 — **앱 팀 협의** (유력안: `pets[]` 추가, `petIds` 유지)
+- [x] `POST /route-requests`의 반려동물별 컨디션 입력 형태 — **확정(2026-09-15)**: `pets[]`(`petId` + `energyLevel`) 추가, `petIds` 유지. 앱은 선택된 반려동물 아래 컨디션 칩(조금 지쳐요=`low` / 평소처럼=생략 / 아주 쌩쌩해요=`high`)으로 받아 `pets[]`·`petIds`를 함께 보낸다 (#327)
 
 앱에서 함께 고쳐야 하는 것: 폴링 종료 조건에 부분 성공 반영, 빈 슬롯(`slotStatus`) 렌더링,
 `recommendationScore` 기반 체크 아이콘 조건 재검토, `candidates` 바텀시트, 상태 응답의 `slotSummary`.

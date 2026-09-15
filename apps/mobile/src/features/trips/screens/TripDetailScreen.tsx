@@ -13,6 +13,7 @@ import { ChecklistTab } from '../components/ChecklistTab';
 import { DayChips } from '../components/DayChips';
 import { MapTab } from '../components/MapTab';
 import { MemoTab } from '../components/MemoTab';
+import { AnimalHospitalSection } from '../components/AnimalHospitalSection';
 import { NearbyPlacesSection } from '../components/NearbyPlacesSection';
 import { ScheduleTimeline } from '../components/ScheduleTimeline';
 import { TripDistanceSummary } from '../components/TripDistanceSummary';
@@ -272,6 +273,8 @@ export function TripDetailScreen({ tripId }: { tripId: string }) {
           >
             <Text style={styles.addButtonText}>＋ 장소 추가</Text>
           </Pressable>
+
+          <AnimalHospitalSection hospitals={trip.nearbyAnimalHospitals} />
         </ScrollView>
       )}
 
