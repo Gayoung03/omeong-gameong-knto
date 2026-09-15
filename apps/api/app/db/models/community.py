@@ -1,7 +1,7 @@
 """Favorites, reviews, travel logs, support, notifications, and chat models."""
 
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -141,6 +141,14 @@ class TravelLog(Base):
     generation_status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="idle"
     )
+    #: 생성이 실패한 이유를 **사용자에게 보일 한국어 한 줄**로 담는다.
+    #:
+    #: 상태만으로는 "다른 사진을 고르라"와 "잠시 후 다시 하라"가 구분되지 않는다.
+    #: 앞엣것은 같은 사진으로 다시 눌러도 또 실패하는데, 재시도 한 번에 카드 한 장
+    #: 값이 나간다(약 66원). 사유별 문구는 `travel_card/agent.py` 의 `MESSAGES` 다.
+    #:
+    #: 성공하면 비운다 — 지난 실패 문구가 남아 있으면 완료 화면에 섞인다.
+    generation_message: Mapped[str | None] = mapped_column(Text)
     personal_message: Mapped[str | None] = mapped_column(Text)
     is_representative: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
@@ -256,8 +264,14 @@ class AdminInquiryAuditLog(Base):
     previous_status: Mapped[str | None] = mapped_column(String(20))
     next_status: Mapped[str | None] = mapped_column(String(20))
     changes: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    #: 파이썬 측 기본값으로 채운다. DB `now()` 는 트랜잭션 시작 시각이라 한 요청 안에서
+    #: 남긴 로그 두 건이 동률이 되고 created_at 정렬이 비결정이 된다(#282). id 는 uuid4 라
+    #: 보조 정렬 키로 못 쓴다. server_default 는 원시 INSERT 대비 폴백으로 유지.
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
     )
 
 
@@ -282,8 +296,14 @@ class AdminNoticeAuditLog(Base):
     previous_status: Mapped[str | None] = mapped_column(String(20))
     next_status: Mapped[str | None] = mapped_column(String(20))
     changes: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    #: 파이썬 측 기본값으로 채운다. DB `now()` 는 트랜잭션 시작 시각이라 한 요청 안에서
+    #: 남긴 로그 두 건이 동률이 되고 created_at 정렬이 비결정이 된다(#282). id 는 uuid4 라
+    #: 보조 정렬 키로 못 쓴다. server_default 는 원시 INSERT 대비 폴백으로 유지.
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
     )
 
 

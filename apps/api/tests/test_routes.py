@@ -925,7 +925,7 @@ def test_동선_근처_동물병원_안전망이_24시_우선_거리순으로_�
     near_regular = Place(
         id=uuid.uuid4(),
         name="가까운 동물병원",
-        category="attraction",
+        category="veterinary_hospital",
         category_detail="동물병원",
         latitude=Decimal("33.3960"),  # ~0.2km
         longitude=Decimal(str(base_lng)),
@@ -934,7 +934,7 @@ def test_동선_근처_동물병원_안전망이_24시_우선_거리순으로_�
     farther_24h = Place(
         id=uuid.uuid4(),
         name="24시동물병원",
-        category="attraction",
+        category="veterinary_hospital",
         category_detail="동물병원",
         latitude=Decimal("33.4020"),  # ~0.9km
         longitude=Decimal(str(base_lng)),
@@ -943,13 +943,23 @@ def test_동선_근처_동물병원_안전망이_24시_우선_거리순으로_�
     out_of_range = Place(
         id=uuid.uuid4(),
         name="먼 동물병원",
-        category="attraction",
+        category="veterinary_hospital",
         category_detail="동물병원",
         latitude=Decimal("33.5000"),  # ~11km > 5km
         longitude=Decimal(str(base_lng)),
         is_active=True,
     )
-    db.add_all([near_regular, farther_24h, out_of_range])
+    # 같은 veterinary_hospital 카테고리여도 약국(category_detail='동물약국')은 안전망에서 뺀다.
+    nearby_pharmacy = Place(
+        id=uuid.uuid4(),
+        name="가까운 동물약국",
+        category="veterinary_hospital",
+        category_detail="동물약국",
+        latitude=Decimal("33.3950"),  # ~0.15km, 범위 안이지만 약국이라 제외
+        longitude=Decimal(str(base_lng)),
+        is_active=True,
+    )
+    db.add_all([near_regular, farther_24h, out_of_range, nearby_pharmacy])
     db.flush()
 
     day_id = trip.route_days[0].id
@@ -963,6 +973,7 @@ def test_동선_근처_동물병원_안전망이_24시_우선_거리순으로_�
     names = [h["name"] for h in hospitals]
     assert names == ["24시동물병원", "가까운 동물병원"]  # 24시 우선, 그 뒤 거리순
     assert "먼 동물병원" not in names  # 5km 밖 제외
+    assert "가까운 동물약국" not in names  # 같은 카테고리라도 약국은 제외
     assert hospitals[0]["is24Hours"] is True
     assert hospitals[1]["is24Hours"] is False
     assert hospitals[0]["distanceMeters"] > 0

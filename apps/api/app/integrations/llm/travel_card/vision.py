@@ -22,6 +22,23 @@ from openai import OpenAI
 from .config import VISION_MODEL, VISION_TIMEOUT, api_key
 from .types import ImageInput, PhotoAnalysis, PhotoKind
 
+#: 화면을 가로 3 × 세로 3 으로 나눈 칸 이름. `"가로-세로"` 순서다.
+#:
+#: **좌표가 아니라 칸 이름으로 받는 이유**는 정확도다. 픽셀 좌표나 바운딩 박스를
+#: 물으면 그럴듯한 숫자를 주지만 자주 틀린다. "머리가 왼쪽인가 가운데인가, 위인가
+#: 중간인가" 는 훨씬 안정적으로 맞힌다. 우리에게 필요한 것도 그 정도다 — 글씨를
+#: 저 칸에서 비키게 하는 것이 목적이지 머리를 픽셀 단위로 오려내려는 것이 아니다.
+#:
+#: 9칸 중 3칸까지만 받는다(`_MAX_HEAD_ZONES`). 머리가 많은 사진에서 전부 막으면
+#: 글씨 놓을 곳이 없어져 배치가 무너진다 — 규칙 누적이 자유를 없앴던 것과 같은 실패다.
+ZONES = frozenset(
+    f"{col}-{row}" for col in ("왼쪽", "가운데", "오른쪽") for row in ("위", "중간", "아래")
+)
+
+#: 프롬프트와 코드 양쪽에 같은 상한을 둔다. 프롬프트만 믿으면 넘겨받은 뒤 새고,
+#: 코드만 두면 모델이 아무 순서로나 9칸을 채워 앞 3개가 큰 머리가 아니게 된다.
+_MAX_HEAD_ZONES = 3
+
 #: 분석이 실패했을 때 쓰는 값. safe=False 라 파이프라인이 여기서 멈춘다.
 _BLOCKED = PhotoAnalysis(kind=PhotoKind.OTHER, items=[], safe=False, flags=["analysis_failed"])
 
@@ -33,6 +50,7 @@ SYSTEM_PROMPT = """너는 반려동물 동반 제주 여행 앱의 사진 검수
 {
   "kind": "pet_solo | pet_with_human | pet_with_pet | scenery | food | object | other",
   "items": ["사진에 실제로 보이는 것", "..."],
+  "headZones": ["왼쪽-중간"],
   "safe": true,
   "flags": []
 }
@@ -67,6 +85,24 @@ SYSTEM_PROMPT = """너는 반려동물 동반 제주 여행 앱의 사진 검수
   배경에 우연히 찍힌 다른 사람·다른 동물은 넣지 않는다.
   사진에 없는 것을 추측해서 넣지 않는다. 장소 이름을 추측하지 않는다.
   **동작을 추측하지 마라** — 서 있는 사람을 "앉아 있다" 고 적으면 안 된다.
+
+[headZones]
+  **사람 또는 동물의 머리**가 있는 칸 이름을 적는다. 없으면 빈 배열이다.
+
+  화면을 가로로 3등분(왼쪽·가운데·오른쪽), 세로로 3등분(위·중간·아래)한
+  9칸에 이렇게 이름을 붙인다 — `"가로-세로"` 순서다.
+
+      왼쪽-위     가운데-위     오른쪽-위
+      왼쪽-중간   가운데-중간   오른쪽-중간
+      왼쪽-아래   가운데-아래   오른쪽-아래
+
+  **뒷모습·옆모습도 적는다.** 이목구비가 안 보여도 머리는 머리다 — 모자 쓴
+  뒤통수 위에 글씨가 얹히는 것도 똑같이 보기 싫다.
+
+  **머리만 적는다.** 몸통·다리·등·가방은 적지 않는다. 뒤 단계에서 이 칸을 비워 두고
+  글씨를 놓는데, 몸까지 적으면 글씨 놓을 곳이 없어진다.
+
+  **최대 3칸.** 머리가 더 많으면 **크게 나온 순서로** 3칸만 적는다.
 
 [safe / flags]
   아래 중 하나라도 해당하면 safe 를 false 로 하고 flags 에 영어 키워드를 담는다.
@@ -107,6 +143,18 @@ def _coerce_items(value: Any) -> list[str]:
     return items[:12]
 
 
+def _coerce_zones(value: Any) -> list[str]:
+    """모르는 칸 이름은 버린다. 순서는 모델이 준 대로(큰 머리 먼저) 유지한다."""
+    if not isinstance(value, list):
+        return []
+    zones: list[str] = []
+    for raw in value:
+        name = str(raw).strip()
+        if name in ZONES and name not in zones:
+            zones.append(name)
+    return zones[:_MAX_HEAD_ZONES]
+
+
 def parse_analysis(raw: str) -> PhotoAnalysis:
     """모델 응답을 판정으로 바꾼다. **애매하면 차단이다.**
 
@@ -136,6 +184,7 @@ def parse_analysis(raw: str) -> PhotoAnalysis:
         items=_coerce_items(payload.get("items")),
         safe=True,
         flags=[],
+        head_zones=_coerce_zones(payload.get("headZones")),
     )
 
 
@@ -149,7 +198,7 @@ def analyze(image: ImageInput) -> PhotoAnalysis:
             model=VISION_MODEL,
             response_format={"type": "json_object"},
             temperature=0,
-            max_tokens=500,
+            max_tokens=600,  # headZones 가 늘면서 items 가 잘리지 않게 여유를 뒀다
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {

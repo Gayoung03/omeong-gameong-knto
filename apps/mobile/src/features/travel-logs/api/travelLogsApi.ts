@@ -8,8 +8,9 @@
  * 화면이 멈춘 것처럼 보이므로, 서버는 202 로 접수만 알리고 앱이
  * `getGenerationStatus` 로 완료를 확인한다.
  *
- * 이미지를 실제로 그리는 부분은 아직 서버에서 임시 구현이라 원본 사진이
- * 그대로 결과물로 온다. 앱이 고칠 것은 없다 — 서버만 바뀌면 된다.
+ * 이미지 생성은 **서버가 진짜로 카드를 만든다**(2026-09-14 연결). 사진 분석·문구
+ * 생성·이미지 편집·합성을 거치므로 **완료까지 수십 초**가 걸리고, 한 장마다 비용이
+ * 나간다. 그래서 앱은 재시도를 사용자가 누를 때만 한다 — 자동 재시도를 넣지 않는다.
  */
 
 import { apiClient } from '@/src/services/apiClient';
@@ -120,6 +121,19 @@ export async function getTravelLog(logId: string): Promise<TravelLog> {
   return toTravelLog(data);
 }
 
+/**
+ * 생성이 `failed` 로 끝났다.
+ *
+ * `userMessage` 는 서버가 준 한국어 안내다. 서버가 사유를 못 남긴 경우(예상 못 한
+ * 예외·옛 기록)에는 null 이고, 그때는 부르는 쪽이 기본 문구를 쓴다.
+ */
+export class GenerationFailedError extends Error {
+  constructor(readonly userMessage: string | null) {
+    super(userMessage ?? 'GENERATION_FAILED');
+    this.name = 'GenerationFailedError';
+  }
+}
+
 /** 완료를 기다리며 다시 물어보는 간격 */
 const POLL_INTERVAL_MS = 2_000;
 
@@ -129,8 +143,13 @@ const POLL_INTERVAL_MS = 2_000;
  * 서버가 재시작되면 진행 중이던 건이 `generating` 에 영영 멈춘다. 제한이 없으면
  * 앱이 그 화면에서 끝없이 돈다. 포기해도 기록은 서버에 남아 있어서
  * 목록의 "다시 만들기"로 이어갈 수 있다.
+ *
+ * **서버 타임아웃 합계보다 길어야 한다.** 카드 파이프라인은 사진 분석 30초 ·
+ * 문구 30초 · 이미지 편집 180초까지 기다리므로(`travel_card/config.py`), 앱이
+ * 2분에 포기하면 **서버가 아직 만들고 있는데 화면만 실패로 바뀐다** — 돈은 나가고
+ * 사용자는 못 받는 최악의 조합이다. 합계에 여유를 더해 5분으로 둔다.
  */
-const POLL_TIMEOUT_MS = 120_000;
+const POLL_TIMEOUT_MS = 300_000;
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -150,11 +169,11 @@ export async function waitForGeneration(
   const deadline = Date.now() + POLL_TIMEOUT_MS;
 
   for (;;) {
-    const { generationStatus } = await getGenerationStatus(logId);
+    const { generationStatus, generationMessage } = await getGenerationStatus(logId);
     onStatus?.(generationStatus);
 
     if (generationStatus === 'completed') return getTravelLog(logId);
-    if (generationStatus === 'failed') throw new Error('GENERATION_FAILED');
+    if (generationStatus === 'failed') throw new GenerationFailedError(generationMessage);
     if (Date.now() >= deadline) throw new Error('GENERATION_TIMEOUT');
 
     await wait(POLL_INTERVAL_MS);
