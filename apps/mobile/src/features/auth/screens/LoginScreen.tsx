@@ -15,24 +15,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { isAxiosError } from 'axios';
 
 import { getApiErrorMessage } from '@/src/services/apiError';
-import { brandColors, colors } from '@/src/theme';
+import { colors } from '@/src/theme';
 
 import { AuthBrand } from '../components/AuthBrand';
 import { AuthHeader } from '../components/AuthHeader';
 import { IconTextField } from '../components/IconTextField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { getAuthSession, signIn } from '../services/authStorage';
-import { startKakaoLogin } from '../services/kakaoLogin';
-
-/**
- * 각 사의 브랜드 가이드라인에 규정된 색이라 theme 토큰으로 치환하지 않는다.
- * 값은 `theme/colors.ts` 의 `brandColors` 에 모아두었다.
- */
-const socialProviders = [
-  { label: '네이버', shortLabel: 'N', ...brandColors.naver },
-  { label: '카카오', shortLabel: '●', ...brandColors.kakao },
-  { label: '구글', shortLabel: 'G', ...brandColors.google },
-];
 
 export function LoginScreen() {
   const router = useRouter();
@@ -146,36 +135,6 @@ export function LoginScreen() {
               <PrimaryButton label="로그인" onPress={() => void handleLogin()} />
             </View>
 
-            <View style={styles.dividerRow}>
-              <View style={styles.divider} />
-              <Text style={styles.dividerText}>또는 다른 방법으로 로그인</Text>
-              <View style={styles.divider} />
-            </View>
-
-            <View style={styles.socialRow}>
-              {socialProviders.map((provider) => (
-                <Pressable
-                  accessibilityLabel={`${provider.label} 로그인`}
-                  key={provider.label}
-                  onPress={() =>
-                    // 카카오만 연결됐다. 네이버·구글은 기존 "준비 중" 안내 유지.
-                    provider.label === '카카오'
-                      ? startKakaoLogin()
-                      : setNoticeMessage(`${provider.label} 로그인은 준비 중이에요.`)
-                  }
-                  style={({ pressed }) => [
-                    styles.socialButton,
-                    { backgroundColor: provider.background },
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={[styles.socialLabel, { color: provider.text }]}>
-                    {provider.shortLabel}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
             <Pressable onPress={() => router.push('/signup')} style={styles.signupPrompt}>
               <Text style={styles.signupPromptText}>계정이 없으신가요?</Text>
               <Text style={styles.signupLink}>회원가입</Text>
@@ -225,21 +184,6 @@ const styles = StyleSheet.create({
   },
   checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
   optionText: { color: colors.textStrong, fontSize: 13 },
-  dividerRow: { alignItems: 'center', flexDirection: 'row', gap: 12, marginTop: 26 },
-  divider: { backgroundColor: colors.border, flex: 1, height: 1 },
-  dividerText: { color: colors.iconGray, fontSize: 12 },
-  socialRow: { flexDirection: 'row', gap: 20, justifyContent: 'center', marginTop: 18 },
-  socialButton: {
-    alignItems: 'center',
-    borderColor: colors.divider,
-    borderRadius: 25,
-    borderWidth: 1,
-    height: 50,
-    justifyContent: 'center',
-    width: 50,
-  },
-  socialLabel: { fontSize: 22, fontWeight: '900' },
-  pressed: { opacity: 0.7 },
   signupPrompt: {
     alignItems: 'center',
     borderColor: colors.basaltSoft,

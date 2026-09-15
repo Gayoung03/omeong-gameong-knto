@@ -30,9 +30,14 @@ const mapColors = {
   categoryBg: colors.seaSoft,
 } as const;
 
-export function buildKakaoMapDocument(appKey: string, places: KakaoMapPlace[]) {
+export function buildKakaoMapDocument(
+  appKey: string,
+  places: KakaoMapPlace[],
+  focusedPlaceId?: string,
+) {
   const encodedAppKey = encodeURIComponent(appKey);
   const serializedPlaces = serializeForInlineScript(places);
+  const serializedFocusedPlaceId = serializeForInlineScript(focusedPlaceId ?? null);
 
   return `<!doctype html>
 <html lang="ko">
@@ -77,6 +82,7 @@ export function buildKakaoMapDocument(appKey: string, places: KakaoMapPlace[]) {
     <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodedAppKey}&autoload=false"></script>
     <script>
       const places = ${serializedPlaces};
+      const focusedPlaceId = ${serializedFocusedPlaceId};
       const status = document.getElementById('status');
 
       function showError(message) {
@@ -126,6 +132,9 @@ export function buildKakaoMapDocument(appKey: string, places: KakaoMapPlace[]) {
 
           const bounds = new window.kakao.maps.LatLngBounds();
           let openInfoWindow = null;
+          let focusedMarker = null;
+          let focusedInfoWindow = null;
+          let focusedPosition = null;
 
           places.forEach(function (place) {
             const position = new window.kakao.maps.LatLng(place.latitude, place.longitude);
@@ -141,10 +150,23 @@ export function buildKakaoMapDocument(appKey: string, places: KakaoMapPlace[]) {
               openInfoWindow = infoWindow;
             });
 
+            if (place.id === focusedPlaceId) {
+              focusedMarker = marker;
+              focusedInfoWindow = infoWindow;
+              focusedPosition = position;
+            }
+
             bounds.extend(position);
           });
 
-          map.setBounds(bounds, 56, 56, 56, 56);
+          if (focusedMarker && focusedInfoWindow && focusedPosition) {
+            map.setCenter(focusedPosition);
+            map.setLevel(4);
+            focusedInfoWindow.open(map, focusedMarker);
+            openInfoWindow = focusedInfoWindow;
+          } else {
+            map.setBounds(bounds, 56, 56, 56, 56);
+          }
           status.style.display = 'none';
         });
       }

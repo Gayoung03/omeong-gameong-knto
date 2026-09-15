@@ -23,6 +23,7 @@ import { colors, radius, shadow, spacing } from '@/src/theme';
 
 import { InteractivePlaceMap } from '../components/InteractivePlaceMap';
 import { placeCategories } from '../constants/placeCategories';
+import { usePlaceDetail } from '../hooks/usePlaceDetail';
 import { usePlaces } from '../hooks/usePlaces';
 import { isPlaceRegion, placeRegions, type PlaceRegionFilter } from '../constants/placeRegions';
 import type { Place } from '../types/place';
@@ -43,7 +44,11 @@ type PlaceExplorerScreenProps = {
 };
 
 export function PlaceExplorerScreen({ tripId, scheduleId }: PlaceExplorerScreenProps = {}) {
-  const { region, view } = useLocalSearchParams<{ region?: string; view?: string }>();
+  const { focusPlaceId, region, view } = useLocalSearchParams<{
+    focusPlaceId?: string;
+    region?: string;
+    view?: string;
+  }>();
   const regionScrollRef = useRef<ScrollView>(null);
   const listRef = useRef<FlatList<Place>>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -55,6 +60,7 @@ export function PlaceExplorerScreen({ tripId, scheduleId }: PlaceExplorerScreenP
   const [viewMode, setViewMode] = useState<ViewMode>(view === 'map' ? 'map' : 'list');
   // 장소 목록도 저장 목록도 서버가 정본이다. 목데이터는 더 이상 쓰지 않는다.
   const { data: places = [], isPending } = usePlaces();
+  const { data: focusedPlace } = usePlaceDetail(focusPlaceId ?? '');
   const savedPlaceIds = useSavedPlaceIds();
   const toggleSavedPlace = useToggleSavedPlace();
 
@@ -251,7 +257,11 @@ export function PlaceExplorerScreen({ tripId, scheduleId }: PlaceExplorerScreenP
           style={styles.resultsList}
         />
       ) : (
-        <InteractivePlaceMap places={filteredPlaces} />
+        <InteractivePlaceMap
+          focusedPlace={focusedPlace}
+          focusedPlaceId={focusPlaceId}
+          places={filteredPlaces}
+        />
       )}
 
       {/* 지도 모드에는 스크롤할 목록이 없으므로 리스트 모드에서만 띄운다. */}

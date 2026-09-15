@@ -9,5 +9,6 @@ export type KakaoMapPlace = {
 
 export type KakaoPlaceMapProps = {
   appKey: string;
+  focusedPlaceId?: string;
   places: KakaoMapPlace[];
 };
