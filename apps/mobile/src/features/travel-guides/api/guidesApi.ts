@@ -8,6 +8,7 @@ import type {
   PreparationGuide,
   TransportGuide,
 } from '../constants/travelGuideContent';
+import { OFFICIAL_SOURCES, type OfficialSource } from '../constants/officialSources';
 
 type GuideCategoryApi = 'airline' | 'ferry' | 'preparation';
 type CarrierTypeApi = 'airline' | 'ferry';
@@ -219,6 +220,13 @@ function sourceLabel(sources: GuideSourceResponse[], sourceUrl: string | null) {
   return sourceUrl ?? '공식 출처 확인 필요';
 }
 
+/** API 가 준 주소를 먼저 쓰고, 없으면 앱에 내장한 주소를 쓴다 */
+function resolveOfficialSource(rule: TransportRuleResponse): OfficialSource | undefined {
+  const apiUrl = rule.sources.find((source) => source.sourceUrl)?.sourceUrl ?? rule.sourceUrl;
+  if (apiUrl) return { url: apiUrl };
+  return OFFICIAL_SOURCES[rule.guideSlug];
+}
+
 function badge(label: string, tone: GuideTone): GuideBadge {
   return { label, tone };
 }
@@ -296,6 +304,7 @@ function warningFrom(rule: TransportRuleResponse) {
 
 function toTransportGuide(rule: TransportRuleResponse): TransportGuide {
   const category = rule.carrierType;
+  const officialSource = resolveOfficialSource(rule);
   return {
     id: rule.id,
     carrierName: rule.carrierName,
@@ -304,6 +313,8 @@ function toTransportGuide(rule: TransportRuleResponse): TransportGuide {
     icon: category === 'airline' ? 'airplane' : 'boat',
     verifiedLabel: formatDateLabel(rule.verifiedAt),
     sourceLabel: sourceLabel(rule.sources, rule.sourceUrl),
+    officialUrl: officialSource?.url,
+    officialUrlHint: officialSource?.hint,
     summary: firstSentence(rule.notes, rule.guideTitle),
     badges: toTransportBadges(rule),
     facts: category === 'airline' ? airlineFacts(rule) : ferryFacts(rule),
