@@ -42,49 +42,92 @@ GUIDE_DOCUMENTS = [
         "대한항공",
         GuideCategory.AIRLINE,
         "2026-08-26",
-        [("대한항공 반려동물 동반 안내", None, None)],
+        [
+            (
+                "대한항공 반려동물 동반 안내",
+                "https://www.koreanair.com/contents/plan-your-travel/special-assistance"
+                "/travel-with-pets/guide",
+                None,
+            )
+        ],
     ),
     (
         "airline-asiana",
         "아시아나항공",
         GuideCategory.AIRLINE,
         "2026-08-26",
-        [("아시아나항공 반려동물 운송 안내", None, None)],
+        [
+            (
+                "아시아나항공 반려동물 운송 안내",
+                "https://flyasiana.com/C/KR/KO/contents/traveling-with-pets",
+                None,
+            )
+        ],
     ),
     (
         "airline-jeju-air",
         "제주항공",
         GuideCategory.AIRLINE,
         "2026-08-26",
-        [("제주항공 「반려동물 운송 서비스」 안내 페이지", None, None)],
+        [
+            (
+                "제주항공 「반려동물 운송 서비스」 안내 페이지",
+                "https://www.jejuair.net/ko/linkService/help/main.do",
+                "「도움이 필요한 고객」 페이지 안의 반려동물 항목",
+            )
+        ],
     ),
     (
         "airline-tway",
         "티웨이항공",
         GuideCategory.AIRLINE,
         "2026-08-26",
-        [("티웨이항공 t'pet 국내선 반려동물 운송규정", None, None)],
+        [
+            (
+                "티웨이항공 t'pet 국내선 반려동물 운송규정",
+                "https://www.twayair.com/app/serviceInfo/contents/1070",
+                "trinityairways.com 으로 302 전환됨 (사명 변경)",
+            )
+        ],
     ),
     (
         "airline-jin-air",
         "진에어",
         GuideCategory.AIRLINE,
         "2026-08-26",
-        [("진에어 JINI PET 반려동물 동반 여행 서비스", None, None)],
+        [
+            (
+                "진에어 JINI PET 반려동물 동반 여행 서비스",
+                "https://www.jinair.com/addService/jinipet/statute",
+                None,
+            )
+        ],
     ),
     (
         "airline-air-busan",
         "에어부산",
         GuideCategory.AIRLINE,
         "2026-08-26",
-        [("에어부산 반려동물 운송 안내 페이지", None, None)],
+        [
+            (
+                "에어부산 반려동물 운송 안내 페이지",
+                "https://www.airbusan.com/content/common/service/customer/animal",
+                None,
+            )
+        ],
     ),
     (
         "airline-eastar-jet",
         "이스타항공",
         GuideCategory.AIRLINE,
         "2026-08-26",
-        [("이스타항공 「반려동물을 동반하는 고객」 안내 페이지", None, None)],
+        [
+            (
+                "이스타항공 「반려동물을 동반하는 고객」 안내 페이지",
+                "https://www.eastarjet.com/newstar/PGWIM00004",
+                None,
+            )
+        ],
     ),
     (
         "ferry-hanil-wando",

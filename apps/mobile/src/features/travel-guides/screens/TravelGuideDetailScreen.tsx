@@ -1,5 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/src/components/feedback/EmptyState';
@@ -95,7 +103,7 @@ export function TravelGuideDetailScreen({ guideId }: TravelGuideDetailScreenProp
       <ScreenHeader title={`${guide.carrierName} 규정`} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <DetailHero guide={guide} />
-        <OfficialNotice />
+        <OfficialNotice carrierName={guide.carrierName} />
         <FactSection guide={guide} />
         <NoteSection guide={guide} />
         <SourceSection guide={guide} />
@@ -125,11 +133,13 @@ function DetailHero({ guide }: { guide: TransportGuide }) {
   );
 }
 
-function OfficialNotice() {
+function OfficialNotice({ carrierName }: { carrierName: string }) {
   return (
     <View style={styles.notice}>
       <Ionicons color={colors.primary} name="alert-circle" size={18} />
-      <Text style={styles.noticeText}>예약 전 공식 페이지에서 최신 규정을 다시 확인해 주세요.</Text>
+      <Text style={styles.noticeText}>
+        규정은 자주 바뀌어요. 정확한 정보는 {carrierName} 홈페이지에서 꼭 확인해 주세요.
+      </Text>
     </View>
   );
 }
@@ -187,6 +197,38 @@ function SourceSection({ guide }: { guide: TransportGuide }) {
           {guide.sourceLabel}
         </Text>
       </View>
+      {guide.officialUrl ? (
+        <OfficialLink
+          carrierName={guide.carrierName}
+          hint={guide.officialUrlHint}
+          url={guide.officialUrl}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function OfficialLink({
+  carrierName,
+  hint,
+  url,
+}: {
+  carrierName: string;
+  hint?: string;
+  url: string;
+}) {
+  return (
+    <View style={styles.officialLinkBlock}>
+      <Pressable
+        accessibilityLabel={`${carrierName} 공식 안내 페이지 열기`}
+        accessibilityRole="link"
+        onPress={() => void Linking.openURL(url)}
+        style={({ pressed }) => [styles.officialLink, pressed && styles.officialLinkPressed]}
+      >
+        <Text style={styles.officialLinkText}>{carrierName} 공식 안내 보기</Text>
+        <Ionicons color={colors.primaryDeep} name="open-outline" size={16} />
+      </Pressable>
+      {hint ? <Text style={styles.officialLinkHint}>{hint}</Text> : null}
     </View>
   );
 }
@@ -351,6 +393,36 @@ const styles = StyleSheet.create({
     fontSize: typography.label.fontSize,
     fontWeight: '800',
     lineHeight: 19,
+  },
+  officialLink: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.primarySoftStrong,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    minHeight: 42,
+    paddingHorizontal: spacing.md,
+  },
+  officialLinkBlock: {
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  officialLinkHint: {
+    color: colors.textSecondary,
+    fontSize: typography.caption.fontSize,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
+  officialLinkPressed: {
+    backgroundColor: colors.primarySoft,
+  },
+  officialLinkText: {
+    color: colors.primaryDeep,
+    fontSize: typography.label.fontSize,
+    fontWeight: '800',
   },
   safeArea: {
     backgroundColor: colors.background,
