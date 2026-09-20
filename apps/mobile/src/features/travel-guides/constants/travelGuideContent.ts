@@ -20,6 +20,9 @@ export type TransportGuide = {
   icon: IoniconName;
   verifiedLabel: string;
   sourceLabel: string;
+  /** 공식 안내 페이지. 없으면 화면이 링크 버튼을 그리지 않는다 */
+  officialUrl?: string;
+  officialUrlHint?: string;
   summary: string;
   badges: GuideBadge[];
   facts: GuideFact[];
