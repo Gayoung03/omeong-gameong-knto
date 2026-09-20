@@ -46,6 +46,6 @@ export const OFFICIAL_SOURCES: Record<string, OfficialSource> = {
     url: 'https://seaferry.co.kr/bbs/content.php?co_id=p201&tab=pet',
   },
   'ferry-oceanvista-samcheonpo': {
-    url: 'https://www.oceanvista.co.kr/theme/main/html/board_process.detail.php',
+    url: 'https://www.oceanvista.co.kr/theme/main/html/board_process.detail.php#none',
   },
 };
