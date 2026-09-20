@@ -6,6 +6,8 @@ const config: ExpoConfig = {
   version: '0.1.0',
   orientation: 'portrait',
   scheme: 'omeonggameong',
+  // 런처 아이콘(1024×1024, 알파 없음). 원본 0830 아이콘을 배경색으로 평면화한 것.
+  icon: './assets/icons/app-icon.png',
   extra: {
     eas: {
       projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID,
@@ -19,6 +21,12 @@ const config: ExpoConfig = {
   android: {
     package: 'com.omeonggameong.app',
     predictiveBackGestureEnabled: false,
+    // 적응형 아이콘: 런처 마스크(원·둥근사각)가 가장자리를 잘라내므로 전경은 안전 영역
+    // 안에 들어가게 72% 로 줄인 투명 캔버스본을 쓰고 배경은 아이콘 크림색으로 채운다.
+    adaptiveIcon: {
+      foregroundImage: './assets/icons/adaptive-icon-foreground.png',
+      backgroundColor: '#FBF3EB',
+    },
     // Play 사진·동영상 권한 정책: 넓은 미디어 읽기 권한은 신고·승인 대상이다.
     // 사진 선택은 시스템 사진 선택기(expo-image-picker), 저장은 write-only 라 필요 없다.
     blockedPermissions: [
